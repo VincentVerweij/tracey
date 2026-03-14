@@ -222,7 +222,7 @@ A user on a corporate machine without administrator privileges downloads a singl
 
 #### Time Entry Management
 
-- **FR-019**: Every time entry MUST have a description, a start datetime, and an end datetime stored in UTC.
+- **FR-019**: Every **completed** time entry MUST have a description, a start datetime (UTC), and an end datetime (UTC). A **running** time entry has a start datetime but no end datetime (`ended_at` is NULL until the timer is stopped).
 - **FR-020**: A time entry MAY be linked to a project and a task under that project.
 - **FR-021**: A time entry MAY have one or more predefined tags attached.
 - **FR-022**: The system MUST allow only one active (running) timer at any given moment; starting a new entry MUST automatically stop and save the currently running entry.
@@ -233,7 +233,7 @@ A user on a corporate machine without administrator privileges downloads a singl
 - **FR-027**: The description input MUST show an auto-complete dropdown when the user begins typing, populated with descriptions from previously completed time entries.
 - **FR-028**: The auto-complete dropdown MUST appear as the user types and filter suggestions in real time.
 - **FR-029**: Selecting an auto-complete suggestion (by pressing Enter or clicking) MUST start a new timer with the same description, project, task, and tags as the matched historical entry.
-- **FR-030**: Time entry data MUST be automatically saved when the user moves focus away from the entry input without requiring an explicit save action.
+- **FR-030**: Time entry data MUST be automatically saved when the user moves focus away from an entry field without requiring an explicit save action. **This auto-save-on-blur behavior applies to the in-place entry editor inside `TimeEntryList.razor` only**; the `QuickEntryBar` does not auto-save on blur — it requires an explicit Enter key press to start the timer.
 - **FR-031**: The time entry list MUST display entries grouped by date in descending order (most recent date first), with entries within each day listed chronologically.
 - **FR-032**: The time entry list MUST be paginated; the number of entries loaded per page MUST be configurable by the user, with a sensible default (e.g., 50 entries per page).
 - **FR-033**: The user MUST be able to scroll through all date groups and load additional pages without losing their scroll position within the current page.
@@ -280,7 +280,7 @@ A user on a corporate machine without administrator privileges downloads a singl
 - **FR-059**: Time entries MUST be synchronized to the external database configured via the user-supplied connection URI so they are accessible across multiple devices that share the same connection URI.
 - **FR-060**: The currently running timer MUST be visible on all devices sharing the same connection URI within 10 seconds (see SC-008).
 - **FR-061**: Window activity records (active process name, window title, timestamp) MUST be synchronized to the external database; these will be used for machine-learning-based automatic tagging in a future effort.
-- **FR-062**: Screenshots MUST NOT be synchronized to any external service.
+- **FR-062**: *(Consolidated into FR-017.)* Screenshots MUST NOT be synchronized to any external service or database. See FR-017.
 - **FR-063**: The system MUST maintain a local cache of time entry data to support fast creation and modification and to enable full functionality when the device is offline or the external database is unreachable.
 - **FR-064**: When connectivity is restored after an offline period, the local cache MUST automatically sync pending changes to the external database.
 - **FR-065**: Conflicts arising from the same entry being modified on two devices while offline MUST be resolved using a last-write-wins strategy based on the modification timestamp.
@@ -331,7 +331,52 @@ A user on a corporate machine without administrator privileges downloads a singl
 - Project names are unique within a client but may appear under multiple clients; this is the only case that triggers an inline disambiguation step.
 - Conflict resolution for concurrent offline edits uses last-write-wins based on modification timestamp, as this is the simplest strategy adequate for single-user multi-device use.
 - The external database connection is configured by the user by pasting a connection URI into application settings; no built-in account system or authentication is provided. The user is responsible for provisioning and securing their own database instance (e.g., a self-hosted or cloud Postgres/Supabase instance).
-- Window activity records are batched and synchronized periodically (e.g., every few minutes) rather than in real time, to minimize network overhead.
+- Window activity records are batched and synchronized periodically (within 30 seconds, satisfying SC-007) rather than in real time, to minimize network overhead.
 - The screenshot debounce period for rapid window title changes is 2 seconds by default to avoid excessive captures from browsers that update the title frequently.
 - The application shell is a web-technology-in-native-shell binary (Tauri). The web UI handles all visual presentation; the native layer provides OS hooks for global input monitoring, active window detection, screenshot capture, and system tray / notification integration. This satisfies the portable binary requirement without admin rights.
 - Screenshots are stored as plain image files with no application-level encryption. Privacy and access control are delegated to OS folder permissions. The user is advised to place the screenshot folder in a location accessible only to their own OS account.
+
+## Privacy Impact Assessment
+
+### Data Categories Collected
+
+| Category | Description | Storage | Sync to External DB? |
+|----------|-------------|---------|----------------------|
+| **Time entries** | Description, start/end UTC datetime, project/task/tag links | Local SQLite | Yes (user-configured URI) |
+| **Window activity records** | Active process name, window title, timestamp | Local SQLite | Yes — used for future ML-based tagging |
+| **Screenshots** | Full-screen JPEG images captured at intervals and on window change | Local filesystem (`{exe_dir}/screenshots/` by default) | **Never** |
+| **Client/project/task hierarchy** | Names, colors, archive status | Local SQLite | Yes |
+| **Tags** | Names, links to time entries | Local SQLite | Yes |
+| **User preferences** | Timezone, inactivity timeout, screenshot settings, notification channel config, page size | Local SQLite | Yes |
+| **External DB credentials** | Connection URI (Postgres/Supabase) | OS keychain (`keyring` crate) | No |
+
+### Retention
+
+- **Screenshots**: Automatically deleted after the user-configured retention window (default 30 days, satisfying SC-009). No application-level purge beyond this window unless the user triggers "delete all my data" (FR-070).
+- **Window activity records**: No automatic purge; records accumulate in the local SQLite DB and in the external DB (if configured). A future data-management release may add a rolling retention window for activity records.
+- **Time entries**: Retained indefinitely unless deleted by the user.
+- **All local data**: Wiped in full by the "delete all my data" operation (FR-070), which must complete within 60 seconds.
+
+### Sync Destinations
+
+- Data is synchronized **only** to the external database URI explicitly provided by the user. No first-party cloud, no telemetry endpoint, no analytics service.
+- Screenshots are **never** transmitted off the local machine (FR-017, FR-062).
+- The external DB URI itself is stored in the OS keychain and is never written to any synced table.
+
+### Process Deny-List Scope
+
+- Users may configure a per-process deny list (`user_preferences.process_deny_list_json`) containing glob or exact-match patterns for process names.
+- The deny list is applied **at the collection boundary** in the native layer (T082): any foreground window whose process name matches a pattern is silently skipped — no window title, no screenshot, no activity record is written for that process.
+- Deny-list entries are themselves stored in `user_preferences` and synced to the external DB alongside other preferences.
+
+### User Control Mechanisms
+
+| Mechanism | Description |
+|-----------|-------------|
+| **Deny-list editor** | Settings UI (T087) lets users add/remove process name patterns to exclude from all collection. |
+| **Screenshot folder** | User can change the screenshot storage folder (FR-014) or disable screenshots by setting interval to 0. |
+| **Screenshot retention** | Configurable retention window (FR-015); expired files deleted automatically within 24 hours. |
+| **External DB opt-out** | Sync only activates if the user explicitly provides a connection URI; the app is fully functional with no external DB configured. |
+| **Delete all my data** | One-click operation (FR-070) wipes all local SQLite tables and all screenshot files within 60 seconds, with a confirmation prompt. |
+| **Timezone** | User configures their display timezone (FR-026); UTC values in storage are never altered. |
+

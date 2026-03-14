@@ -3,7 +3,9 @@
 **Input**: Design documents from `/specs/001-window-activity-tracker/`
 **Prerequisites**: plan.md ✅ | spec.md ✅ | research.md ✅ | data-model.md ✅ | contracts/ ✅ | quickstart.md ✅
 
-**Stack**: Tauri 2.0 (Rust) · Blazor Server .NET 10 (C#) · BlazorBlueprint.Components · SQLite (local) · Postgres/Supabase (external sync) · Playwright (E2E) · xUnit (unit)
+**Stack**: Tauri 2.0 (Rust) · **Blazor WebAssembly** .NET 10 (C#) · BlazorBlueprint.Components · SQLite (local; Rust layer) · Postgres/Supabase (external sync) · Playwright (E2E) · xUnit (unit)
+
+> **Rationale — Blazor WebAssembly chosen over Blazor Server**: Blazor WebAssembly compiles C# to WASM and runs entirely inside Tauri's WebView2 with no server-side SignalR dependency, matching the portable offline-capable single-binary requirement. All data access is handled by the Rust layer via Tauri IPC; no .NET server process is needed.
 
 ---
 
@@ -20,10 +22,11 @@
 **Purpose**: Scaffold repository layout and initialize all projects. No functional code yet.
 
 - [ ] T001 Initialize Tauri 2.0 project: `cargo create-tauri-app`, configure `src-tauri/Cargo.toml` with all dependencies (tauri 2.0, tauri-plugin-system-idle, windows 0.58, image, serde, keyring, tokio) and `[features] test = []` flag — `src-tauri/Cargo.toml`
-- [ ] T002 [P] Initialize Blazor Server .NET 10 solution and application project with BlazorBlueprint.Components, Microsoft.Data.Sqlite, Npgsql, MailKit NuGet packages — `src/Tracey.sln`, `src/Tracey.App/Tracey.App.csproj`
+- [ ] T002 [P] Initialize **Blazor WebAssembly** .NET 10 solution and application project (WASM hosting model — no server-side SignalR, no in-process .NET server); NuGet packages: BlazorBlueprint.Components, MailKit; SQLite and Postgres access are Rust-layer only and do not appear in this project — `src/Tracey.sln`, `src/Tracey.App/Tracey.App.csproj`
 - [ ] T003 [P] Initialize xUnit test project referencing Tracey.App — `src/Tracey.Tests/Tracey.Tests.csproj`
 - [ ] T004 [P] Initialize Playwright E2E test project with `playwright.config.ts` (app launch as subprocess, test fixture for IPC overrides, `--features test` build for screenshot tests) — `tests/e2e/`
 - [ ] T005 [P] Create UX tone-of-voice guide with tone principles and example copy — `docs/ux/tone.md`
+  > Note: A user-facing string tone audit across all .razor files (T089) is deferred to the Final Phase when UI components exist.
 
 **Checkpoint**: All projects build cleanly (`cargo build`, `dotnet build`, `npx playwright install`)
 
@@ -73,12 +76,17 @@
 - [ ] T022 [US1] Implement `time_entry_list` Tauri command: paginated query grouped by date descending, joins project/task/tag names — `src-tauri/src/commands/timer.rs`
 - [ ] T023 [US1] Implement `time_entry_create_manual` Tauri command with overlap detection warning and `force: true` override — `src-tauri/src/commands/timer.rs`
 - [ ] T024 [US1] Implement `time_entry_continue` Tauri command (copies description/project/task/tags from source entry, creates new running timer) — `src-tauri/src/commands/timer.rs`
-- [ ] T025 [US1] Implement `time_entry_autocomplete` Tauri command (query distinct descriptions from history, fuzzy-ranked in C#) — `src-tauri/src/commands/timer.rs`
+- [ ] T025 [US1] Implement `time_entry_autocomplete` Tauri command: query distinct descriptions from history, fuzzy-ranked in C#; for each result, verify that the linked `project_id` and `task_id` still exist in the DB — set `is_orphaned: true` in the result payload when either is missing (project deleted or task deleted) — `src-tauri/src/commands/timer.rs`
+- [ ] T025a [P] [US1] Write Playwright E2E test for orphaned autocomplete: stop a timer with a linked project/task; hard-delete that project via the Tauri IPC from the test fixture; type the description in the quick-entry bar; verify the autocomplete suggestion appears with a visual orphan-warning indicator; select it and confirm the entry is saved with the orphaned fields flagged — `tests/e2e/specs/timer.spec.ts`
 - [ ] T026 [US1] Implement `tracey://timer-tick` event emitter: background tokio task that emits elapsed seconds every second while a timer is running — `src-tauri/src/services/`
 - [ ] T027 [US1] Implement `TimerStateService` in C#: subscribes to `tracey://timer-tick`, exposes reactive `ElapsedSeconds` and `ActiveTimer` state — `src/Tracey.App/Services/TimerStateService.cs`
-- [ ] T028 [P] [US1] Build `QuickEntryBar.razor` component: description input, Enter to call `timer_start`, description autocomplete dropdown (historical suggestions from `time_entry_autocomplete`) — `src/Tracey.App/Components/QuickEntryBar.razor`
-- [ ] T029 [US1] Build `TimeEntryList.razor` component: paginated list grouped by date, live running timer row with elapsed counter, Continue button per past entry, page-size from preferences — `src/Tracey.App/Components/TimeEntryList.razor`
+- [ ] T028 [P] [US1] Build `QuickEntryBar.razor` component: description input, Enter to call `timer_start`, description autocomplete dropdown (historical suggestions from `time_entry_autocomplete`); display an inline warning indicator on any autocomplete suggestion where `is_orphaned: true`; selecting an orphaned suggestion shows a tooltip or inline banner stating that the linked project/task no longer exists — `src/Tracey.App/Components/QuickEntryBar.razor`
+- [ ] T029 [US1] Build `TimeEntryList.razor` component: paginated list grouped by date, live running timer row with elapsed counter, Continue button per past entry, page-size from preferences; preserve scroll position across Blazor component re-renders and after page navigation (store position in a `sessionStorage` JS key; restore on mount via JS interop) — `src/Tracey.App/Components/TimeEntryList.razor`
+- [ ] T029a [P] [US1] Write Playwright E2E test for scroll-position preservation: scroll partway down the time entry list, navigate to another page (e.g., Projects), return to Dashboard, and verify the scroll position is restored to the same offset — `tests/e2e/specs/timer.spec.ts`
 - [ ] T030 [US1] Build `Dashboard.razor` page: assembles `QuickEntryBar` + running timer display + `TimeEntryList`; all datetimes displayed in user's configured local timezone — `src/Tracey.App/Pages/Dashboard.razor`
+- [ ] T030a [US1] Implement `time_entry_update` Tauri command: accept `id`, `description`, `project_id`, `task_id`, `tag_ids`, `start_at`, `ended_at`; validate overlap (reuse overlap logic from T023); enqueue sync; return updated entry — `src-tauri/src/commands/timer.rs`
+- [ ] T030b [US1] Add inline edit mode to `TimeEntryList.razor`: clicking a completed entry's row opens its fields in-place (description, project/task picker, tag picker, start/end datetime); auto-saves via `time_entry_update` on blur from any field (satisfying FR-030); shows an explicit close/cancel control to discard edits — `src/Tracey.App/Components/TimeEntryList.razor`
+- [ ] T030c [P] [US1] Write Playwright E2E test for in-place editing and auto-save on blur: click a past entry to open inline edit; modify the description; press Tab to blur the field; verify the update is persisted without a manual save button; also verify blurring from the time fields triggers an auto-save — `tests/e2e/specs/timer.spec.ts`
 
 **Checkpoint**: US1 acceptance tests pass. User can start, stop, and continue timers and see them in the list. MVP deliverable.
 
@@ -118,9 +126,9 @@
 
 ### Implementation for User Story 3
 
-- [ ] T038 [P] [US3] Implement client Tauri commands (`client_list`, `client_create`, `client_update`, `client_archive`, `client_unarchive`, `client_delete`) with input validation (hex color, non-empty name, logo path canonicalization) — `src-tauri/src/commands/activity.rs`
-- [ ] T039 [P] [US3] Implement project Tauri commands (`project_list`, `project_create`, `project_update`, `project_archive`, `project_unarchive`, `project_delete`) — `src-tauri/src/commands/activity.rs`
-- [ ] T040 [P] [US3] Implement task Tauri commands (`task_list`, `task_create`, `task_update`, `task_delete`) — `src-tauri/src/commands/activity.rs`
+- [ ] T038 [P] [US3] Implement client Tauri commands (`client_list`, `client_create`, `client_update`, `client_archive`, `client_unarchive`, `client_delete`) with input validation (hex color, non-empty name, logo path canonicalization) — `src-tauri/src/commands/hierarchy.rs`
+- [ ] T039 [P] [US3] Implement project Tauri commands (`project_list`, `project_create`, `project_update`, `project_archive`, `project_unarchive`, `project_delete`) — `src-tauri/src/commands/hierarchy.rs`
+- [ ] T040 [P] [US3] Implement task Tauri commands (`task_list`, `task_create`, `task_update`, `task_delete`) — `src-tauri/src/commands/hierarchy.rs`
 - [ ] T041 [US3] Build `Projects.razor` page: client list with color swatch, create/update/archive/delete actions; collapsible project list per client; task list per project; delete-confirmation modal using BlazorBlueprint modal component — `src/Tracey.App/Pages/Projects.razor`
 
 **Checkpoint**: US3 acceptance tests pass. Full client/project/task hierarchy is manageable via the UI.
@@ -140,12 +148,12 @@
 ### Implementation for User Story 4
 
 - [ ] T043 [US4] Add `#[cfg(feature = "test")]` GDI test double: when `test` feature is active, write a pre-canned 100×100 JPEG instead of calling Win32 APIs; used by Playwright E2E fixture — `src-tauri/src/services/screenshot_service.rs`
-- [ ] T044 [US4] Implement GDI screenshot capture pipeline in `spawn_blocking`: `MonitorFromWindow` → `GetMonitorInfo` (active monitor rect) → `GetDesktopWindow` (from `Win32_UI_WindowsAndMessaging`) → `GetWindowDC` → `BitBlt` → `GetDIBits` → Triangle resize to 50% → JPEG encode → write to storage path — `src-tauri/src/services/screenshot_service.rs`
+- [ ] T044 [US4] Implement GDI screenshot capture pipeline in `spawn_blocking`: `MonitorFromWindow` → `GetMonitorInfo` (active monitor rect) → `GetDesktopWindow` (from `Win32_UI_WindowsAndMessaging`) → `GetWindowDC` → `BitBlt` → `GetDIBits` → Triangle resize to 50% → **JPEG encode** (implementation decision: JPEG chosen for storage efficiency; the `image` crate's PNG encoder is available as a future extension without pipeline changes) → write to storage path — `src-tauri/src/services/screenshot_service.rs`
 - [ ] T045 [US4] Implement storage path canonicalization and validation (prevent path traversal; default to `{exe_dir}/screenshots/`) — `src-tauri/src/services/screenshot_service.rs`
-- [ ] T046 [US4] Implement interval screenshot timer (default 60 s) and window-change-triggered screenshot with 2-second debounce; emit `tracey://screenshot-captured` event after each save — `src-tauri/src/services/screenshot_service.rs`
+- [ ] T046 [US4] Implement interval screenshot timer (default 60 s) and window-change-triggered screenshot with 2-second debounce; emit `tracey://screenshot-captured` event after each successful save; on any IO error (disk full, folder inaccessible, permission denied), log a structured error entry (`component: "screenshot_service"`, `event: "screenshot_write_failed"`, `path`, `error`) and emit a `tracey://error` event so the in-app notification handler (see T049) can surface the failure to the user without crashing — `src-tauri/src/services/screenshot_service.rs`
 - [ ] T047 [P] [US4] Implement `screenshot_list` Tauri command (queries local `screenshots` SQLite table by time range) and `screenshot_delete_expired` command (removes expired file + row pairs); both backed by the `screenshots` table defined in the migration from T009 — `src-tauri/src/commands/screenshot.rs`
 - [ ] T048 [US4] Implement screenshot retention cleanup background job (delete files + records older than `screenshot_retention_days`; log failures without crashing) — `src-tauri/src/services/screenshot_service.rs`
-- [ ] T049 [US4] Build `ScreenshotTimeline.razor` page: scrollable chronological timeline, screenshot viewer, nearest-time query via `screenshot_list`, in-app error notification when storage fails — `src/Tracey.App/Pages/Timeline.razor`
+- [ ] T049 [US4] Build `ScreenshotTimeline.razor` page: scrollable chronological timeline, screenshot viewer, nearest-time query via `screenshot_list`, in-app error notification when storage fails; subscribe to the `tracey://error` event emitted by T046 and surface a dismissible in-app banner (using the BlazorBlueprint alert component) whenever a screenshot write failure occurs — `src/Tracey.App/Pages/Timeline.razor`
 
 **Checkpoint**: US4 acceptance tests pass. Screenshot timeline displays captured images at the correct times.
 
@@ -168,7 +176,8 @@
 
 - [ ] T052 [P] [US5] Implement `FuzzyMatchService` in C#: weighted scorer combining exact-prefix rank, consecutive-match rank, character-spread rank (VS Code Ctrl+P style); case-insensitive throughout — `src/Tracey.App/Services/FuzzyMatchService.cs`
 - [ ] T053 [P] [US5] Implement `fuzzy_match_projects` and `fuzzy_match_tasks` Tauri commands (query from SQLite, return candidates for C#-side scoring) — `src-tauri/src/commands/timer.rs`
-- [ ] T054 [US5] Extend `QuickEntryBar.razor` with slash-delimited segment parser: one slash → (project, description); two slashes → (project, task, description); trailing slash → empty description; parser does NOT infer missing segments — `src/Tracey.App/Components/QuickEntryBar.razor`
+- [ ] T054 [US5] Extend `QuickEntryBar.razor` with slash-delimited segment parser: one slash → (project, description); two slashes → (project, task, description); trailing slash → empty description; parser does NOT infer missing segments; after fuzzy-selecting a project, query how many clients own that project name — if exactly one, silently resolve the client and skip the disambiguation dropdown entirely; only show the disambiguation dropdown (T056) when two or more clients own a project with the same name — `src/Tracey.App/Components/QuickEntryBar.razor`
+- [ ] T054a [P] [US5] Write Playwright E2E test for single-client silent inference: configure two projects each with a unique name under different clients; type a project name that belongs to only one client; verify no disambiguation dropdown appears and the client is silently resolved; then configure a second project with the same name under a different client and verify the disambiguation dropdown does appear — `tests/e2e/specs/quick-entry.spec.ts`
 - [ ] T055 [US5] Add live fuzzy-match dropdown to `QuickEntryBar.razor`: appears as user types each segment, sorted by score, narrows char-by-char, navigable with arrow keys, confirmed with Tab or Enter — `src/Tracey.App/Components/QuickEntryBar.razor`
 - [ ] T056 [US5] Add client disambiguation inline dropdown to `QuickEntryBar.razor`: shown only when selected project name matches more than one client; arrow-key navigable; only interruption in the one-pass flow — `src/Tracey.App/Components/QuickEntryBar.razor`
 
@@ -256,7 +265,7 @@
 ### Implementation for User Story 9
 
 - [ ] T077 [US9] Configure `tauri.conf.json` bundle settings to produce a single portable `.exe` with no installer (no NSIS/MSI), no registry writes, all data paths relative to `{exe_dir}` — `src-tauri/tauri.conf.json`
-- [ ] T078 [US9] Verify path resolution logic: `{exe_dir}` used for `tracey.db` and `screenshots/`; fallback to `{APPDATA}/tracey/` when `{exe_dir}` is read-only; first-launch creation without elevation — `src-tauri/src/`
+- [ ] T078 [US9] Implement and unit-test portable path resolution logic: write Rust unit tests in `tests/portable_path.rs` covering (a) `{exe_dir}` primary path is used when that directory is writable, (b) fallback to `{APPDATA}/tracey/` when `{exe_dir}` is read-only (simulate with a tempdir set read-only), (c) first-launch directory creation (`tracey.db` parent and `screenshots/`) succeeds without elevation; all tests runnable with `cargo test` using temporary directory fixtures — `src-tauri/src/`, `src-tauri/tests/portable_path.rs`
 - [ ] T079 [P] [US9] Add CI job: `cargo tauri build` (release), verify output is a single `.exe`, run the executable as a restricted user in a GitHub Actions Windows runner — `.github/workflows/ci.yml`
 
 **Checkpoint**: US9 acceptance tests pass. Portable executable confirmed working on a standard user account (SC-005).
@@ -269,11 +278,14 @@
 
 - [ ] T080 [P] Build core `Settings.razor` page: timezone picker (IANA list), inactivity timeout, screenshot interval, screenshot retention days, screenshot storage folder (path picker), page size — `src/Tracey.App/Pages/Settings.razor`
 - [ ] T081 [P] Implement delete-all-data operation in Settings: wipe all local SQLite tables, delete all screenshot files, complete within 60 seconds, show confirmation modal and post-deletion acknowledgement — `src/Tracey.App/Pages/Settings.razor`, `src-tauri/src/commands/`
-- [ ] T082 [P] Implement `PlatformHooks` trait (defined in T017b) for Windows: `GetForegroundWindow` → `GetWindowThreadProcessId` → `GetModuleFileNameExW` polling loop (1-second interval), HWND null-check via `std::ptr::null_mut()` not `== 0`, deny-list redaction of window titles before storage, call `ScreenshotService::trigger_on_window_change()` directly on window change (note: `tracey://screenshot-captured` is emitted by `ScreenshotService` after a successful save, not by the activity tracker) — `src-tauri/src/platform/windows.rs`, `src-tauri/src/services/activity_tracker.rs`
+- [ ] T082 [P] Implement `PlatformHooks` trait (defined in T017b) for Windows: `GetForegroundWindow` → `GetWindowThreadProcessId` → `GetModuleFileNameExW` polling loop (1-second interval), HWND null-check via `std::ptr::null_mut()` not `== 0`, deny-list redaction of window titles before storage, call `ScreenshotService::trigger_on_window_change()` directly on window change (note: `tracey://screenshot-captured` is emitted by `ScreenshotService` after a successful save, not by the activity tracker). **Terminology note**: “active window” throughout the spec is synonymous with “foreground window” in Win32 terminology — `GetForegroundWindow` is the correct Win32 API for this concept and the two terms are used interchangeably in this codebase. — `src-tauri/src/platform/windows.rs`, `src-tauri/src/services/activity_tracker.rs`
 - [ ] T083 [P] Implement window activity sync: batch-write `WindowActivityRecord` rows to SQLite; flush unsynced records every **30 s** (satisfying SC-007) to external DB via `SyncService`; enforce process deny-list at collection boundary (Constitution V) — `src-tauri/src/services/activity_tracker.rs`
 - [ ] T084 [P] Add performance benchmark tests: timer start/stop < 50 ms, time_entry_list at 1 M rows < 500 ms p95, window activity write throughput; fail CI if > 10% regression — `tests/`
 - [ ] T085 [P] Configure CI pipeline: lint (cargo clippy -D warnings, dotnet format verify), unit tests (cargo test, dotnet test), E2E tests (playwright test), cargo audit (CVE scan), performance benchmarks — `.github/workflows/ci.yml`
 - [ ] T086 Run quickstart.md validation: follow document from scratch on a clean machine, confirm all steps produce a working app, update any incorrect instructions — `specs/001-window-activity-tracker/quickstart.md`
+- [ ] T087 [P] Build deny-list editor section in `Settings.razor`: text input for a per-process name pattern (glob or exact string), add/remove rows in a dynamic list, persist the full list to `user_preferences.process_deny_list_json` via `preferences_update` IPC; the saved list is applied at the collection boundary in T082 before any window title or process name is written to storage — `src/Tracey.App/Pages/Settings.razor`
+- [ ] T088 [P] Automated accessibility audit: integrate `@axe-core/playwright`; write Playwright tests that assert zero WCAG 2.1 AA violations on all pages (Dashboard, Projects, Tags, Timeline, Settings); additionally validate that keyboard-only navigation (Tab, Shift+Tab, Enter, Escape, arrow keys) can reach and activate every interactive element on each page — `tests/e2e/specs/accessibility.spec.ts`
+- [ ] T089 [P] Tone audit pass: after all .razor pages are complete (post-T030 through T081), review every user-facing literal string in `.razor` files against the tone guide from T005; correct any deviations (avoid jargon, keep copy concise and action-oriented); run concurrently with T086 — `docs/ux/tone.md`, `src/Tracey.App/`
 
 **Checkpoint**: All tests green in CI. Performance budgets met. Portable build confirmed. quickstart.md validated.
 
@@ -317,13 +329,14 @@ Final Phase: Polish             → Depends on all user stories being complete.
 ## Parallel Example: Phase 2 (Foundational)
 
 ```
-# These can run in parallel across developers:
-Task T010: Create Rust model structs         (src-tauri/src/models/mod.rs)
-Task T011: Implement structured logger       (src-tauri/src/)
-Task T013: preferences_get/update commands   (src-tauri/src/commands/)
-Task T014: health_get command                (src-tauri/src/commands/)
-Task T016: Register Blazor DI + events       (src/Tracey.App/Program.cs)
-Task T017: App.razor navigation shell        (src/Tracey.App/App.razor)
+# These can run in parallel across developers (7 tasks — Phase 2 total: 13):
+Task T010:  Create Rust model structs         (src-tauri/src/models/mod.rs)
+Task T011:  Implement structured logger       (src-tauri/src/)
+Task T013:  preferences_get/update commands   (src-tauri/src/commands/)
+Task T014:  health_get command                (src-tauri/src/commands/)
+Task T016:  Register Blazor DI + events       (src/Tracey.App/Program.cs)
+Task T017:  App.razor navigation shell        (src/Tracey.App/App.razor)
+Task T017b: PlatformHooks trait definition    (src-tauri/src/platform/mod.rs)
 
 # These must run sequentially:
 T006 (app shell) → T007 (capabilities) → T008 (DB open) → T009 (migrations) → T012 (first-launch init) → T015 (TauriIpcService)
