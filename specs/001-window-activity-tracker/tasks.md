@@ -47,6 +47,7 @@
 - [ ] T015 Implement `TauriIpcService` in C# with `InvokeAsync<T>` wrapper around `IJSRuntime`, typed overloads for every command in `contracts/ipc-commands.md`, and Tauri event subscription helpers — `src/Tracey.App/Services/TauriIpcService.cs`
 - [ ] T016 [P] Register Blazor services in DI, configure Tauri event subscriptions (`tracey://timer-tick`, `tracey://idle-detected`, `tracey://sync-status-changed`, `tracey://error`) using JS interop in app startup — `src/Tracey.App/Program.cs`
 - [ ] T017 [P] Implement `App.razor` navigation shell: sidebar/nav links to Dashboard, Projects, Tags, Timeline, Settings pages — `src/Tracey.App/App.razor`
+- [ ] T017b [P] Define `PlatformHooks` trait in `src-tauri/src/platform/mod.rs` with methods `get_foreground_window_info() -> Option<WindowInfo>`, `get_idle_seconds() -> u64`, and `trigger_screenshot_capture() -> Result<()>`; Windows implementation in `src-tauri/src/platform/windows.rs` will implement this trait (referenced by T082) — `src-tauri/src/platform/mod.rs`
 
 **Checkpoint**: `cargo tauri dev` launches the app, `health_get` returns a valid response, DB is created on first run.
 
@@ -62,7 +63,7 @@
 
 > Write and confirm they FAIL before implementing
 
-- [ ] T018 [P] [US1] Write Playwright E2E tests covering all US1 acceptance scenarios (timer start/stop, auto-stop on new timer, continue button, list grouped by date, UTC storage + local display) — `tests/e2e/specs/timer.spec.ts`
+- [ ] T018 [P] [US1] Write Playwright E2E tests covering all US1 acceptance scenarios (timer start/stop, auto-stop on new timer, continue button, list grouped by date, UTC storage + local display, **and overlap-warning modal on manual entry creation**: verify warning shown when new entry overlaps an existing entry, and confirm `force: true` override proceeds to save) — `tests/e2e/specs/timer.spec.ts`
 - [ ] T019 [P] [US1] Write xUnit tests for `TimerStateService` (start, stop, continue, elapsed tick, single-timer invariant) — `src/Tracey.Tests/TimerStateServiceTests.cs`
 
 ### Implementation for User Story 1
@@ -142,7 +143,7 @@
 - [ ] T044 [US4] Implement GDI screenshot capture pipeline in `spawn_blocking`: `MonitorFromWindow` → `GetMonitorInfo` (active monitor rect) → `GetDesktopWindow` (from `Win32_UI_WindowsAndMessaging`) → `GetWindowDC` → `BitBlt` → `GetDIBits` → Triangle resize to 50% → JPEG encode → write to storage path — `src-tauri/src/services/screenshot_service.rs`
 - [ ] T045 [US4] Implement storage path canonicalization and validation (prevent path traversal; default to `{exe_dir}/screenshots/`) — `src-tauri/src/services/screenshot_service.rs`
 - [ ] T046 [US4] Implement interval screenshot timer (default 60 s) and window-change-triggered screenshot with 2-second debounce; emit `tracey://screenshot-captured` event after each save — `src-tauri/src/services/screenshot_service.rs`
-- [ ] T047 [P] [US4] Implement `screenshot_list` and `screenshot_delete_expired` Tauri commands — `src-tauri/src/commands/screenshot.rs`
+- [ ] T047 [P] [US4] Implement `screenshot_list` Tauri command (queries local `screenshots` SQLite table by time range) and `screenshot_delete_expired` command (removes expired file + row pairs); both backed by the `screenshots` table defined in the migration from T009 — `src-tauri/src/commands/screenshot.rs`
 - [ ] T048 [US4] Implement screenshot retention cleanup background job (delete files + records older than `screenshot_retention_days`; log failures without crashing) — `src-tauri/src/services/screenshot_service.rs`
 - [ ] T049 [US4] Build `ScreenshotTimeline.razor` page: scrollable chronological timeline, screenshot viewer, nearest-time query via `screenshot_list`, in-app error notification when storage fails — `src/Tracey.App/Pages/Timeline.razor`
 
@@ -268,8 +269,8 @@
 
 - [ ] T080 [P] Build core `Settings.razor` page: timezone picker (IANA list), inactivity timeout, screenshot interval, screenshot retention days, screenshot storage folder (path picker), page size — `src/Tracey.App/Pages/Settings.razor`
 - [ ] T081 [P] Implement delete-all-data operation in Settings: wipe all local SQLite tables, delete all screenshot files, complete within 60 seconds, show confirmation modal and post-deletion acknowledgement — `src/Tracey.App/Pages/Settings.razor`, `src-tauri/src/commands/`
-- [ ] T082 [P] Implement window activity tracker: `GetForegroundWindow` → `GetWindowThreadProcessId` → `GetModuleFileNameExW` polling loop (1-second interval), HWND null-check via `std::ptr::null_mut()` not `== 0`, deny-list redaction of window titles before storage, emit `tracey://screenshot-captured` on window change for screenshot trigger — `src-tauri/src/platform/windows.rs`, `src-tauri/src/services/activity_tracker.rs`
-- [ ] T083 [P] Implement window activity sync: batch-write `WindowActivityRecord` rows to SQLite; flush unsynced records every 60 s to external DB via `SyncService`; enforce process deny-list at collection boundary (Constitution V) — `src-tauri/src/services/activity_tracker.rs`
+- [ ] T082 [P] Implement `PlatformHooks` trait (defined in T017b) for Windows: `GetForegroundWindow` → `GetWindowThreadProcessId` → `GetModuleFileNameExW` polling loop (1-second interval), HWND null-check via `std::ptr::null_mut()` not `== 0`, deny-list redaction of window titles before storage, call `ScreenshotService::trigger_on_window_change()` directly on window change (note: `tracey://screenshot-captured` is emitted by `ScreenshotService` after a successful save, not by the activity tracker) — `src-tauri/src/platform/windows.rs`, `src-tauri/src/services/activity_tracker.rs`
+- [ ] T083 [P] Implement window activity sync: batch-write `WindowActivityRecord` rows to SQLite; flush unsynced records every **30 s** (satisfying SC-007) to external DB via `SyncService`; enforce process deny-list at collection boundary (Constitution V) — `src-tauri/src/services/activity_tracker.rs`
 - [ ] T084 [P] Add performance benchmark tests: timer start/stop < 50 ms, time_entry_list at 1 M rows < 500 ms p95, window activity write throughput; fail CI if > 10% regression — `tests/`
 - [ ] T085 [P] Configure CI pipeline: lint (cargo clippy -D warnings, dotnet format verify), unit tests (cargo test, dotnet test), E2E tests (playwright test), cargo audit (CVE scan), performance benchmarks — `.github/workflows/ci.yml`
 - [ ] T086 Run quickstart.md validation: follow document from scratch on a clean machine, confirm all steps produce a working app, update any incorrect instructions — `specs/001-window-activity-tracker/quickstart.md`

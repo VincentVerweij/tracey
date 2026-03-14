@@ -210,87 +210,91 @@ A user on a corporate machine without administrator privileges downloads a singl
 
 #### Screenshot Capture
 
-- **FR-009**: The system MUST capture a screenshot at a configurable interval (default: 1 minute).
-- **FR-010**: The system MUST capture an additional screenshot whenever the active process, window handle, or window title changes, regardless of the interval timer.
-- **FR-011**: When the window title changes more frequently than a minimum debounce period, the system MUST NOT capture a screenshot on every change; it MUST wait for the title to stabilize before capturing.
-- **FR-012**: Screenshots MUST be saved locally to the configured storage folder (default: the folder containing the portable executable).
-- **FR-013**: The user MUST be able to configure a custom folder where screenshots are saved.
-- **FR-014**: The system MUST automatically delete screenshots older than a configurable number of days (default: 30 days) using a rolling retention window.
-- **FR-015**: The system MUST present a scrollable timeline view where screenshots are displayed at the time they were captured, allowing the user to browse their activity history visually.
-- **FR-016**: Screenshots MUST NOT be synchronized to any external service or database.
-- **FR-017**: Screenshots MUST be stored as plain image files (e.g., PNG or JPEG) in the configured folder without any application-level encryption; the user is responsible for securing the folder using OS-level access controls.
+- **FR-010**: The system MUST capture a screenshot at a configurable interval (default: 1 minute).
+- **FR-011**: The system MUST capture an additional screenshot whenever the active process, window handle, or window title changes, regardless of the interval timer.
+- **FR-012**: When the window title changes more frequently than a minimum debounce period (default: 2 seconds), the system MUST NOT capture a screenshot on every change; it MUST wait for the title to stabilize before capturing.
+- **FR-013**: Screenshots MUST be saved locally to the configured storage folder (default: the folder containing the portable executable).
+- **FR-014**: The user MUST be able to configure a custom folder where screenshots are saved.
+- **FR-015**: The system MUST automatically delete screenshots older than a configurable number of days (default: 30 days) using a rolling retention window.
+- **FR-016**: The system MUST present a scrollable timeline view where screenshots are displayed at the time they were captured, allowing the user to browse their activity history visually.
+- **FR-017**: Screenshots MUST NOT be synchronized to any external service or database.
+- **FR-018**: Screenshots MUST be stored as plain image files (e.g., PNG or JPEG) in the configured folder without any application-level encryption; the user is responsible for securing the folder using OS-level access controls.
 
 #### Time Entry Management
 
-- **FR-017**: Every time entry MUST have a description, a start datetime, and an end datetime stored in UTC.
-- **FR-018**: A time entry MAY be linked to a project and a task under that project.
-- **FR-019**: A time entry MAY have one or more predefined tags attached.
-- **FR-020**: The system MUST allow only one active (running) timer at any given moment; starting a new entry MUST automatically stop and save the currently running entry.
-- **FR-021**: The user MUST be able to manually create a time entry by specifying a start datetime, end datetime, description, and optionally a project, task, and tags.
-- **FR-022**: Every past time entry MUST have a Continue button that creates a new timer starting at the current moment, copying the description, project, task, and tags from the original entry.
-- **FR-023**: The system MUST display all time entry datetimes in the user's configured local timezone while storing them internally in UTC.
-- **FR-024**: The user MUST be able to configure their local timezone in the application settings.
-- **FR-025**: The description input MUST show an auto-complete dropdown when the user begins typing, populated with descriptions from previously completed time entries.
-- **FR-026**: The auto-complete dropdown MUST appear as the user types and filter suggestions in real time.
-- **FR-027**: Selecting an auto-complete suggestion (by pressing Enter or clicking) MUST start a new timer with the same description, project, task, and tags as the matched historical entry.
-- **FR-028**: Time entry data MUST be automatically saved when the user moves focus away from the entry input without requiring an explicit save action.
-- **FR-029**: The time entry list MUST display entries grouped by date in descending order (most recent date first), with entries within each day listed chronologically.
-- **FR-030**: The time entry list MUST be paginated; the number of entries loaded per page MUST be configurable by the user, with a sensible default (e.g., 50 entries per page).
-- **FR-031**: The user MUST be able to scroll through all date groups and load additional pages without losing their scroll position within the current page.
+- **FR-019**: Every time entry MUST have a description, a start datetime, and an end datetime stored in UTC.
+- **FR-020**: A time entry MAY be linked to a project and a task under that project.
+- **FR-021**: A time entry MAY have one or more predefined tags attached.
+- **FR-022**: The system MUST allow only one active (running) timer at any given moment; starting a new entry MUST automatically stop and save the currently running entry.
+- **FR-023**: The user MUST be able to manually create a time entry by specifying a start datetime, end datetime, description, and optionally a project, task, and tags.
+- **FR-024**: Every past time entry MUST have a Continue button that creates a new timer starting at the current moment, copying the description, project, task, and tags from the original entry.
+- **FR-025**: The system MUST display all time entry datetimes in the user's configured local timezone while storing them internally in UTC.
+- **FR-026**: The user MUST be able to configure their local timezone in the application settings.
+- **FR-027**: The description input MUST show an auto-complete dropdown when the user begins typing, populated with descriptions from previously completed time entries.
+- **FR-028**: The auto-complete dropdown MUST appear as the user types and filter suggestions in real time.
+- **FR-029**: Selecting an auto-complete suggestion (by pressing Enter or clicking) MUST start a new timer with the same description, project, task, and tags as the matched historical entry.
+- **FR-030**: Time entry data MUST be automatically saved when the user moves focus away from the entry input without requiring an explicit save action.
+- **FR-031**: The time entry list MUST display entries grouped by date in descending order (most recent date first), with entries within each day listed chronologically.
+- **FR-032**: The time entry list MUST be paginated; the number of entries loaded per page MUST be configurable by the user, with a sensible default (e.g., 50 entries per page).
+- **FR-033**: The user MUST be able to scroll through all date groups and load additional pages without losing their scroll position within the current page.
 
 #### Quick-Entry Bar
 
-- **FR-029**: The app MUST display a persistent input bar at the top of the time entry list, always visible.
-- **FR-030**: The quick-entry bar MUST accept a slash-delimited string where one slash means two segments (project, description) and two slashes mean three segments (project, task, description).
-- **FR-031**: The parser MUST NOT infer missing segments; if the user wants to assign a task with no description, they MUST include the trailing slash (e.g., `project/task/`).
-- **FR-032**: As the user types each segment, the system MUST perform real-time fuzzy matching against existing projects and tasks, case-insensitively and tolerant of minor spelling differences.
-- **FR-033**: Fuzzy-match results MUST appear in a live dropdown sorted by match strength, narrowing character by character (identical in behavior to VS Code's Ctrl+P file search).
-- **FR-034**: The user MUST be able to navigate the dropdown with arrow keys and confirm a segment with Tab or Enter before moving to the next segment.
-- **FR-035**: The client MUST be inferred silently from the project name when the project name is unique across all clients.
-- **FR-036**: When a project name matches more than one client, the system MUST display an inline disambiguation dropdown listing the matching clients, navigable by arrow keys and confirmed with Enter; this MUST be the only forced interruption in the quick-entry flow.
+- **FR-034**: The app MUST display a persistent input bar at the top of the time entry list, always visible.
+- **FR-035**: The quick-entry bar MUST accept a slash-delimited string where one slash means two segments (project, description) and two slashes mean three segments (project, task, description).
+- **FR-036**: The parser MUST NOT infer missing segments; if the user wants to assign a task with no description, they MUST include the trailing slash (e.g., `project/task/`).
+- **FR-037**: As the user types each segment, the system MUST perform real-time fuzzy matching against existing projects and tasks, case-insensitively and tolerant of minor spelling differences.
+- **FR-038**: Fuzzy-match results MUST appear in a live dropdown sorted by match strength, narrowing character by character (identical in behavior to VS Code's Ctrl+P file search).
+- **FR-039**: The user MUST be able to navigate the dropdown with arrow keys and confirm a segment with Tab or Enter before moving to the next segment.
+- **FR-040**: The client MUST be inferred silently from the project name when the project name is unique across all clients.
+- **FR-041**: When a project name matches more than one client, the system MUST display an inline disambiguation dropdown listing the matching clients, navigable by arrow keys and confirmed with Enter; this MUST be the only forced interruption in the quick-entry flow.
 
 #### Client, Project, and Task Management
 
-- **FR-037**: Users MUST be able to create clients with a name, an optional logo image, and a color.
-- **FR-038**: Users MUST be able to create projects scoped to a client; project names MUST be unique within a client but MAY be shared across different clients.
-- **FR-039**: Users MUST be able to create tasks scoped to a project; a task has a name.
-- **FR-040**: Clients and projects MUST be individually archiveable; archived clients and projects MUST NOT appear in any active dropdown or picker.
-- **FR-041**: Archived clients and projects MUST be restorable (unarchiveable) at any time.
-- **FR-042**: Deleting a client MUST cascade the deletion to all its projects and tasks; the system MUST display a confirmation prompt warning the user before proceeding.
-- **FR-043**: Time entries linked to a deleted client's projects MUST become orphaned (project/task link removed) but MUST NOT themselves be deleted.
+- **FR-042**: Users MUST be able to create clients with a name, an optional logo image, and a color.
+- **FR-043**: Users MUST be able to create projects scoped to a client; project names MUST be unique within a client but MAY be shared across different clients.
+- **FR-044**: Users MUST be able to create tasks scoped to a project; a task has a name.
+- **FR-045**: Clients and projects MUST be individually archiveable; archived clients and projects MUST NOT appear in any active dropdown or picker.
+- **FR-046**: Archived clients and projects MUST be restorable (unarchiveable) at any time.
+- **FR-047**: Deleting a client MUST cascade the deletion to all its projects and tasks; the system MUST display a confirmation prompt warning the user before proceeding.
+- **FR-048**: Time entries linked to a deleted client's projects MUST become orphaned (project/task link removed) but MUST NOT themselves be deleted.
 
 #### Tag Management
 
-- **FR-044**: Tags MUST be created by the user in a dedicated management area and MUST NOT be creatable on the fly during time entry logging.
-- **FR-045**: A time entry MAY have zero or more tags assigned; tags are selected from the predefined list during entry creation or editing.
-- **FR-046**: Deleting a tag MUST display a warning explaining that the tag will be unlinked from all existing time entries.
-- **FR-047**: After a tag is deleted, affected time entries MUST be unmodified except for the removal of the deleted tag link.
+- **FR-049**: Tags MUST be created by the user in a dedicated management area and MUST NOT be creatable on the fly during time entry logging.
+- **FR-050**: A time entry MAY have zero or more tags assigned; tags are selected from the predefined list during entry creation or editing.
+- **FR-051**: Deleting a tag MUST display a warning explaining that the tag will be unlinked from all existing time entries.
+- **FR-052**: After a tag is deleted, affected time entries MUST be unmodified except for the removal of the deleted tag link.
 
 #### Notifications
 
-- **FR-048**: The system MUST notify the user when a timer has been continuously running for longer than a configurable threshold (default: 8 hours).
-- **FR-049**: The notification system MUST be designed as an abstraction with a message and a channel-specific settings object, so new notification channels can be added without modifying existing channels.
-- **FR-050**: The system MUST include a built-in email notification channel configurable with mail provider settings (e.g., outbound mail server, sender address, recipient address).
-- **FR-051**: The system MUST include a built-in Telegram notification channel configurable with bot token and target chat settings.
-- **FR-052**: The user MUST be able to configure multiple notification channels simultaneously; all configured channels receive all triggered notifications.
+- **FR-053**: The system MUST notify the user when a timer has been continuously running for longer than a configurable threshold (default: 8 hours).
+- **FR-054**: The notification system MUST be designed as an abstraction with a message and a channel-specific settings object, so new notification channels can be added without modifying existing channels.
+- **FR-055**: The system MUST include a built-in email notification channel configurable with mail provider settings (e.g., outbound mail server, sender address, recipient address).
+- **FR-056**: The system MUST include a built-in Telegram notification channel configurable with bot token and target chat settings.
+- **FR-057**: The user MUST be able to configure multiple notification channels simultaneously; all configured channels receive all triggered notifications.
 
 #### Cloud Synchronization and Local Cache
 
-- **FR-053**: The user MUST be able to configure the external database connection by providing a connection URI in the application settings; the application MUST NOT include a built-in account registration, login, or authentication system.
-- **FR-054**: Time entries MUST be synchronized to the external database configured via the user-supplied connection URI so they are accessible across multiple devices that share the same connection URI.
-- **FR-055**: The currently running timer MUST be visible on all devices sharing the same connection URI in near-real time.
-- **FR-056**: Window activity records (active process name, window title, timestamp) MUST be synchronized to the external database; these will be used for machine-learning-based automatic tagging in a future effort.
-- **FR-057**: Screenshots MUST NOT be synchronized to any external service.
-- **FR-058**: The system MUST maintain a local cache of time entry data to support fast creation and modification and to enable full functionality when the device is offline or the external database is unreachable.
-- **FR-059**: When connectivity is restored after an offline period, the local cache MUST automatically sync pending changes to the external database.
-- **FR-060**: Conflicts arising from the same entry being modified on two devices while offline MUST be resolved using a last-write-wins strategy based on the modification timestamp.
+- **FR-058**: The user MUST be able to configure the external database connection by providing a connection URI in the application settings; the application MUST NOT include a built-in account registration, login, or authentication system.
+- **FR-059**: Time entries MUST be synchronized to the external database configured via the user-supplied connection URI so they are accessible across multiple devices that share the same connection URI.
+- **FR-060**: The currently running timer MUST be visible on all devices sharing the same connection URI within 10 seconds (see SC-008).
+- **FR-061**: Window activity records (active process name, window title, timestamp) MUST be synchronized to the external database; these will be used for machine-learning-based automatic tagging in a future effort.
+- **FR-062**: Screenshots MUST NOT be synchronized to any external service.
+- **FR-063**: The system MUST maintain a local cache of time entry data to support fast creation and modification and to enable full functionality when the device is offline or the external database is unreachable.
+- **FR-064**: When connectivity is restored after an offline period, the local cache MUST automatically sync pending changes to the external database.
+- **FR-065**: Conflicts arising from the same entry being modified on two devices while offline MUST be resolved using a last-write-wins strategy based on the modification timestamp.
 
 #### Portability and Platform Support
 
-- **FR-061**: The application MUST run as a portable executable requiring no installation and no administrator rights.
-- **FR-062**: The application MUST be packaged as a single self-contained binary using a web-technology-in-native-shell approach (Tauri), with the web UI frontend embedded in the binary and OS-level capabilities (input monitoring, screenshot capture, system tray integration) handled by the native layer.
-- **FR-063**: On first launch, the application MUST create all required configuration and data files in the executable's directory or a user-writable location without requiring system-level access.
-- **FR-064**: The application MUST be primarily supported on Windows but MUST be architected to run on other operating systems; the native OS hooks (active window detection, global input monitoring) MUST have platform-specific implementations that are swappable per OS.
+- **FR-066**: The application MUST run as a portable executable requiring no installation and no administrator rights.
+- **FR-067**: The application MUST be packaged as a single self-contained binary using a web-technology-in-native-shell approach (Tauri), with the web UI frontend embedded in the binary and OS-level capabilities (input monitoring, screenshot capture, system tray integration) handled by the native layer.
+- **FR-068**: On first launch, the application MUST create all required configuration and data files in the executable's directory or a user-writable location without requiring system-level access.
+- **FR-069**: The application MUST be primarily supported on Windows but MUST be architected to run on other operating systems; the native OS hooks (active window detection, global input monitoring) MUST have platform-specific implementations that are swappable per OS.
+
+#### Data Management
+
+- **FR-070**: The application MUST provide a "delete all my data" operation that wipes all local database tables and all screenshot files from the configured storage folder; the operation MUST complete within 60 seconds, MUST present a confirmation prompt before proceeding, and MUST display a post-deletion confirmation to the user.
 
 ### Key Entities
 

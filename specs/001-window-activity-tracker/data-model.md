@@ -166,9 +166,30 @@ A timestamped snapshot of the user's active process and window.
 | `synced_at` | TEXT | NULLABLE | ISO 8601 UTC; NULL = pending sync to external DB |
 
 **Notes**:
-- Written to local SQLite first; batched and flushed to external DB every 60 seconds.
+- Written to local SQLite first; batched and flushed to external DB every **30 seconds** (SC-007).
 - `window_title` values are screened against a configurable deny-list of process names (e.g., `KeePass`, `1Password`) and replaced with `[REDACTED]` before storage (Constitution V – privacy).
 - Records are never returned to the UI; they are internal tracing data for future ML use.
+
+---
+
+### Screenshot
+
+Metadata record for a locally captured screenshot image. Stored only in local SQLite; **never synced** to the external database.
+
+| Field | Type | Constraints | Notes |
+|-------|------|-------------|-------|
+| `id` | UUID (TEXT) | PK, NOT NULL | |
+| `file_path` | TEXT | NOT NULL | Absolute path to the JPEG file on the local filesystem |
+| `captured_at` | TEXT | NOT NULL | ISO 8601 UTC |
+| `window_title` | TEXT | NOT NULL | Title at time of capture; truncated to 500 chars |
+| `process_name` | TEXT | NOT NULL | |
+| `trigger` | TEXT | NOT NULL | `interval` or `window_change` |
+| `device_id` | TEXT | NOT NULL | |
+
+**Notes**:
+- Screenshot files are JPEG at 50 % scale of the active monitor resolution.
+- This table is local-only — never synced to external DB (FR-062).
+- Records are deleted alongside their corresponding file during rolling retention cleanup.
 
 ---
 
@@ -272,6 +293,18 @@ CREATE TABLE window_activity_records (
 );
 
 CREATE INDEX idx_war_synced ON window_activity_records (synced_at) WHERE synced_at IS NULL;
+
+CREATE TABLE screenshots (
+    id           TEXT PRIMARY KEY NOT NULL,
+    file_path    TEXT NOT NULL,
+    captured_at  TEXT NOT NULL,
+    window_title TEXT NOT NULL,
+    process_name TEXT NOT NULL,
+    trigger      TEXT NOT NULL CHECK (trigger IN ('interval','window_change')),
+    device_id    TEXT NOT NULL
+);
+
+CREATE INDEX idx_screenshots_captured ON screenshots (captured_at);
 
 CREATE TABLE user_preferences (
     id                                  INTEGER PRIMARY KEY DEFAULT 1,

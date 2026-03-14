@@ -75,7 +75,7 @@ GDI-based capture is validated to work on Windows 11 without elevation. The `spa
 Apply a **2-second debounce** to window-change-triggered screenshots. If the window/title changes more frequently than 2 seconds (e.g., a browser tab title polling), the screenshot timer is reset but no capture fires until stability.
 
 ### Rationale
-FR-011 explicitly requires debouncing; the spec establishes 2 seconds as the default. This prevents excessive captures from tab-title-updating browsers.
+FR-012 explicitly requires debouncing, including the 2-second default period. This prevents excessive captures from tab-title-updating browsers.
 
 ### Alternatives Considered
 - **1-second debounce**: Too aggressive for some browsers.
@@ -150,9 +150,9 @@ Support **PostgreSQL** (including Supabase) as the external database via a user-
 
 Conflict resolution: last-write-wins based on `modified_at` (UTC timestamp).
 
-Window activity records are batched and flushed every 60 seconds to the external DB (FR-056, FR-007).
+Window activity records are batched and flushed every **30 seconds** to the external DB (FR-061, SC-007).
 
-Screenshots are **never** synced (FR-016, FR-057).
+Screenshots are **never** synced (FR-017, FR-062).
 
 ### Rationale
 Npgsql is the standard .NET PostgreSQL driver. Supabase uses standard PostgreSQL wire protocol, so no Supabase SDK is required.

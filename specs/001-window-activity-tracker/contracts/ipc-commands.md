@@ -324,6 +324,7 @@ Follow same pattern; scoped to `task_id`.
 ## Screenshot Commands
 
 ### `screenshot_list`
+**Data source**: Local `screenshots` SQLite table (never synced to external DB, see FR-062).  
 **Input**:
 ```json
 { "from": "string (UTC ISO 8601)", "to": "string (UTC ISO 8601)" }
