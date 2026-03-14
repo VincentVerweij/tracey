@@ -5,6 +5,16 @@
 **Status**: Draft  
 **Input**: User description: "Create a timetracking tool that keeps track of the user's active windows to determine what the user is working on. The window tracking gives information about which process, and window titles were in use."
 
+## Clarifications
+
+### Session 2026-03-14
+
+- Q: How do two devices identify as belonging to the same user and connect to the shared external database? → A: User-managed connection string — the user pastes a database connection URI into app settings; no built-in login or account system is included.
+- Q: What application shell technology is used to deliver the UI and OS-level hooks (input monitoring, screenshots)? → A: Web-technology UI inside a native shell (Electron or Tauri) — web frontend for all UI, thin native layer for OS hooks; packaged as a single portable binary.
+- Q: Are screenshots protected at rest (encrypted on disk) or stored as plain image files? → A: Plain image files — screenshots are saved as-is in the configured folder; security is the responsibility of OS-level folder permissions controlled by the user.
+- Q: What happens when the user returns from an idle period and no timer was active when idle began? → A: Silently dismiss — no idle-return prompt is shown; the user simply continues with no running timer.
+- Q: What time scope does the default time entry list show upon launch? → A: Entries are grouped by date and scrollable, paginated by a configurable number of entries per page.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Start Tracking Time on a Task (Priority: P1)
@@ -174,7 +184,7 @@ A user on a corporate machine without administrator privileges downloads a singl
 
 ### Edge Cases
 
-- What happens when the active window title changes every second (e.g., a browser tab with a live counter in the title)? The app must not take a screenshot on every change — a debounce or minimum interval between window-switch-triggered screenshots must be applied.
+- What happens when the user returns from idle and no timer was running before the idle period? The idle-return prompt is silently suppressed; the user returns to the app with no active timer and no automatic entry is created. The app must not take a screenshot on every change — a debounce or minimum interval between window-switch-triggered screenshots must be applied.
 - What happens when two time entries overlap during manual entry creation? The system must warn the user of the overlap and require confirmation or correction.
 - What happens when the external database is unreachable for an extended period? All operations continue locally; the sync queue is preserved and replayed once connectivity returns.
 - What happens when a project is assigned to a time entry and that project is later archived? The time entry retains its project and task link, but the project no longer appears in active dropdowns.
@@ -191,11 +201,12 @@ A user on a corporate machine without administrator privileges downloads a singl
 - **FR-001**: The system MUST monitor which application process and window title is currently active on the user's desktop and record the active window at each observed moment.
 - **FR-002**: The system MUST track mouse movement and keyboard input events to determine whether the user is active or inactive.
 - **FR-003**: The system MUST allow users to configure an inactivity timeout (default: 5 minutes) after which they are considered inactive.
-- **FR-004**: When the user transitions from inactive to active, the system MUST immediately display a prompt presenting four options: Break, Meeting, Specify, and Keep Timer Running.
-- **FR-005**: Selecting Break MUST log the idle period as a break time entry and resume the active work timer from the current moment.
-- **FR-006**: Selecting Meeting MUST open the time entry form pre-filled with the idle duration so the user can quickly assign a project and task.
-- **FR-007**: Selecting Specify MUST open a free-text input with the full project/task picker for precise classification of the idle period.
-- **FR-008**: Selecting Keep Timer Running MUST dismiss the prompt and treat the entire idle period as continued work on the running timer without any separate log entry.
+- **FR-004**: When the user transitions from inactive to active, the system MUST immediately display a prompt presenting four options: Break, Meeting, Specify, and Keep Timer Running — but ONLY if a timer was actively running when the idle period began.
+- **FR-005**: If no timer was running when the idle period began, the system MUST NOT display the idle-return prompt when the user returns; the user continues with no active timer and no entry is created for the idle period.
+- **FR-006**: Selecting Break MUST log the idle period as a break time entry and resume the active work timer from the current moment.
+- **FR-007**: Selecting Meeting MUST open the time entry form pre-filled with the idle duration so the user can quickly assign a project and task.
+- **FR-008**: Selecting Specify MUST open a free-text input with the full project/task picker for precise classification of the idle period.
+- **FR-009**: Selecting Keep Timer Running MUST dismiss the prompt and treat the entire idle period as continued work on the running timer without any separate log entry.
 
 #### Screenshot Capture
 
@@ -207,6 +218,7 @@ A user on a corporate machine without administrator privileges downloads a singl
 - **FR-014**: The system MUST automatically delete screenshots older than a configurable number of days (default: 30 days) using a rolling retention window.
 - **FR-015**: The system MUST present a scrollable timeline view where screenshots are displayed at the time they were captured, allowing the user to browse their activity history visually.
 - **FR-016**: Screenshots MUST NOT be synchronized to any external service or database.
+- **FR-017**: Screenshots MUST be stored as plain image files (e.g., PNG or JPEG) in the configured folder without any application-level encryption; the user is responsible for securing the folder using OS-level access controls.
 
 #### Time Entry Management
 
@@ -222,6 +234,9 @@ A user on a corporate machine without administrator privileges downloads a singl
 - **FR-026**: The auto-complete dropdown MUST appear as the user types and filter suggestions in real time.
 - **FR-027**: Selecting an auto-complete suggestion (by pressing Enter or clicking) MUST start a new timer with the same description, project, task, and tags as the matched historical entry.
 - **FR-028**: Time entry data MUST be automatically saved when the user moves focus away from the entry input without requiring an explicit save action.
+- **FR-029**: The time entry list MUST display entries grouped by date in descending order (most recent date first), with entries within each day listed chronologically.
+- **FR-030**: The time entry list MUST be paginated; the number of entries loaded per page MUST be configurable by the user, with a sensible default (e.g., 50 entries per page).
+- **FR-031**: The user MUST be able to scroll through all date groups and load additional pages without losing their scroll position within the current page.
 
 #### Quick-Entry Bar
 
@@ -261,19 +276,21 @@ A user on a corporate machine without administrator privileges downloads a singl
 
 #### Cloud Synchronization and Local Cache
 
-- **FR-053**: Time entries MUST be synchronized to an external database so they are accessible across multiple devices using the same account.
-- **FR-054**: The currently running timer MUST be visible on all devices connected to the same account in near-real time.
-- **FR-055**: Window activity records (active process name, window title, timestamp) MUST be synchronized to the external database; these will be used for machine-learning-based automatic tagging in a future effort.
-- **FR-056**: Screenshots MUST NOT be synchronized to any external service.
-- **FR-057**: The system MUST maintain a local cache of time entry data to support fast creation and modification and to enable full functionality when the device is offline or the external database is unreachable.
-- **FR-058**: When connectivity is restored after an offline period, the local cache MUST automatically sync pending changes to the external database.
-- **FR-059**: Conflicts arising from the same entry being modified on two devices while offline MUST be resolved using a last-write-wins strategy based on the modification timestamp.
+- **FR-053**: The user MUST be able to configure the external database connection by providing a connection URI in the application settings; the application MUST NOT include a built-in account registration, login, or authentication system.
+- **FR-054**: Time entries MUST be synchronized to the external database configured via the user-supplied connection URI so they are accessible across multiple devices that share the same connection URI.
+- **FR-055**: The currently running timer MUST be visible on all devices sharing the same connection URI in near-real time.
+- **FR-056**: Window activity records (active process name, window title, timestamp) MUST be synchronized to the external database; these will be used for machine-learning-based automatic tagging in a future effort.
+- **FR-057**: Screenshots MUST NOT be synchronized to any external service.
+- **FR-058**: The system MUST maintain a local cache of time entry data to support fast creation and modification and to enable full functionality when the device is offline or the external database is unreachable.
+- **FR-059**: When connectivity is restored after an offline period, the local cache MUST automatically sync pending changes to the external database.
+- **FR-060**: Conflicts arising from the same entry being modified on two devices while offline MUST be resolved using a last-write-wins strategy based on the modification timestamp.
 
 #### Portability and Platform Support
 
-- **FR-060**: The application MUST run as a portable executable requiring no installation and no administrator rights.
-- **FR-061**: On first launch, the application MUST create all required configuration and data files in the executable's directory or a user-writable location without requiring system-level access.
-- **FR-062**: The application MUST be primarily supported on Windows but MUST be architected to run on other operating systems.
+- **FR-061**: The application MUST run as a portable executable requiring no installation and no administrator rights.
+- **FR-062**: The application MUST be packaged as a single self-contained binary using a web-technology-in-native-shell approach (Tauri), with the web UI frontend embedded in the binary and OS-level capabilities (input monitoring, screenshot capture, system tray integration) handled by the native layer.
+- **FR-063**: On first launch, the application MUST create all required configuration and data files in the executable's directory or a user-writable location without requiring system-level access.
+- **FR-064**: The application MUST be primarily supported on Windows but MUST be architected to run on other operating systems; the native OS hooks (active window detection, global input monitoring) MUST have platform-specific implementations that are swappable per OS.
 
 ### Key Entities
 
@@ -286,7 +303,7 @@ A user on a corporate machine without administrator privileges downloads a singl
 - **Window Activity Record**: A timestamped snapshot of the user's active process name, window handle, and window title. Collected continuously and synchronized to the external database.
 - **Screenshot**: A captured image of the user's screen at a point in time. Has a file path, capture timestamp, and associated window title. Stored locally only, never synchronized.
 - **Notification Channel**: An abstract unit describing how to reach the user. Has a message payload and a channel-specific settings object. Implementations: Email, Telegram.
-- **User Preferences**: User-scoped configuration including local timezone, inactivity timeout, screenshot interval, screenshot retention days, screenshot storage folder, timer notification threshold, and configured notification channels.
+- **User Preferences**: User-scoped configuration including local timezone, inactivity timeout, screenshot interval, screenshot retention days, screenshot storage folder, timer notification threshold, configured notification channels, the external database connection URI, and the time entry list page size.
 
 ## Success Criteria *(mandatory)*
 
@@ -309,6 +326,8 @@ A user on a corporate machine without administrator privileges downloads a singl
 - The default screenshot retention period is 30 days, balancing storage cost with historical review needs.
 - Project names are unique within a client but may appear under multiple clients; this is the only case that triggers an inline disambiguation step.
 - Conflict resolution for concurrent offline edits uses last-write-wins based on modification timestamp, as this is the simplest strategy adequate for single-user multi-device use.
-- The external database connection is configured once by the user during initial setup; the application does not manage database provisioning.
+- The external database connection is configured by the user by pasting a connection URI into application settings; no built-in account system or authentication is provided. The user is responsible for provisioning and securing their own database instance (e.g., a self-hosted or cloud Postgres/Supabase instance).
 - Window activity records are batched and synchronized periodically (e.g., every few minutes) rather than in real time, to minimize network overhead.
 - The screenshot debounce period for rapid window title changes is 2 seconds by default to avoid excessive captures from browsers that update the title frequently.
+- The application shell is a web-technology-in-native-shell binary (Tauri). The web UI handles all visual presentation; the native layer provides OS hooks for global input monitoring, active window detection, screenshot capture, and system tray / notification integration. This satisfies the portable binary requirement without admin rights.
+- Screenshots are stored as plain image files with no application-level encryption. Privacy and access control are delegated to OS folder permissions. The user is advised to place the screenshot folder in a location accessible only to their own OS account.
