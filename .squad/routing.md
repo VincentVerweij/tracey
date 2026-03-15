@@ -6,28 +6,42 @@ How to decide who handles what.
 
 | Work Type | Route To | Examples |
 |-----------|----------|----------|
-| {domain 1} | {Name} | {example tasks} |
-| {domain 2} | {Name} | {example tasks} |
-| {domain 3} | {Name} | {example tasks} |
-| Code review | {Name} | Review PRs, check quality, suggest improvements |
-| Testing | {Name} | Write tests, find edge cases, verify fixes |
-| Scope & priorities | {Name} | What to build next, trade-offs, decisions |
-| Async issue work (bugs, tests, small features) | @copilot 🤖 | Well-defined tasks matching capability profile |
+| Architecture, IPC contracts, design gates, constitution check | Finch | New features, IPC contract changes, phase boundaries |
+| Rust code, Tauri IPC commands, Win32 APIs, SQLite write path, sync engine, keychain | Reese | Window tracking, screenshot pipeline, idle detection, sync |
+| C# / Blazor WASM UI, BlazorBlueprint, quick-entry, fuzzy match, idle prompt, Settings | Root | UI components, quick-entry bar, timer display, timeline |
+| Tests, Playwright E2E, xUnit, cargo test, test-first, edge cases | Shaw | All acceptance scenario tests, TDD gate |
+| GitHub Actions, Tauri build, CI/CD, portable exe, versioning, release | Fusco | Build pipeline, CI gates, release artifacts |
+| Security review, Tauri capabilities, IPC validation, keychain, path traversal | Control | PR security review, capability changes, credential handling |
+| SQLite schema, migrations, WAL, Postgres sync strategy, data modeling | Leon | Schema design, migration runner, sync contract |
 | Session logging | Scribe | Automatic — never needs routing |
+| Backlog, issue triage, PR monitoring | Ralph | Work queue management |
+
+## Multi-Domain Task Routing
+
+| Task | Primary | Secondary |
+|------|---------|----------|
+| Window activity tracking | Reese (Rust polling loop) | Leon (schema for `window_activity_records`) |
+| Idle detection → UI prompt | Reese (IPC: `system_idle_check`) | Root (idle-return modal) |
+| Screenshot capture pipeline | Reese (GDI + JPEG pipeline) | Leon (schema for `screenshots`) |
+| External sync engine | Reese (Rust background task) | Leon (Postgres strategy, sync_queue schema) |
+| Quick-entry fuzzy match | Root (UI + C# algorithm) | Shaw (xUnit tests for algorithm) |
+| New PR review | Shaw (test coverage) → Control (security) → Finch (architecture) | — |
+| New feature | Finch (architecture review) → Reese or Root (implement) → Shaw (tests) | Control (if security-sensitive) |
+| Schema changes | Leon (design) → Reese (Rust impl) | Shaw (migration tests) |
+| Settings persistence | Leon (preferences schema) → Reese (IPC) | Root (settings UI) |
 
 ## Issue Routing
 
 | Label | Action | Who |
 |-------|--------|-----|
-| `squad` | Triage: analyze issue, evaluate @copilot fit, assign `squad:{member}` label | Lead |
+| `squad` | Triage: analyze issue, assign `squad:{member}` label | Finch (Lead) |
 | `squad:{name}` | Pick up issue and complete the work | Named member |
-| `squad:copilot` | Assign to @copilot for autonomous work (if enabled) | @copilot 🤖 |
 
-### How Issue Assignment Works
+## Reviewer Gates
 
-1. When a GitHub issue gets the `squad` label, the **Lead** triages it — analyzing content, evaluating @copilot's capability profile, assigning the right `squad:{member}` label, and commenting with triage notes.
-2. **@copilot evaluation:** The Lead checks if the issue matches @copilot's capability profile (🟢 good fit / 🟡 needs review / 🔴 not suitable). If it's a good fit, the Lead may route to `squad:copilot` instead of a squad member.
-3. When a `squad:{member}` label is applied, that member picks up the issue in their next session.
+- **Shaw**: Must approve all PRs (test coverage gate)
+- **Control**: Must approve all PRs touching Tauri capabilities, IPC handlers, file system access, external network, or credentials
+- **Finch**: Must approve all PRs with architecture or IPC contract changes
 4. When `squad:copilot` is applied and auto-assign is enabled, `@copilot` is assigned on the issue and picks it up autonomously.
 5. Members can reassign by removing their label and adding another member's label.
 6. The `squad` label is the "inbox" — untriaged issues waiting for Lead review.

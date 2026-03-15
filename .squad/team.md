@@ -1,6 +1,9 @@
-# Squad Team
+# Tracey — Squad Team
 
-> tracey
+**Project**: Tracey — Window Activity Timetracking Tool  
+**Branch**: `001-window-activity-tracker`  
+**Created**: 2026-03-15  
+**Requested by**: Vincent Verweij  
 
 ## Coordinator
 
@@ -10,10 +13,23 @@
 
 ## Members
 
-| Name | Role | Charter | Status |
-|------|------|---------|--------|
+| Name | Role | Domains | Badge |
+|------|------|---------|-------|
+| Finch | Lead/Architect | IPC contract design, code review, architecture gates, constitution check | 🏗️ Lead |
+| Reese | Rust/Tauri Dev | Win32 APIs, window tracking, screenshots, SQLite, sync engine, keychain | 🔧 Backend |
+| Root | Blazor/C# Dev | Blazor WASM UI, BlazorBlueprint, quick-entry bar, fuzzy matching, idle-return prompt | ⚛️ Frontend |
+| Shaw | QA/Tester | Playwright E2E, xUnit, cargo test, test-first development, edge cases | 🧪 QA |
+| Fusco | DevOps/CI | GitHub Actions, Tauri build pipeline, portable exe packaging, versioning | ⚙️ DevOps |
+| Control | Security | Threat model, Tauri capabilities, keychain audit, IPC validation, path traversal | 🔒 Security |
+| Leon | Data Engineer | SQLite schema, migration runner, Postgres sync strategy, WAL mode | 📊 Data |
+| Scribe | Session Logger | Memory, decisions, orchestration logs | 📋 Scribe |
+| Ralph | Work Monitor | Work queue, backlog tracking, issue triage | 🔄 Monitor |
 
 ## Project Context
 
-- **Project:** tracey
+- **Project:** Tracey — Window Activity Timetracking Tool
 - **Created:** 2026-03-15
+- **Stack:** Tauri 2.0 (Rust, Windows 11) + Blazor WebAssembly .NET 10 (C#, WebView2) + BlazorBlueprint.Components + SQLite local (WAL mode) + optional Postgres/Supabase sync
+- **Key constraints:** Portable exe — no installer, no admin rights, no registry. Screenshots stored locally only, never synced. Blazor WASM runs entirely in WebView2 (no .NET server process).
+- **Spec files:** `specs/001-window-activity-tracker/` (spec.md, plan.md, tasks.md, data-model.md, research.md)
+- **Contracts:** `specs/001-window-activity-tracker/contracts/ipc-commands.md` · `contracts/sync-api.md`

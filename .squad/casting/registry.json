@@ -1,0 +1,76 @@
+{
+  "agents": {
+    "Finch": {
+      "persistent_name": "Finch",
+      "role": "Lead/Architect",
+      "universe": "Person of Interest",
+      "created_at": "2026-03-15T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "Reese": {
+      "persistent_name": "Reese",
+      "role": "Rust/Tauri Dev",
+      "universe": "Person of Interest",
+      "created_at": "2026-03-15T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "Root": {
+      "persistent_name": "Root",
+      "role": "Blazor/C# Dev",
+      "universe": "Person of Interest",
+      "created_at": "2026-03-15T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "Shaw": {
+      "persistent_name": "Shaw",
+      "role": "QA/Tester",
+      "universe": "Person of Interest",
+      "created_at": "2026-03-15T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "Fusco": {
+      "persistent_name": "Fusco",
+      "role": "DevOps/CI",
+      "universe": "Person of Interest",
+      "created_at": "2026-03-15T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "Control": {
+      "persistent_name": "Control",
+      "role": "Security",
+      "universe": "Person of Interest",
+      "created_at": "2026-03-15T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "Leon": {
+      "persistent_name": "Leon",
+      "role": "Data Engineer",
+      "universe": "Person of Interest",
+      "created_at": "2026-03-15T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "Scribe": {
+      "persistent_name": "Scribe",
+      "role": "Session Logger",
+      "universe": null,
+      "created_at": "2026-03-15T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "Ralph": {
+      "persistent_name": "Ralph",
+      "role": "Work Monitor",
+      "universe": null,
+      "created_at": "2026-03-15T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    }
+  }
+}
