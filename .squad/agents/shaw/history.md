@@ -42,6 +42,21 @@
 - Spec stubs created (no tests yet — T018 writes real tests): `timer.spec.ts`, `idle.spec.ts`, `projects.spec.ts`, `timeline.spec.ts`, `quickentry.spec.ts`
 - `.gitignore` covers `node_modules/`, `dist/`, `test-results/`, `playwright-report/`
 
+### 2026-03-15: T018 + T019 — US1 TDD Gate (timer.spec.ts + TimerStateServiceTests.cs)
+- **T018 (Playwright E2E)**: 20 tests written in `tests/e2e/specs/timer.spec.ts` (19 active + 1 marked `test.skip` for manual IPC failure testing)
+  - All navigate to `http://localhost:5000` (Blazor dev server). Currently FAIL with `net::ERR_CONNECTION_REFUSED` — no dev server running. When dev server is running but Phase 3 UI is unimplemented, they fail with TimeoutError.
+  - TypeScript compilation: clean (`npx tsc --noEmit` — 0 errors). Required `@types/node` added as dev dep.
+  - Helper function `waitForApp()` does `page.goto(APP_URL)` + `waitForLoadState('networkidle')`.
+  - All ARIA-first selectors: `getByRole('textbox')`, `getByRole('timer')`, `getByRole('listbox')`, `getByRole('button')`, `getByRole('link')`, `getByRole('article')`.
+  - Spec ambiguity found: no spec/UX guidance on exact ARIA role/label for timer elapsed display — used `role="timer"` (standard ARIA). Root to implement accordingly.
+  - Spec ambiguity found: "locked segment chip" representation (after slash confirms project) — used `role="group"` with aria-label pattern. Root to adapt.
+  - Full tauri-driver CDP fixture NOT yet in place — documented as Phase 3+ CI concern (Fusco).
+- **T019 (xUnit)**: 16 tests written in `src/Tracey.Tests/TimerStateServiceTests.cs`. ALL FAIL with `NotImplementedException` — confirmed via `dotnet test` (16 errors, exit code 1).
+  - `ITimerStateService` interface defined in same file (moved to `Tracey.App/Services/` by Root at T020).
+  - `TimerStateServiceStub` throws `NotImplementedException` on every member.
+  - Interface exposes: `IsRunning`, `CurrentDescription`, `Elapsed`, `CurrentEntryId`, `CurrentProjectId`, `CurrentTaskId`, `StartAsync()`, `StopAsync()`, `OnStateChanged` event.
+- **TDD Gate status**: OPEN — 16 hard-failing xUnit tests confirm Reese must NOT start Phase 3 until gate is cleared.
+
 ### 2026-03-15: US1 Acceptance Scenarios for T018 (Playwright — timer.spec.ts)
 All 5 scenarios from spec.md US1 must become failing tests before Reese starts T020:
 1. **Fuzzy dropdown**: type `project/task/description` → live dropdown appears sorted by match strength

@@ -98,6 +98,16 @@
 ## 2026-03-15: T058 File Path Correction
 **By:** Finch (Lead/Architect)
 **What:** T058 commands (`tag_list`, `tag_create`, `tag_delete`) route to `src-tauri/src/commands/tags.rs` (new file), not `activity.rs`. File must be registered in `commands/mod.rs`.
+
+## 2026-03-15: TDD Gate Spec Ambiguities (T018/T019)
+**By:** Shaw (QA/Test)
+**What:** Five ambiguities flagged while writing T018 Playwright tests and T019 xUnit tests for US1 timer:
+1. **ARIA role for elapsed timer display**: Tests use `role="timer"` with `aria-live="off" aria-atomic="true"`. Root must render elapsed counter with this markup.
+2. **Locked segment chip representation**: After slash confirms a project segment, tests use `role="group"` with `aria-label="project segment"`. Root to implement to match.
+3. **Stop button vs. Ctrl+Space**: Both `role="button" name=/stop/i` and Ctrl+Space must be supported. No conflict with spec.
+4. **"Continue" button placement**: Tests navigate to Timeline and look for `role="button" name=/continue/i`. Assuming Timeline is correct. Needs UX confirmation before Root implements if different.
+5. **Timer persists across app restart**: Not covered in T018 — requires kill/restart Tauri process from Playwright (tauri-driver). Deferred to Phase 3+ fixture work (Fusco).
+**Why:** These spec gaps affect Root's T020+ UI implementation. Must be resolved before or during Phase 3 frontend work.
 **Why:** Tags are not activity data. Placing them in `activity.rs` is semantically wrong and will confuse future readers.
 
 ## 2026-03-15: T082 — No Split (Option B)
