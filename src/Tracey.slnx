@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Tracey.App/Tracey.App.csproj" />
+  <Project Path="Tracey.Tests/Tracey.Tests.csproj" />
+</Solution>

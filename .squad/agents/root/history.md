@@ -13,6 +13,17 @@
 
 ## Learnings
 
+### 2026-03-15: T002 — Blazor WASM Scaffold (completed)
+- **.NET version**: net10.0 (SDK 10.0.104 installed — .NET 10 was available, no fallback needed)
+- **Solution format**: .NET 10 `dotnet new sln` creates `.slnx` (new XML-based format), not `.sln` — use `Tracey.slnx` not `Tracey.sln`
+- **BlazorBlueprint.Components**: FOUND on NuGet — version **3.5.2** installed successfully (with BlazorBlueprint.Primitives 3.5.0 and BlazorBlueprint.Icons.Lucide 2.0.0 as transitive deps)
+- **MailKit**: installed version **4.15.1** successfully
+- **dotnet build outcome**: `Build succeeded. 0 Warning(s). 0 Error(s)` on Tracey.slnx after scaffold
+- **Stub pages created**: Dashboard.razor (`/dashboard`, also `/`), Projects.razor, Tags.razor, Timeline.razor, Settings.razor — all in `Tracey.App/Pages/`
+- **Service stub created**: `Tracey.App/Services/TauriIpcService.cs` — empty class, typed overloads deferred to T015
+- **Template pages kept**: Home.razor, Counter.razor, Weather.razor, NotFound.razor — can be removed in a later cleanup task
+- **T005**: Tone-of-voice guide written to `docs/ux/tone.md`
+
 ### 2026-03-15: Team Setup & Key Design Notes
 - Blazor WASM (not Hybrid, not Server) — compiles C# to WASM, runs in WebView2 with no .NET server process
 - All data writes go through Reese's IPC commands; I use `Microsoft.Data.Sqlite` for local read-only queries only
