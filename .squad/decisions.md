@@ -84,3 +84,23 @@
 **By**: Research  
 **What**: In `windows` crate 0.58+, `HWND` wraps a raw pointer. Null checks MUST use `std::ptr::null_mut()`, not `== 0`.  
 **Why**: Compiles but produces incorrect behavior. Common mistake on Windows 11.
+
+## 2026-03-15: IPC Contract Amendment — `time_entry_autocomplete`
+**By:** Finch (Lead/Architect)
+**What:** Add `is_orphaned: boolean` to the `time_entry_autocomplete` suggestion object in `contracts/ipc-commands.md`. T025 (Reese) sets `is_orphaned: true` when a suggestion's `project_id` or `task_id` no longer exists in the DB. T028 (Root) consumes this field to render the inline orphan-warning indicator in the QuickEntryBar dropdown.
+**Why:** The field was missing from the IPC contract despite being required by T025 and T028. Must be added before Reese begins T025 or Root begins T028.
+
+## 2026-03-15: `trigger_screenshot_capture()` Removed from PlatformHooks Trait
+**By:** Finch (Lead/Architect)
+**What:** Remove `trigger_screenshot_capture()` from the `PlatformHooks` trait. The trait is scoped to OS-level querying only: `get_foreground_window_info()` and `get_idle_seconds()`. The ActivityTracker calls `ScreenshotService::trigger_on_window_change()` directly when it detects a window change.
+**Why:** T017b's three-method trait conflicted with T082's design — ActivityTracker calling ScreenshotService directly. Removing the method resolves the injection cycle and matches what T082 already describes.
+
+## 2026-03-15: T058 File Path Correction
+**By:** Finch (Lead/Architect)
+**What:** T058 commands (`tag_list`, `tag_create`, `tag_delete`) route to `src-tauri/src/commands/tags.rs` (new file), not `activity.rs`. File must be registered in `commands/mod.rs`.
+**Why:** Tags are not activity data. Placing them in `activity.rs` is semantically wrong and will confuse future readers.
+
+## 2026-03-15: T082 — No Split (Option B)
+**By:** Vincent Verweij (via Coordinator)
+**What:** T082 (Win32 foreground window polling loop) stays in the Final Phase as originally planned. Phase 6 (US4 — Screenshot Timeline) delivers interval-based screenshots only. Window-change-triggered screenshots arrive in the Final Phase when T082 is implemented alongside T083 (ActivityRecord writes) and the sync queue. Shaw's US4 E2E tests do NOT need to cover window-change-triggered captures during Phase 6.
+**Why:** Accepted gap. Interval-based captures are sufficient for Phase 6 delivery. The window-change trigger is a Final Phase enhancement.

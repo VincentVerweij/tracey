@@ -1,13 +1,15 @@
 ---
 updated_at: 2026-03-15T00:00:00Z
-focus_area: Team setup complete — ready for Phase 1 implementation
+focus_area: Phase 1 — project scaffolding in progress
 active_issues: []
 ---
 
 # What We're Focused On
 
-Team is assembled and seeded. All agent charters, histories, decisions, routing, and ceremonies are in place.
+Phase 1 scaffolding is underway. Reese is initializing the Tauri project (T001), Root is setting up Blazor WASM (T002) and the UX tone guide (T005), Shaw is standing up xUnit and Playwright (T003+T004).
 
-**Next step:** Begin Phase 1 (tasks T001–T005) — scaffold the Tauri project, Blazor WASM solution, xUnit project, Playwright E2E project, and UX tone guide.
+**Next**: Phase 2 foundational infrastructure (T006–T017b) begins as soon as Phase 1 checkpoint passes.
+
+**TDD gate pending**: Shaw writes T018+T019 (failing US1 tests) before any Phase 3 implementation.
 
 **Requested by:** Vincent Verweij
