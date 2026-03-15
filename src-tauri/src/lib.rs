@@ -1,4 +1,4 @@
-use tauri::Manager;
+use commands::AppState;
 
 mod commands;
 mod db;
@@ -8,19 +8,23 @@ mod services;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    env_logger::init();
+    commands::init_health();
+    let conn = db::open().expect("DB init failed");
+
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
-        .setup(|app| {
-            env_logger::init();
+        .manage(AppState {
+            db: std::sync::Mutex::new(conn),
+        })
+        .setup(|_app| {
             log::info!("Tracey starting up");
-            // DB initialization happens here in T008
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // Commands registered here as they are implemented
-            // T013: commands::preferences::preferences_get,
-            // T013: commands::preferences::preferences_update,
-            // T014: commands::health::health_get,
+            commands::preferences_get,
+            commands::preferences_update,
+            commands::health_get,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

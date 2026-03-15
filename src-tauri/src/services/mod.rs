@@ -1,1 +1,2 @@
-// Background services — implemented in later tasks
+pub mod logger;
+// Other background services — implemented in later tasks

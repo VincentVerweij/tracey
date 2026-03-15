@@ -31,6 +31,7 @@ pub fn open() -> SqlResult<Connection> {
     log::info!("Database opened at {:?}", path);
 
     migrations::run(&conn)?;
+    seed_first_launch(&conn, &path)?;
 
     Ok(conn)
 }
@@ -61,4 +62,70 @@ fn is_writable(path: &std::path::Path) -> bool {
         }
         Err(_) => false,
     }
+}
+
+/// Called once after migrations. Seeds the default `user_preferences` row and
+/// creates the screenshots directory on first launch. No-op if already seeded.
+fn seed_first_launch(conn: &Connection, db_path: &PathBuf) -> SqlResult<()> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM user_preferences",
+        [],
+        |r| r.get(0),
+    )?;
+
+    if count > 0 {
+        return Ok(()); // Already seeded
+    }
+
+    log::info!("First launch detected — seeding defaults");
+
+    // Create screenshots directory next to the DB file
+    if let Some(parent) = db_path.parent() {
+        let screenshots_dir = parent.join("screenshots");
+        if let Err(e) = std::fs::create_dir_all(&screenshots_dir) {
+            log::warn!("Could not create screenshots dir: {}", e);
+            // Non-fatal — screenshot capture will fail gracefully later
+        } else {
+            log::info!("Created screenshots directory at {:?}", screenshots_dir);
+        }
+    }
+
+    // Column names verified against 001_initial_schema.sql:
+    // id, local_timezone, inactivity_timeout_seconds, screenshot_interval_seconds,
+    // screenshot_retention_days, screenshot_storage_path,
+    // timer_notification_threshold_hours, page_size, external_db_uri_stored,
+    // external_db_enabled, notification_channels_json, process_deny_list_json
+    conn.execute(
+        "INSERT INTO user_preferences (
+            id,
+            inactivity_timeout_seconds,
+            screenshot_interval_seconds,
+            screenshot_retention_days,
+            screenshot_storage_path,
+            local_timezone,
+            page_size,
+            process_deny_list_json,
+            external_db_uri_stored,
+            external_db_enabled,
+            notification_channels_json,
+            timer_notification_threshold_hours
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        rusqlite::params![
+            1i64,           // id = 1 (singleton enforced by CHECK (id = 1))
+            300i64,         // inactivity_timeout_seconds: 5 minutes
+            900i64,         // screenshot_interval_seconds: 15 minutes
+            30i64,          // screenshot_retention_days: 30 days
+            None::<String>, // screenshot_storage_path: NULL → runtime default {exe_dir}/screenshots/
+            "UTC",          // local_timezone
+            25i64,          // page_size
+            r#"["keepass","1password","bitwarden","lastpass"]"#, // process_deny_list_json
+            0i64,           // external_db_uri_stored: false
+            0i64,           // external_db_enabled: false
+            None::<String>, // notification_channels_json: NULL
+            8.0f64,         // timer_notification_threshold_hours
+        ],
+    )?;
+
+    log::info!("Default user_preferences seeded");
+    Ok(())
 }

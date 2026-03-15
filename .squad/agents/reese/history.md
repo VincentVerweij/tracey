@@ -77,3 +77,91 @@
   - HWND null check: `hwnd == HWND(std::ptr::null_mut())` — confirmed compiling on windows crate 0.58.
   - `get_idle_seconds`: `GetLastInputInfo` + `GetTickCount64` (64-bit; 32-bit `GetTickCount` NOT used — rollover avoidance).
 - `cargo check` result: **PASS**
+
+### 2026-03-15: T011 — Structured JSON Logger (cargo check PASS)
+
+**File:** `src-tauri/src/services/logger.rs`
+
+- JSON lines on stderr (`eprintln!`) — avoids mixing with Tauri's stdout protocol.
+- `LogEntry<'a>` struct: `ts` (RFC 3339), `level`, `component`, `event`, optional `trace_id`, optional `detail`.
+- `DENY_LIST: OnceLock<Vec<String>>` — populated at startup via `init_deny_list(json_list)`.
+- `redact_value` / `redact_str` — recursively redacts strings in JSON detail values if they contain a deny-list pattern (case-insensitive substring match).
+- Three macros exported: `log_info!`, `log_warn!`, `log_err!` (crate-level via `#[macro_export]`).
+- `services/mod.rs` updated: `pub mod logger;`
+- `cargo check` result: **PASS** (dead_code warnings for logger functions — expected, not yet called)
+
+### 2026-03-15: T013 — preferences_get + preferences_update IPC Commands (cargo check PASS)
+
+**File:** `src-tauri/src/commands/mod.rs`
+
+- `AppState { db: Mutex<rusqlite::Connection> }` — shared state registered with Tauri `.manage()`.
+- `preferences_get`: SELECT all 12 columns from `user_preferences LIMIT 1`, returns `UserPreferences`.
+- `preferences_update`: read-modify-write pattern (read full row, apply partial delta from `PreferencesUpdateRequest`, write all non-keychain fields back).
+- **Field name corrections vs briefing** (briefing had stale names):
+  - `timezone` → `local_timezone`
+  - `entries_per_page` → `page_size`
+  - `modified_at` removed (column doesn't exist in schema)
+  - Added `external_db_uri_stored` (read-only in this command — managed by `sync_configure`)
+  - Added `notification_channels_json` (updatable)
+- `external_db_uri_stored` intentionally omitted from `PreferencesUpdateRequest` — that flag belongs to OS keychain / `sync_configure` flow.
+- `cargo check` result: **PASS**
+
+### 2026-03-15: T014 — health_get IPC Command (cargo check PASS)
+
+**File:** `src-tauri/src/commands/mod.rs` (same file as T013)
+
+- **IPC contract shape used** (not briefing shape) — this is the authoritative source.
+- `HealthResponse`: `{ running: bool, last_write_at: Option<String>, events_per_sec: f64, memory_mb: f64, active_errors: Vec<String>, pending_sync_count: i64 }`
+- Phase-1 stubs: `running = true`, `last_write_at = None`, `events_per_sec = 0.0`, `memory_mb = 0.0`, `active_errors = []`.
+- `pending_sync_count` is a live `SELECT COUNT(*) FROM sync_queue` query.
+- `init_health()` is a no-op placeholder (future tasks will start metric collection).
+- **Deviation documented** in `.squad/decisions/inbox/reese-t011-t013-t014.md`.
+- `cargo check` result: **PASS**
+
+### 2026-03-15: lib.rs Wiring (T011/T013/T014)
+
+- `use commands::AppState;` added.
+- `env_logger::init()` moved before builder (so DB open log messages are captured).
+- `commands::init_health()` called before builder.
+- `db::open()` called before builder; `AppState` registered via `.manage()`.
+- Three commands registered: `commands::preferences_get`, `commands::preferences_update`, `commands::health_get`.
+- Removed stale `use tauri::Manager` (was unused after removing `app` param from setup).
+- Final `cargo check` result: **PASS** — 20 dead_code/unused warnings (all expected stubs), zero errors.
+
+### 2026-03-15: T012 — First-Launch Initialization (cargo check PASS)
+
+**File:** `src-tauri/src/db/mod.rs`
+
+**What was added:**
+- `seed_first_launch(&conn, &path)?;` called in `open()` immediately after `migrations::run(&conn)?;`
+- `seed_first_launch(conn: &Connection, db_path: &PathBuf) -> SqlResult<()>` function at bottom of file
+
+**Logic:**
+1. `SELECT COUNT(*) FROM user_preferences` — if ≥ 1, return early (idempotent)
+2. `std::fs::create_dir_all(db_path.parent().join("screenshots"))` — non-fatal if fails
+3. `INSERT INTO user_preferences (...)` with all 12 column values explicit
+
+**Exact column names used (verified against 001_initial_schema.sql):**
+- `id` = 1 (singleton, CHECK(id = 1))
+- `inactivity_timeout_seconds` = 300
+- `screenshot_interval_seconds` = 900 (15 min; schema default is 60)
+- `screenshot_retention_days` = 30
+- `screenshot_storage_path` = NULL
+- `local_timezone` = "UTC"
+- `page_size` = 25 (schema default is 50)
+- `process_deny_list_json` = `["keepass","1password","bitwarden","lastpass"]` (schema default, NOT `"[]"` as briefing suggested)
+- `external_db_uri_stored` = 0
+- `external_db_enabled` = 0 (column was missing from briefing — added explicitly)
+- `notification_channels_json` = NULL (column was missing from briefing — added explicitly)
+- `timer_notification_threshold_hours` = 8.0
+- **NO `modified_at`** — column does not exist in schema (confirmed)
+
+**Screenshots dir:** `{exe_dir}/screenshots/` (next to `tracey.db`), created via `db_path.parent().join("screenshots")`. Non-fatal on failure.
+
+**cargo check result: PASS** — 19 dead_code warnings (all pre-existing stubs), zero errors.
+
+---
+
+### 2026-03-15: Phase 2 Session Completion Note (Scribe)
+
+T012 confirmed complete: first-launch init runs inside `db::open()` immediately after migrations. Creates `{exe_dir}/screenshots/` directory (non-fatal on failure) and seeds `user_preferences` with 12 explicit column values. Idempotent — guarded by `COUNT(*)` check. T011, T013, T014, T017b also complete this session. cargo check 0 errors across all tasks.

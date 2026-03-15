@@ -49,3 +49,9 @@
 - `fs:allow-write-file` does NOT scope the write path. Rust code MUST `std::fs::canonicalize` + prefix-check every screenshot write path against the configured screenshots directory before passing to the plugin.
 
 **Assessment filed:** `.squad/decisions/inbox/control-t007-capabilities.md`
+
+---
+
+### 2026-03-15: Phase 2 Session Completion Note (Scribe)
+
+T007 capabilities review complete and locked. Capability baseline (core:default + fs:allow-write-file) is final for Phases 2–7. **Standing requirement carried forward:** Rust code MUST `std::fs::canonicalize` + prefix-check every screenshot write path against the configured screenshots directory before passing to the plugin. This check must be present in any IPC handler or service that writes screenshot files. Control must review all future PRs that add file write operations.

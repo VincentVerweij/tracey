@@ -1,16 +1,35 @@
 ﻿@inherits LayoutComponentBase
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+@inject TauriIpcService Tauri
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
-
-        <article class="content px-4">
-            @Body
-        </article>
+<div class="tracey-shell">
+    <nav class="sidebar" aria-label="Main navigation">
+        <div class="sidebar-brand">Tracey</div>
+        <ul class="nav-list" role="list">
+            <li><NavLink href="/" Match="NavLinkMatch.All">&#9201; Timer</NavLink></li>
+            <li><NavLink href="/projects">&#128193; Projects</NavLink></li>
+            <li><NavLink href="/tags">&#127991; Tags</NavLink></li>
+            <li><NavLink href="/timeline">&#128197; Timeline</NavLink></li>
+            <li><NavLink href="/settings">&#9881; Settings</NavLink></li>
+        </ul>
+    </nav>
+    <main class="main-content" role="main">
+        @Body
     </main>
 </div>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        // Health check on startup — confirms the Rust bridge is alive.
+        try
+        {
+            var health = await Tauri.HealthGetAsync();
+            Console.WriteLine($"[Tracey] Health: running={health.Running} events/s={health.EventsPerSec:F1} mem={health.MemoryMb:F0}MB");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Tracey] Health check failed: {ex.Message}");
+        }
+    }
+}

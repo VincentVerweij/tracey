@@ -104,3 +104,132 @@
 **By:** Vincent Verweij (via Coordinator)
 **What:** T082 (Win32 foreground window polling loop) stays in the Final Phase as originally planned. Phase 6 (US4 — Screenshot Timeline) delivers interval-based screenshots only. Window-change-triggered screenshots arrive in the Final Phase when T082 is implemented alongside T083 (ActivityRecord writes) and the sync queue. Shaw's US4 E2E tests do NOT need to cover window-change-triggered captures during Phase 6.
 **Why:** Accepted gap. Interval-based captures are sufficient for Phase 6 delivery. The window-change trigger is a Final Phase enhancement.
+
+---
+
+## Phase 2 Infrastructure Decisions (2026-03-15)
+
+### Control — T007: Tauri Capabilities
+
+#### 2026-03-15: No `system-idle` Plugin Capability
+**By:** Control (T007)
+**What:** `system-idle:allow-get-idle-time` removed from `capabilities/default.json`. Plugin does not exist on crates.io. Idle detection implemented via direct Win32 `GetLastInputInfo` + `GetTickCount64` in `platform/windows.rs`.
+**Why:** Plugin unavailable. `tasks.md` T007 spec is now stale on this point. Finch/Scribe to note.
+
+#### 2026-03-15: `fs:allow-write-file` Singular Confirmed
+**By:** Control (T007)
+**What:** `fs:allow-write-file` (singular) confirmed against plugin TOML source at `tauri-plugin-fs-2.4.5`. Grants only `write_file`, `open`, `write`. `fs:write-files` (plural set) explicitly rejected — bundles 9 commands unnecessarily.
+**Why:** Least-privilege. Singular command grant only.
+
+#### 2026-03-15: CSP Tightening Deferred to Final Phase
+**By:** Control (T007)
+**What:** Current CSP `default-src 'self' tauri: asset: https://asset.localhost` acceptable for dev. `connect-src 'none'` and audit of `asset:` directive deferred to Final Phase.
+**Why:** Architecture ensures WebView2 has no direct network access; sync is Rust-only.
+
+#### 2026-03-15: Path Traversal Requirement for Screenshot Writes (Standing Requirement)
+**By:** Control (T007)
+**What:** `fs:allow-write-file` does NOT scope the write path. Rust code MUST `std::fs::canonicalize` + prefix-check every screenshot write path against the configured screenshots directory before any write.
+**Why:** Capability alone is insufficient. Defense-in-depth requirement.
+
+---
+
+### Reese — T008/T010: Database + Model Structs
+
+#### 2026-03-15: No `directories` Crate
+**By:** Reese (T008)
+**What:** `directories` crate not added. DB path fallback implemented with `std::env::var("APPDATA")` + `PathBuf`. Zero extra dependencies.
+**Why:** Sufficient on Windows. Leaner dependency tree.
+
+#### 2026-03-15: `rusqlite::params!` Macro Required for Mixed-Type Inserts
+**By:** Reese (T008)
+**What:** `rusqlite::params![...]` macro required when mixing types in execute calls. Homogeneous array slices fail type inference with mixed `&&str` / `&String` / `i64`.
+**Why:** Compiler error on array slice; `params!` erases types via `ToSql` trait. Future DB tasks (T020–T040+) must use `params!`.
+
+#### 2026-03-15: Model Struct Field Corrections (Canonical)
+**By:** Reese (T010)
+**What:** Model structs corrected to match Leon's SQL exactly. Canonical corrections:
+- `Tag`: no `color` field
+- `TimeEntry`: added `is_break: bool`, `device_id: String`
+- `WindowActivityRecord`: `window_handle`, `device_id`; removed `time_entry_id`, `process_path`
+- `Screenshot`: `trigger: String`, `device_id: String`; removed `width`/`height`
+- `UserPreferences.id`: `i64` (not String); `local_timezone` (not `timezone`); `page_size` (not `entries_per_page`); added `external_db_uri_stored: bool`, `notification_channels_json: Option<String>`; no `modified_at`
+- `SyncQueueEntry.id`: `i64` (not String)
+
+**Why:** Briefing contained stale field names. Model file is the source of truth going forward.
+
+---
+
+### Reese — T011/T013/T014: Logger + Preferences + Health IPC
+
+#### 2026-03-15: health_get — IPC Contract Shape Authoritative Over Briefing
+**By:** Reese (T014)
+**What:** `health_get` implemented with IPC contract shape (`running`, `last_write_at`, `events_per_sec`, `memory_mb`, `active_errors`, `pending_sync_count`). Briefing shape (`status`, `db_open`, `version`, `platform`, `uptime_seconds`) discarded.
+**Why:** `contracts/ipc-commands.md` is authoritative per decisions.md. Finch to adjudicate if briefing shape was intentional.
+
+#### 2026-03-15: preferences_get / preferences_update — Contract Gap
+**By:** Reese (T013)
+**What:** `preferences_get` and `preferences_update` implemented per briefing but absent from `contracts/ipc-commands.md`. Finch must add them to the contract.
+**Why:** IPC contract is the source of truth. Gap must be closed before other agents depend on these commands.
+
+#### 2026-03-15: Structured Logger — stderr, Not stdout
+**By:** Reese (T011)
+**What:** Structured JSON logs emitted to stderr (`eprintln!`). Stdout reserved for Tauri's internal protocol.
+**Why:** Mixing with Tauri's stdout protocol causes parsing errors. Intentional.
+
+---
+
+### Root — T015/T016/T017: Blazor IPC Service, Events, Nav Shell
+
+#### 2026-03-15: `window.__TAURI_INTERNALS__.invoke` (Tauri 2.0 Bridge)
+**By:** Root (T015)
+**What:** `TauriIpcService` uses `window.__TAURI_INTERNALS__.invoke`. If Tauri JS SDK is bundled in `index.html`, switch to `window.__TAURI__.invoke` is a one-line change. Finch to confirm which invoke path is active.
+**Why:** Tauri 2.0 lower-level bridge; exists before JS SDK loads.
+
+#### 2026-03-15: Event Payload Shapes — Contract Over Task-Prompt
+**By:** Root (T016)
+**What:** All event payload types use IPC contract shapes, not task-prompt examples. Key deviations: `tracey://timer-tick` has no `entry_id` (contract omits it); `tracey://idle-detected` uses `idle_since`+`had_active_timer` (not `idle_seconds`); `tracey://sync-status-changed` uses `connected`+`pending` (not `status`); `tracey://error` uses `component` (not `code`).
+**Why:** Contract is authoritative. Rust emitter must match these shapes when T026 implements event emission.
+
+#### 2026-03-15: JS Event Shim — Deferred to Final Phase
+**By:** Root (T016)
+**What:** `TauriEventService.Listen<T>` is a stub. Full JS shim (`wwwroot/tauri-events.js` with `DotNetObjectReference`) deferred to Final Phase. Events are wired as C# events but payloads are not delivered until shim exists.
+**Why:** Complexity and scope beyond Phase 2. Components depending on events (e.g. T027 TimerStateService) must be aware.
+
+#### 2026-03-15: `screenshot_list` — Raw Array Response Assumed
+**By:** Root (T015)
+**What:** `Invoke<ScreenshotItem[]>` used; assumes Rust returns a raw JSON array. If Rust wraps it in `{ "screenshots": [...] }`, deserialization fails. Reese/Finch to confirm `screenshot_list` response shape.
+**Why:** Contract says "Array of..."; interpreted as direct array.
+
+#### 2026-03-15: `time_entry_update` — Not Implemented Pending Contract
+**By:** Root (T015)
+**What:** `time_entry_update` not added to `TauriIpcService` — not in `contracts/ipc-commands.md`. Finch to amend contract with schema before Root adds the typed wrapper.
+**Why:** Contract is source of truth. Cannot implement what is not contracted.
+
+---
+
+### Reese — T012: First-Launch Initialization
+
+#### 2026-03-15: Screenshots Directory — `{exe_dir}/screenshots/`
+**By:** Reese (T012)
+**What:** Screenshots directory created at `{exe_dir}/screenshots/` (next to `tracey.db`) via `db_path.parent().join("screenshots")` + `std::fs::create_dir_all`. Non-fatal if creation fails.
+**Why:** Matches portable path strategy. exe_dir already confirmed writable (write-probe in T008).
+
+#### 2026-03-15: process_deny_list_json Seed — Password Managers, Not Empty
+**By:** Reese (T012)
+**What:** `process_deny_list_json` seeded with `["keepass","1password","bitwarden","lastpass"]` (schema default), not `"[]"` as briefing suggested.
+**Why:** Leon's schema intent preserved — privacy-positive default. Users who never open Settings are protected.
+
+#### 2026-03-15: screenshot_interval_seconds Seeded as 900 (Not Schema Default 60)
+**By:** Reese (T012)
+**What:** `screenshot_interval_seconds` seeded as `900` (15 minutes). Schema default is `60` (1 minute).
+**Why:** Briefing explicitly requested 900. A 1-minute interval default is aggressive; 15 minutes is sensible.
+
+#### 2026-03-15: page_size Seeded as 25 (Not Schema Default 50)
+**By:** Reese (T012)
+**What:** `page_size` seeded as `25`. Schema default is `50`.
+**Why:** Briefing explicitly requested 25. Conservative initial page size.
+
+#### 2026-03-15: external_db_enabled — Explicitly Included in Seed INSERT
+**By:** Reese (T012)
+**What:** `external_db_enabled` column (absent from briefing INSERT spec) explicitly included and seeded `0`.
+**Why:** Column exists in schema with `DEFAULT 0`. Explicit is better than implicit for a first-launch INSERT.
