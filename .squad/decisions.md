@@ -233,3 +233,99 @@
 **By:** Reese (T012)
 **What:** `external_db_enabled` column (absent from briefing INSERT spec) explicitly included and seeded `0`.
 **Why:** Column exists in schema with `DEFAULT 0`. Explicit is better than implicit for a first-launch INSERT.
+
+---
+
+### Leon  T009: DDL Migrations
+
+#### 2026-03-15: sync_queue Follows data-model.md, Not Task Brief
+**By:** Leon (T009)
+**What:** `sync_queue` DDL uses `table_name`, `record_id`, `queued_at` per `data-model.md`. Task brief fields (`entity_type`, `entity_id`, `enqueued_at`, `payload`, `attempts`) discarded. No `payload` or `attempts` in initial migration.
+**Why:** `data-model.md` is the authoritative schema source. Finch subsequently added `attempts` via migration 003; `payload` was explicitly rejected (re-read-at-sync pattern is correct).
+
+#### 2026-03-15: user_preferences.id  INTEGER Singleton, Not TEXT ULID
+**By:** Leon (T009)
+**What:** `user_preferences` uses `INTEGER PRIMARY KEY DEFAULT 1` with `CHECK (id = 1)`. All other PKs are TEXT (ULID). This is the sole exception.
+**Why:** Singleton-enforcement pattern. Matches `data-model.md` exactly.
+
+#### 2026-03-15: user_preferences Seed INSERT Excluded from 001
+**By:** Leon (T009)
+**What:** The `INSERT INTO user_preferences DEFAULT VALUES` seed from `data-model.md` is excluded from `001_initial_schema.sql`. T012 handles first-launch seeding.
+**Why:** Keeps migrations idempotent. Seeds are not migrations.
+
+#### 2026-03-15: time_entries FK  SET NULL, Not CASCADE
+**By:** Leon (T009)
+**What:** `time_entries.project_id` and `time_entries.task_id` use `ON DELETE SET NULL`. Deleting a client cascades through projects and tasks but leaves time entries orphaned (not deleted).
+**Why:** Spec US3 acceptance scenario 6. Historical data preserved. Matches orphan retention rule.
+
+#### 2026-03-15: window_activity_records  No FK to time_entries
+**By:** Leon (T009)
+**What:** No `time_entry_id` column added to `window_activity_records`. Linked to a time window by `recorded_at` timestamp at query time only.
+**Why:** `data-model.md` entity table defines no such column. Conceptual link only; no FK.
+
+#### 2026-03-15: Extra Indexes  Beyond data-model.md Baseline
+**By:** Leon (T009)
+**What:** Added `idx_time_entries_started_at`, `idx_time_entries_ended_at`, `idx_war_recorded_at`, `idx_sync_queue_queued_at`. Not in `data-model.md` but needed for anticipated query patterns.
+**Why:** Pure performance additions. No logical schema change.
+
+---
+
+### Reese  T001/T006/T017b: Scaffold + Win32 Platform
+
+#### 2026-03-15: icons/icon.ico  Placeholder Required at Compile Time
+**By:** Reese (T001)
+**What:** `tauri-build` requires `icons/icon.ico` to exist. Created 32x32 PNG-in-ICO placeholder. Must be replaced with a real icon before any production/bundle build.
+**Why:** `tauri::generate_context!()` macro checks path at compile time.
+
+#### 2026-03-15: frontendDist Placeholder  Required for cargo check
+**By:** Reese (T001)
+**What:** Placeholder `src/Tracey.App/bin/Release/net10.0/publish/wwwroot/index.html` created so scaffold builds before Blazor is published. Remove once T002 dotnet publish runs.
+**Why:** `tauri::generate_context!()` validates `frontendDist` path at compile time.
+
+#### 2026-03-15: Win32_System_Threading Feature Required for T006
+**By:** Reese (T006)
+**What:** `Win32_System_Threading` added to `windows` crate features. `OpenProcess` (needed before `GetModuleFileNameExW`) lives there.
+**Why:** Compile error otherwise. Required for active window detection pipeline.
+
+#### 2026-03-15: `use tauri::Manager`  Intentional Unused Import
+**By:** Reese (T006/T017b)
+**What:** `use tauri::Manager` kept in `lib.rs` despite being unused. Expected warning at current stage.
+**Why:** Will be needed in T008 when app handle is used for DB resource management. Not an error.
+
+#### 2026-03-15: Module Stubs  5 Directories with Minimal mod.rs
+**By:** Reese (T006/T017b)
+**What:** All 5 module directories (`commands`, `db`, `models`, `platform`, `services`) scaffolded with minimal stub `mod.rs` files. Dead-code warnings from `platform/` are expected.
+**Why:** Establishes module structure before task implementation. `cargo check` passes with 6 expected warnings, 0 errors.
+
+---
+
+### Finch  Phase 2 Adjudications (2026-03-15)
+
+#### 2026-03-15: health_get Shape  Contract Authoritative (Ruling 1)
+**By:** Finch (Adjudication)
+**What:** IPC contract shape (`running`, `last_write_at`, `events_per_sec`, `memory_mb`, `active_errors`, `pending_sync_count`) is authoritative. T014 briefing shape (`status`, `db_open`, `version`, `platform`, `uptime_seconds`) was superseded. No files changed.
+**Why:** `commands/mod.rs` and `TauriIpcService.cs` already implement the contract shape correctly. Contract exposes runtime observability; briefing shape was wrong in hindsight.
+
+#### 2026-03-15: preferences_get / preferences_update  Added to Contract + Blocking Bug (Ruling 2)
+**By:** Finch (Adjudication)
+**What:** Both commands added to `contracts/ipc-commands.md` under new "Settings / Preferences Commands" section. Rust backend is the serialization source of truth. Blocked Root's T015 completion: `[JsonPropertyName("timezone")]` must be `"local_timezone"` and `[JsonPropertyName("entries_per_page")]` must be `"page_size"` in `TauriIpcService.cs`. Ghost `ModifiedAt` property to be removed; `ExternalDbUriStored` and `NotificationChannelsJson` to be added.
+**Why:** IPC contract gap. Silent deserialization failures (null timezone, 0 page size) on every preferences call.
+
+#### 2026-03-15: sync_queue `attempts` Added, `payload` Rejected (Ruling 3)
+**By:** Finch (Adjudication)
+**What:** `attempts INTEGER NOT NULL DEFAULT 0` added via `003_sync_queue_additions.sql`. `payload` column explicitly NOT added. `data-model.md` DDL updated. `SyncQueueEntry` struct updated. Column names (`table_name`, `record_id`, `queued_at`) unchanged.
+**Why:** Re-reading the record from local SQLite at sync time is correct for last-write-wins. `payload` snapshot would sync stale data if a local edit occurs after enqueue. `attempts` required for retry counting and exponential backoff (T073).
+
+---
+
+### Root  Phase 2 Fix: JsonPropertyName + beforeDevCommand
+
+#### 2026-03-15: JsonPropertyName Mismatches Fixed (4 attributes)
+**By:** Root (Phase 2 fix, Finch blocking bug)
+**What:** Fixed 4 wrong `[JsonPropertyName]` attributes in `TauriIpcService.cs`: `UserPreferences.Timezone` → `"local_timezone"`, `UserPreferences.EntriesPerPage` → `"page_size"`, `PreferencesUpdateRequest.Timezone` → `"local_timezone"`, `PreferencesUpdateRequest.EntriesPerPage` → `"page_size"`.
+**Why:** `System.Text.Json` silently ignores unknown JSON keys. Every `preferences_get` / `preferences_update` call was returning null timezone and 0 page size regardless of Rust output.
+
+#### 2026-03-15: beforeDevCommand — dotnet watch run
+**By:** Root (Phase 2 fix)
+**What:** `beforeDevCommand` in `tauri.conf.json` set to `"dotnet watch run --project src/Tracey.App --urls http://localhost:5000"`. `devUrl` stays `http://localhost:5000`. `Tracey.App` is pure client-side WASM served via `Microsoft.AspNetCore.Components.WebAssembly.DevServer` (Kestrel-based static file server with hot-reload).
+**Why:** Without `beforeDevCommand`, `cargo tauri dev` opened a blank WebView2 — nothing was starting the Blazor dev server at port 5000. `dotnet watch run` provides hot-reload; `dotnet publish` reserved for release (`beforeBuildCommand`).

@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../src/Tracey.App/bin/Release/net10.0/publish/wwwroot",
     "devUrl": "http://localhost:5000",
-    "beforeDevCommand": "",
+    "beforeDevCommand": "dotnet watch run --project src/Tracey.App --urls http://localhost:5000",
     "beforeBuildCommand": "dotnet publish src/Tracey.App -c Release -o src/Tracey.App/bin/Release/net10.0/publish"
   },
   "app": {

@@ -178,11 +178,17 @@ Return autocomplete suggestions for the description field (historical entries, f
       "project_name":"string | null",
       "task_id":     "string | null",
       "task_name":   "string | null",
-      "tag_ids":     ["string"]
+      "tag_ids":     ["string"],
+      "is_orphaned": "boolean"
     }
   ]
 }
 ```
+
+> `is_orphaned: true` when the suggestion's linked `project_id` or `task_id` no longer exists
+> in the DB (project or task was deleted after this description was last used).
+> The Blazor consumer must render an inline warning on orphaned suggestions.
+> Decision 2026-03-15: IPC Contract Amendment — `time_entry_autocomplete`.
 
 ---
 
@@ -403,6 +409,67 @@ User has selected an option from the idle-return modal.
 Force an immediate sync attempt.  
 **Input**: _(none)_  
 **Output**: `{ "synced_records": "number", "errors": "number" }`
+
+---
+
+## Settings / Preferences Commands
+
+### `preferences_get`
+Return the current device preferences (singleton row; one per device).
+
+**Input**: _(none)_
+
+**Output**:
+```json
+{
+  "id":                                 "number (always 1 — singleton)",
+  "local_timezone":                     "string (IANA name, e.g. \"Europe/Amsterdam\")",
+  "inactivity_timeout_seconds":         "number",
+  "screenshot_interval_seconds":        "number",
+  "screenshot_retention_days":          "number",
+  "screenshot_storage_path":            "string | null (null → runtime default {exe_dir}/screenshots/)",
+  "timer_notification_threshold_hours": "number",
+  "page_size":                          "number (time entry list page size)",
+  "external_db_uri_stored":             "boolean (read-only — true when URI is in OS keychain)",
+  "external_db_enabled":                "boolean",
+  "notification_channels_json":         "string | null (JSON array of channel config objects)",
+  "process_deny_list_json":             "string (JSON array of process name substrings to redact)"
+}
+```
+
+> ⚠️ **Exact field names are binding**: `local_timezone` (not `timezone`), `page_size` (not
+> `entries_per_page`). JSON consumers must use these names — serde serializes the Rust
+> struct field names verbatim.
+
+---
+
+### `preferences_update`
+Partially update device preferences. Only fields present in the request body are changed;
+omitted fields retain their current values (read-modify-write on the Rust side).
+
+**Input** (all fields optional; send only the fields to change):
+```json
+{
+  "local_timezone":                     "string | undefined",
+  "inactivity_timeout_seconds":         "number | undefined",
+  "screenshot_interval_seconds":        "number | undefined",
+  "screenshot_retention_days":          "number | undefined",
+  "screenshot_storage_path":            "string | null | undefined",
+  "timer_notification_threshold_hours": "number | undefined",
+  "page_size":                          "number | undefined",
+  "external_db_enabled":                "boolean | undefined",
+  "notification_channels_json":         "string | null | undefined",
+  "process_deny_list_json":             "string | undefined"
+}
+```
+
+**Output**: Same shape as `preferences_get` (the full updated preferences row).
+
+**Notes**:
+- `external_db_uri_stored` is **read-only** — managed exclusively by `sync_configure`.
+- `id` is **read-only** — always 1; not accepted in the request.
+- The Tauri invoke call wraps the payload in an `update` key:
+  `invoke("preferences_update", { update: { ... } })`.
 
 ---
 

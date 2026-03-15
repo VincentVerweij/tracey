@@ -108,4 +108,5 @@ pub struct SyncQueueEntry {
     pub record_id: String,
     pub operation: String, // "upsert" | "delete"
     pub queued_at: String,
+    pub attempts: i64,     // retry counter; incremented on each failed sync attempt
 }

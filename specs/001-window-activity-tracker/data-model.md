@@ -374,10 +374,11 @@ A local `sync_queue` table tracks pending upserts to the external DB:
 ```sql
 CREATE TABLE sync_queue (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    table_name  TEXT NOT NULL,
-    record_id   TEXT NOT NULL,
-    operation   TEXT NOT NULL CHECK (operation IN ('upsert','delete')),
-    queued_at   TEXT NOT NULL
+    table_name  TEXT    NOT NULL,
+    record_id   TEXT    NOT NULL,
+    operation   TEXT    NOT NULL CHECK (operation IN ('upsert','delete')),
+    queued_at   TEXT    NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0  -- incremented on each failed sync attempt
 );
 ```
 

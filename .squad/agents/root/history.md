@@ -66,3 +66,25 @@
 ### 2026-03-15: Phase 2 Session Completion Note (Scribe)
 
 T015/T016/T017 complete. dotnet build 0 errors, 0 warnings. **Known open item for Final Phase:** JS event shim (`wwwroot/tauri-events.js`) is not yet implemented. `TauriEventService.Listen<T>` is a stub — all event subscriptions are wired as C# events but payloads are never delivered to components until the `DotNetObjectReference` callback bridge is built. Any component that depends on real-time Tauri events (TimerStateService T027, idle prompts, etc.) must be aware of this gap and must not assume events arrive before the Final Phase shim is in place.
+
+---
+
+### 2026-03-15: Bug Fix — JsonPropertyName Mismatches + beforeDevCommand (Root)
+
+**Bug fix (Finch blocking bug on T015):**
+Fixed 4 incorrect `[JsonPropertyName]` attributes in `TauriIpcService.cs`:
+- `UserPreferences.Timezone`: `"timezone"` → `"local_timezone"`
+- `UserPreferences.EntriesPerPage`: `"entries_per_page"` → `"page_size"`
+- `PreferencesUpdateRequest.Timezone`: `"timezone"` → `"local_timezone"`
+- `PreferencesUpdateRequest.EntriesPerPage`: `"entries_per_page"` → `"page_size"`
+
+All other fields in both records were confirmed correct against the IPC contract.
+
+**Dev server decision (`beforeDevCommand`):**
+`Tracey.App` uses `Microsoft.NET.Sdk.BlazorWebAssembly` (pure WASM, no ASP.NET host process), but includes `Microsoft.AspNetCore.Components.WebAssembly.DevServer` which provides a lightweight static-file dev server invokable via `dotnet run`. Set `beforeDevCommand` in `tauri.conf.json` to:
+```
+dotnet watch run --project src/Tracey.App --urls http://localhost:5000
+```
+`devUrl` remains `http://localhost:5000`. This gives hot-reload in dev without a separate tool.
+
+**Build result:** `dotnet build Tracey.slnx` — Build succeeded, 0 errors, 0 warnings.

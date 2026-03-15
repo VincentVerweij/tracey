@@ -42,3 +42,15 @@
 **Control gate**: T007 (Tauri capabilities) requires Control review before merge. Confirmed permission slug: `fs:allow-write-file` (singular). Wrong slug fails silently.
 
 **Phase 2 strict ordering**: T006 → T007 → T008 → T009 → T012. Everything else in Phase 2 is parallelizable once scaffolding exists.
+
+### 2026-03-15: Phase 2 Adjudications
+
+**Adj 1 — `health_get` shape**: Contract was already correct. `{running, last_write_at, events_per_sec, memory_mb, active_errors, pending_sync_count}` is authoritative. T014 briefing shape `{status, db_open, version, platform, uptime_seconds}` was wrong. Reese's Rust struct and Root's C# record are both aligned. No changes.
+
+**Adj 2 — `preferences_get` / `preferences_update` gap**: Both commands were implemented by Reese (T013) and called by Root (T015) but missing from `ipc-commands.md`. Added "Settings / Preferences Commands" section. Canonical field names from Rust: `local_timezone` (not `timezone`), `page_size` (not `entries_per_page`). Root's C# `UserPreferences` record has three wrong `JsonPropertyName` attributes — **blocking bug** for Settings UI. Root must fix before T015 is done.
+
+**Adj 3 — `sync_queue` columns**: `table_name`, `record_id`, `queued_at` canonical (matching DDL). `payload` NOT added — re-reading from local DB at sync time is correct for last-write-wins. `attempts INTEGER NOT NULL DEFAULT 0` ADDED via migration 003. Model, migrations runner, and data-model.md updated.
+
+**Also fixed**: `is_orphaned` field added to `time_entry_autocomplete` contract output — was in decisions.md and Root's C# but not in the contract file itself.
+
+**Phase 2 checkpoint**: `cargo tauri dev` will NOT work as-is. `devUrl = "http://localhost:5000"` requires a running Blazor server but `beforeDevCommand` is empty. Fix: either set `beforeDevCommand` to launch `dotnet run`, or remove `devUrl` and publish Blazor first with `dotnet publish`. Full detail in `.squad/decisions/inbox/finch-adjudications-phase2.md`.

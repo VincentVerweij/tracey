@@ -11,6 +11,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "002_add_schema_migrations_table",
         include_str!("migrations/002_add_schema_migrations_table.sql"),
     ),
+    (
+        "003_sync_queue_additions",
+        include_str!("migrations/003_sync_queue_additions.sql"),
+    ),
 ];
 
 pub fn run(conn: &Connection) -> SqlResult<()> {
