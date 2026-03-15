@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Default capabilities — finalized by Control in T007","local":true,"windows":["main"],"permissions":[]}}
+{"default":{"identifier":"default","description":"Least-privilege capability grants for Tracey. Reviewed by Control.","local":true,"windows":["main"],"permissions":["core:default","fs:allow-write-file"]}}

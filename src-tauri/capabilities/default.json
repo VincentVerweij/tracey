@@ -1,7 +1,10 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "identifier": "default",
-  "description": "Default capabilities — finalized by Control in T007",
+  "description": "Least-privilege capability grants for Tracey. Reviewed by Control.",
   "windows": ["main"],
-  "permissions": []
+  "permissions": [
+    "core:default",
+    "fs:allow-write-file"
+  ]
 }
