@@ -271,3 +271,38 @@ T012 confirmed complete: first-launch init runs inside `db::open()` immediately 
 - `"specify"` validates `entry_details` present or returns error; inserts `time_entry_tags` junction rows
 
 **cargo check result: PASS** — 17 dead_code warnings (all pre-existing stubs), zero errors.
+
+---
+
+### 2026-03-16: T038/T039/T040 — hierarchy.rs, Client/Project/Task IPC Commands (cargo check PASS)
+
+**File created:** `src-tauri/src/commands/hierarchy.rs`
+**Files updated:** `commands/mod.rs` (`pub mod hierarchy;`), `lib.rs` (16 new commands in `generate_handler![]`)
+
+**Commands implemented:** `client_list`, `client_create`, `client_update`, `client_archive`, `client_unarchive`, `client_delete`, `project_list`, `project_create`, `project_update`, `project_archive`, `project_unarchive`, `project_delete`, `task_list`, `task_create`, `task_update`, `task_delete`
+
+**Color validation:** `color.len() == 7 && starts_with('#') && [1..].chars().all(is_ascii_hexdigit())` — no regex crate needed.
+
+**Dynamic WHERE without injection:** For `project_list` and `client_list`, used SQL `(?1 IS NULL OR client_id = ?1) AND (?2 = 1 OR is_archived = 0)` — passes `Option<&str>` as ?1 (NULL when None) and `include_archived as i64` as ?2. Safe parameterisation, no string building.
+
+**`client_delete` cascade sequence:**
+1. COUNT projects in client → `deleted_projects`
+2. COUNT tasks in those projects → `deleted_tasks`
+3. COUNT time_entries where project_id or task_id points into deleted scope → `orphaned_entries`
+4. UPDATE time_entries SET project_id = NULL for project matches
+5. UPDATE time_entries SET task_id = NULL for task matches
+6. DELETE client — FK CASCADE (ON DELETE CASCADE) removes projects then tasks automatically
+
+**`project_delete` / `task_delete`:** NULL out time_entries references explicitly before delete; then DELETE entity. FK CASCADE handles sub-entity cleanup.
+
+**Name conflict detection for update:** `WHERE name = ?1 AND id != ?2 AND client_id = (SELECT client_id FROM projects WHERE id = ?2)` — scoped to same client.
+
+**List return shapes:** `client_list` returns `{ "clients": [...] }` (wrapped object per spec); `project_list` and `task_list` return bare JSON arrays (`serde_json::to_value(vec)`).
+
+**Void return:** `project_delete` and `task_delete` return `Ok(serde_json::Value::Null)`.
+
+**`is_archived` read as bool:** `row.get::<_, bool>(n)?` — rusqlite's `FromSql` for bool converts `INTEGER` 0→false / non-zero→true. Confirmed working.
+
+**Inline params for simple id-only commands:** `client_archive(state, id: String)` style used (not a wrapper struct) — cleaner for 1-field inputs.
+
+**cargo check result: PASS** — 18 dead_code warnings (all pre-existing stubs), zero errors.

@@ -42,6 +42,22 @@ pub fn run() {
             commands::timer::time_entry_update,
             commands::idle::idle_get_status,
             commands::idle::idle_resolve,
+            commands::hierarchy::client_list,
+            commands::hierarchy::client_create,
+            commands::hierarchy::client_update,
+            commands::hierarchy::client_archive,
+            commands::hierarchy::client_unarchive,
+            commands::hierarchy::client_delete,
+            commands::hierarchy::project_list,
+            commands::hierarchy::project_create,
+            commands::hierarchy::project_update,
+            commands::hierarchy::project_archive,
+            commands::hierarchy::project_unarchive,
+            commands::hierarchy::project_delete,
+            commands::hierarchy::task_list,
+            commands::hierarchy::task_create,
+            commands::hierarchy::task_update,
+            commands::hierarchy::task_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

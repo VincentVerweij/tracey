@@ -99,6 +99,54 @@
 **By:** Finch (Lead/Architect)
 **What:** T058 commands (`tag_list`, `tag_create`, `tag_delete`) route to `src-tauri/src/commands/tags.rs` (new file), not `activity.rs`. File must be registered in `commands/mod.rs`.
 
+## 2026-03-16: Phase 5 — T038/T039/T040 Client/Project/Task IPC Commands
+**By:** Reese (Rust/Tauri Backend)
+**Tasks:** T038 (client commands), T039 (project commands), T040 (task commands)
+
+**Color validation — no regex crate**: Used `color.len() == 7 && starts_with('#') && [1..].chars().all(is_ascii_hexdigit())` instead of adding a `regex` dependency for a single simple pattern.
+
+**Dynamic SQL filtering — parameterised NULL trick**: `project_list` and `client_list` use `(?1 IS NULL OR client_id = ?1) AND (?2 = 1 OR is_archived = 0)` with `params![client_id.as_deref(), include_archived as i64]`. Avoids SQL injection and code duplication.
+
+**client_delete orphan sequence**: Explicit ordering per spec US3 scenario 6 — COUNT orphans → NULL time_entries refs (project-level then task-level) → DELETE client (SQLite FK ON DELETE CASCADE removes projects then tasks). Orphaned time entries are retained, not deleted.
+
+**project_delete / task_delete**: Explicit NULL-out of time_entries references before delete. Mirrors client_delete pattern for clarity even where FK CASCADE would handle it.
+
+**List return shape asymmetry (IPC contract)**: `client_list` → `{ "clients": [...] }` (wrapped object). `project_list`, `task_list` → bare JSON array.
+
+**Inline parameters for id-only commands**: `client_archive(state, id: String)` style — no wrapper struct needed for single-id commands.
+
+**DB-level unique constraints**: `clients.name` has `UNIQUE`; `projects` has `UNIQUE (client_id, name)`; `tasks` has no DB-level unique — guarded explicitly in Rust. All return `"name_conflict"` on violation rather than raw SQLite error.
+
+## 2026-03-16: Phase 5 — T041 Projects.razor UI
+**By:** Root (Blazor/C# Frontend)
+**Task:** T041 — US3 Projects Page
+
+**Lazy loading pattern**: Clients on `OnInitializedAsync`. Projects on client-card expand. Tasks on project-row expand. Each level caches in dictionaries keyed by parent ID.
+
+**Inline forms, no modal**: Add-client / add-project / add-task use inline `bool`-toggled panels. Delete confirmation uses `<div role="dialog">` inline (not overlay). Consistent with spec lightweight CRUD requirement.
+
+**No duplicate IPC wrappers**: Existing `ClientItem`, `ProjectItem`, `TaskItem`, `ClientListResponse`, etc. types from T015 session used directly. No aliasing.
+
+**`@bind:after` for archive toggle**: `@bind="_showArchived"` + `@bind:after="LoadClients"` — idiomatic .NET 8+ Blazor pattern, avoids separate `@onchange` handler.
+
+**ExpandLabel helper**: Avoids Razor parser quote-conflict with ternary string literals inside double-quoted HTML attributes.
+
+**Delete counts not surfaced in UI**: `ClientDeleteAsync` returns `{ deleted_projects, deleted_tasks, orphaned_entries }` — counts silently discarded post-delete per task spec (generic confirmation only).
+
+## 2026-03-16: Phase 5 — T037 US3 E2E Test Decisions
+**By:** Shaw (QA/Tester)
+**Task:** T037 — Playwright E2E tests for US3 (Manage Clients, Projects, Tasks)
+
+**D1 — Self-guarding autocomplete assertions (AC7)**: Conditional guard — if the dropdown/listbox is not visible at all, test passes without checking absence. Only if a dropdown IS shown does the test assert the archived entity is absent. Avoids ambiguous `not.toBeVisible()` on listbox.
+
+**D2 — Archive toggle selector contract**: Tests locate toggle via `role="checkbox" name=/show archived|include archived/i` OR `role="button" name=/show archived|include archived/i`. Root must use one of these roles with a name matching the pattern.
+
+**D3 — IPC fixture helpers via `page.evaluate`**: `createClient`, `createProject`, `createTask`, `deleteClient`, `deleteProject` call Tauri IPC directly via `window.__TAURI_INTERNALS__.invoke(...)` for setup — bypasses UI for speed and fragility reduction.
+
+**D4 — Cascade confirmation content assertion**: Delete-client modal asserted with `toContainText(/project|task|entr/i)` — broad regex covering any reasonable phrasing of cascade counts.
+
+**D5 — Color swatch selector contract**: Located via `[class*="swatch"], [class*="color"], [style*="background"]` OR `aria-label="{name} color swatch"`. Root must provide at least one. Recommended: `aria-label="{name} color swatch"` for accessibility and test robustness.
+
 ## 2026-03-15: TDD Gate Spec Ambiguities (T018/T019)
 **By:** Shaw (QA/Test)
 **What:** Five ambiguities flagged while writing T018 Playwright tests and T019 xUnit tests for US1 timer:

@@ -1,3 +1,4 @@
+pub mod hierarchy;
 pub mod idle;
 pub mod timer;
 

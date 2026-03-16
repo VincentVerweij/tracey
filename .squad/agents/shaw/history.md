@@ -81,6 +81,20 @@ Additional tests beyond the 5 spec scenarios (from tasks.md):
 - TypeScript compilation: **0 errors** (`npx tsc --noEmit` — exit code 0)
 - Selector contracts Root must honour: `role="dialog"` with accessible name matching `/idle|away|back/i`, `role="timer"` visible when timer running, `role="link"` with name `/timeline/i` for nav
 
+### 2026-03-16: T037 — US3 Projects E2E tests (projects.spec.ts)
+- **14 tests written** in `tests/e2e/specs/projects.spec.ts` (new file, replaced empty stub)
+- All 14 tests currently FAIL with `net::ERR_CONNECTION_REFUSED` — app not running during test authoring (TDD gate: correct)
+- Tests cover all US3 acceptance scenarios: navigate to /projects, create client (UI + name conflict error), create project under client, create task under project, archive project (disappears from active list), archived project appears when show-archived toggled, unarchive project, archived entities absent from QuickEntryBar autocomplete (both client and project), delete client with cascade confirmation modal showing counts, cancel delete keeps client, archive/unarchive client
+- IPC fixture helpers implemented: `createClient()`, `createProject()`, `createTask()`, `deleteClient()`, `deleteProject()` — all use `window.__TAURI_INTERNALS__.invoke()` via `page.evaluate()`
+- TypeScript compilation: **0 errors** (`npx tsc --noEmit` — exit code 0)
+- `goToProjects()` helper added (navigates to `${APP_URL}/projects`)
+- Color swatch detection: `[class*="swatch"], [class*="color"], [style*="background"]` or `aria-label="Acme Corp color swatch"` — Root must honor at least one
+- Show-archived toggle: `role="checkbox"` or `role="button"` with name `/show archived|include archived/i`
+- Archive/Unarchive buttons: `role="button"` with name `/^archive$/i` or `/^unarchive$/i`, or `aria-label="Archive {name}"` / `aria-label="Unarchive {name}"`
+- Delete button: `role="button"` with name `/delete/i` or `aria-label="Delete {name}"`
+- Cascade confirmation: `role="dialog"` must contain text matching `/project|task|entr/i`
+- AC7 picker tests use a self-guarding pattern: if dropdown is absent entirely, that also satisfies "not in autocomplete"
+
 ### 2026-03-16: T025a / T029a / T030c — Phase 3 Batch 2 tests appended to timer.spec.ts
 - **7 tests added** across 3 new `test.describe` blocks; total timer.spec.ts count now 27 (20 original + 7 new)
 - T025a (2 tests): orphaned autocomplete warning indicator + click-through still starts timer. Both tests self-guard with conditional checks (no orphaned state → console.log, no hard skip). Requires pre-seeded data: create entry with project → delete project → type description.

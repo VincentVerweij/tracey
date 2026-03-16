@@ -80,6 +80,30 @@ T015/T016/T017 complete. dotnet build 0 errors, 0 warnings. **Known open item fo
 
 ---
 
+### 2026-03-16: T041 — Projects.razor + TauriIpcService wrappers (completed)
+
+**Build result**: `Build succeeded in 23.0s — 0 Warning(s), 0 Error(s)` on `Tracey.slnx`
+
+**TauriIpcService.cs**: Already had all client/project/task DTOs and IPC methods from a prior session — no changes needed. Existing types used: `ClientItem`, `ProjectItem`, `TaskItem`, `ClientListResponse`, `ProjectListResponse`, `TaskListResponse`, `ClientCreateRequest`, `ProjectCreateRequest`, `TaskCreateRequest`, `ClientDeleteResponse`, `ModifiedAtResponse`, etc.
+
+**Projects.razor** (`src/Tracey.App/Pages/Projects.razor`): Full implementation replacing stub.
+- Lazy-load pattern: clients on `OnInitializedAsync`, projects on client expand, tasks on project expand
+- Inline add forms (toggle `bool` flag per level) — no modal needed
+- Delete confirmation: `_pendingDeleteClient` / `_pendingDeleteProject` inline `role="dialog"` inline-confirm divs
+- Archive/Unarchive buttons with `aria-label` on all actions
+- "Show archived" checkbox with `@bind:after="LoadClients"` — reload on toggle
+- Error display: `<div role="alert" class="alert alert-danger">` with dismiss button
+- All lambdas using string interpolation in attributes use `@($"...")` to avoid Razor quote-conflict
+- `ExpandLabel(bool, string)` helper method avoids nested quotes in `aria-label` attributes
+- `@bind` on dictionary indexers (`_newTaskName[project.Id]`) works when key pre-initialized in `ShowAddTask`/`ShowAddProject`
+
+**App.razor**: No changes — `/projects` nav link already present in `MainLayout.razor`
+
+**Learnings**:
+- T041 done — Projects.razor + TauriIpcService wrappers, dotnet build 0 errors
+
+---
+
 ### 2026-03-16: T035/T036 — IdleReturnModal + Dashboard idle wiring (completed)
 
 **Build result**: `Build succeeded in 6.1s — 0 Warning(s), 0 Error(s)` on `Tracey.slnx`
