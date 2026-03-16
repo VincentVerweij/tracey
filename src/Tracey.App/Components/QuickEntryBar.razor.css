@@ -1,0 +1,113 @@
+/* =========================================
+   QuickEntryBar — Spotlight command palette
+   ========================================= */
+
+.quick-entry-bar {
+    background: var(--tracey-surface);
+    border-radius: var(--tracey-radius);
+    box-shadow: var(--tracey-shadow);
+    padding: 0.25rem 1.25rem;
+    position: relative;
+    border: 1px solid var(--tracey-border);
+    transition: box-shadow 0.15s ease;
+}
+
+.quick-entry-bar:focus-within {
+    box-shadow: 0 0 0 2px var(--tracey-accent), var(--tracey-shadow);
+    border-color: var(--tracey-accent);
+}
+
+.entry-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 3rem;
+}
+
+.running-elapsed {
+    font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Code', Consolas, monospace;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--tracey-accent);
+    white-space: nowrap;
+    flex-shrink: 0;
+    letter-spacing: 0.04em;
+}
+
+.entry-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-size: 1rem;
+    font-family: inherit;
+    color: var(--tracey-text);
+    background: transparent;
+    padding: 0.5rem 0;
+    min-width: 0;
+}
+
+.entry-input::placeholder {
+    color: var(--tracey-text-muted);
+}
+
+.entry-input.is-running {
+    color: var(--tracey-accent);
+}
+
+/* Autocomplete dropdown */
+.autocomplete-dropdown {
+    position: absolute;
+    top: calc(100% + 0.375rem);
+    left: 0;
+    right: 0;
+    background: var(--tracey-surface);
+    border: 1px solid var(--tracey-border);
+    border-radius: var(--tracey-radius);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    list-style: none;
+    margin: 0;
+    padding: 0.25rem 0;
+    z-index: 200;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.suggestion-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1.25rem;
+    cursor: pointer;
+    transition: background-color 0.1s ease;
+    gap: 0.75rem;
+}
+
+.suggestion-item:hover {
+    background-color: var(--tracey-surface-alt);
+}
+
+.suggestion-item.is-orphaned {
+    opacity: 0.7;
+}
+
+.suggestion-description {
+    font-size: 0.9rem;
+    color: var(--tracey-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+}
+
+.suggestion-project {
+    font-size: 0.8rem;
+    color: var(--tracey-text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.orphan-warning {
+    font-size: 0.85rem;
+    color: #d97706;
+    flex-shrink: 0;
+}

@@ -99,6 +99,46 @@
 **By:** Finch (Lead/Architect)
 **What:** T058 commands (`tag_list`, `tag_create`, `tag_delete`) route to `src-tauri/src/commands/tags.rs` (new file), not `activity.rs`. File must be registered in `commands/mod.rs`.
 
+## 2026-03-16: Layout Shell — Flex Row
+**By:** UXer (Frontend Designer)
+**What:** `.tracey-shell` → `display: flex; height: 100vh; overflow: hidden`. Sidebar fixed at 240px, main-content `flex: 1; overflow-y: auto`.
+**Why:** The scaffolded MainLayout.razor.css had no flex rule on `.tracey-shell`, causing sidebar and main to stack vertically. This is the foundational layout fix.
+
+## 2026-03-16: Design Tokens in `:root`
+**By:** UXer (Frontend Designer)
+**What:** All design values live as CSS custom properties in `app.css :root`. Token set: accent (`#6366f1`), sidebar bg (`#1a1a2e`), surface, border, text, muted, radius, shadow.
+**Why:** Enables consistent theming and future dark mode toggle without global find-replace. All components reference tokens, not hard-coded values.
+
+## 2026-03-16: Accent Color — Indigo `#6366f1`
+**By:** UXer (Frontend Designer)
+**What:** Single accent color `#6366f1` (Tailwind indigo-500) used for: active nav left bar, focus rings, running timer display, running entry border, autocomplete focus, hover highlights on idle options.
+**Why:** Indigo reads clearly on both dark sidebar (`#1a1a2e`) and light content area (`#f8f9fa`). Strong enough to guide attention without being harsh.
+
+## 2026-03-16: BlazorBlueprint Component Adoption
+**By:** UXer (Frontend Designer)
+**What:** Use verified BB components only. Components adopted: `BbButton` (Default/Outline/Ghost/Destructive variants, Small size), `BbCard` for client cards in Projects, `BbAlert`/`BbAlertTitle`/`BbAlertDescription` for error display, `BbDialog`/`BbDialogContent` for idle modal. Idle option buttons kept raw `<button>` — card-style multi-line layout doesn't fit BbButton's Tailwind flex structure cleanly.
+**Why:** BB components bring consistent shadcn/ui design language, accessibility, and focus management.
+
+## 2026-03-16: BbPortalHost Placement
+**By:** UXer (Frontend Designer)
+**What:** `<BbPortalHost />` and `<BbDialogProvider />` placed at the bottom of `MainLayout.razor` after the `.tracey-shell` div.
+**Why:** Required for BbDialog to portal out of the component tree (avoiding overflow/z-index clipping). Per BlazorBlueprint docs. Generates a harmless RZ10012 analyzer warning due to net8.0→net10.0 TFM mismatch; compile succeeds with 0 errors.
+
+## 2026-03-16: Scoped CSS File Strategy
+**By:** UXer (Frontend Designer)
+**What:** One `.razor.css` file per component/page that has unique styles. Global tokens and utilities in `app.css`. Inter font loaded via `index.html`. Scoped files: `QuickEntryBar.razor.css`, `TimeEntryList.razor.css`, `Projects.razor.css`, `Dashboard.razor.css`, `IdleReturnModal.razor.css`.
+**Why:** Blazor's scoped CSS prevents selector leaks. Each component owns its own visual contract.
+
+## 2026-03-16: BbCard Class Interpolation Syntax
+**By:** UXer (Frontend Designer)
+**What:** When conditionally adding CSS classes to a BlazorBlueprint component `Class` parameter, use `@($"...")` string interpolation: `Class="@($"client-card{(client.IsArchived ? " archived" : "")}")"`.
+**Why:** BlazorBlueprint component parameters don't accept mixed C#/markup inline (`Class="base @(expr)"` causes error RZ9986). Must use a full Razor expression string.
+
+## 2026-03-16: Stub Page Empty States
+**By:** UXer (Frontend Designer)
+**What:** Tags, Timeline, and Settings pages receive: `<PageTitle>`, `<h1 class="page-title">`, descriptive `<p class="text-muted">`, and a centered emoji empty-state block.
+**Why:** Placeholder content prevents blank pages which look broken. Emoji + message communicates the page's purpose while the feature is built out.
+
 ## 2026-03-16: Phase 5 — T038/T039/T040 Client/Project/Task IPC Commands
 **By:** Reese (Rust/Tauri Backend)
 **Tasks:** T038 (client commands), T039 (project commands), T040 (task commands)

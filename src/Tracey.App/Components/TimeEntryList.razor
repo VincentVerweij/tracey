@@ -69,12 +69,12 @@
                                     {
                                         <p class="edit-error" role="alert">@_editError</p>
                                     }
-                                    <button type="button"
-                                            class="cancel-edit-btn"
-                                            aria-label="Cancel edit"
-                                            @onclick="CancelEdit">
+                                    <BbButton Variant="ButtonVariant.Ghost"
+                                              Size="ButtonSize.Small"
+                                              AriaLabel="Cancel edit"
+                                              OnClick="CancelEdit">
                                         Cancel
-                                    </button>
+                                    </BbButton>
                                 </div>
                             }
                             else
@@ -92,12 +92,12 @@
                                 {
                                     <span class="entry-project">@entry.ClientName / @entry.ProjectName</span>
                                 }
-                                <button type="button"
-                                        class="continue-btn"
-                                        aria-label="Continue: @entry.Description"
-                                        @onclick="() => ContinueEntry(entry.Id)">
+                                <BbButton Variant="ButtonVariant.Outline"
+                                          Size="ButtonSize.Small"
+                                          AriaLabel="@($"Continue: {entry.Description}")"
+                                          OnClick="() => ContinueEntry(entry.Id)">
                                     Continue
-                                </button>
+                                </BbButton>
                             }
                         </li>
                     }
@@ -107,10 +107,13 @@
 
         @if (_hasMore)
         {
-            <button type="button" class="load-more-btn" @onclick="LoadMore"
-                    aria-label="Load more entries">
-                Load more
-            </button>
+            <div class="load-more-wrapper">
+                <BbButton Variant="ButtonVariant.Outline"
+                          OnClick="LoadMore"
+                          AriaLabel="Load more entries">
+                    Load more
+                </BbButton>
+            </div>
         }
     }
 </div>

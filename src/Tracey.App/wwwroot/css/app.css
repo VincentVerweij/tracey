@@ -1,5 +1,37 @@
+/* =========================================
+   Tracey Design Tokens
+   ========================================= */
+
+:root {
+    --tracey-accent: #6366f1;
+    --tracey-accent-hover: #4f46e5;
+    --tracey-sidebar-bg: #1a1a2e;
+    --tracey-sidebar-text: rgba(255, 255, 255, 0.85);
+    --tracey-sidebar-active: rgba(255, 255, 255, 0.15);
+    --tracey-sidebar-hover: rgba(255, 255, 255, 0.08);
+    --tracey-surface: #ffffff;
+    --tracey-surface-alt: #f8f9fa;
+    --tracey-border: #e5e7eb;
+    --tracey-text: #111827;
+    --tracey-text-muted: #6b7280;
+    --tracey-radius: 8px;
+    --tracey-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* =========================================
+   Global Base
+   ========================================= */
+
 html, body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--tracey-text);
+    background-color: var(--tracey-surface-alt);
+}
+
+/* Override Bootstrap's default body margin/padding */
+body {
+    margin: 0;
+    padding: 0;
 }
 
 h1:focus {
@@ -112,4 +144,64 @@ code {
 
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
+}
+
+/* =========================================
+   Global Utilities
+   ========================================= */
+
+.page-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--tracey-text);
+    margin: 0 0 0.25rem;
+}
+
+.text-muted {
+    color: var(--tracey-text-muted) !important;
+}
+
+/* =========================================
+   Stub Pages (Tags, Timeline, Settings)
+   ========================================= */
+
+.stub-page {
+    max-width: 600px;
+}
+
+.stub-page .page-title {
+    margin-bottom: 0.5rem;
+}
+
+.stub-page > .text-muted {
+    font-size: 0.95rem;
+    margin-bottom: 0;
+}
+
+.empty-state-illustration {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4rem 2rem;
+    text-align: center;
+}
+
+.empty-state-emoji {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    display: block;
+    line-height: 1;
+}
+
+.empty-state-message {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--tracey-text);
+    margin: 0 0 0.5rem;
+}
+
+.empty-state-hint {
+    font-size: 0.875rem;
+    margin: 0;
+    color: var(--tracey-text-muted);
 }

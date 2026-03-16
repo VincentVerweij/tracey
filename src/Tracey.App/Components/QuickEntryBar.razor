@@ -4,6 +4,12 @@
 
 <div class="quick-entry-bar" role="search">
     <div class="entry-input-wrapper">
+        @if (Timer.IsRunning)
+        {
+            <span class="running-elapsed" role="timer" aria-live="polite" aria-atomic="true">
+                @Timer.Elapsed.ToString(@"hh\:mm\:ss")
+            </span>
+        }
         <input type="text"
                @ref="_inputRef"
                @bind="_description"
@@ -16,12 +22,12 @@
 
         @if (Timer.IsRunning)
         {
-            <button type="button"
-                    aria-label="Stop timer"
-                    class="stop-btn"
-                    @onclick="StopTimer">
+            <BbButton Variant="ButtonVariant.Destructive"
+                      Size="ButtonSize.Small"
+                      AriaLabel="Stop timer"
+                      OnClick="StopTimer">
                 Stop
-            </button>
+            </BbButton>
         }
     </div>
 

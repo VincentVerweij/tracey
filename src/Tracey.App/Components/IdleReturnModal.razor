@@ -1,20 +1,12 @@
 @inject TauriIpcService Tauri
 @implements IDisposable
 
-@if (_isVisible)
-{
-    <div class="modal-backdrop" aria-hidden="true"></div>
-    <dialog class="idle-modal"
-            open
-            role="dialog"
-            aria-modal="true"
-            aria-label="You're back"
-            aria-describedby="idle-modal-desc">
-
-        <h2 class="idle-modal-title">You're back</h2>
-        <p id="idle-modal-desc" class="idle-duration-text">
-            @_durationText
-        </p>
+<BbDialog Open="@_isVisible">
+    <BbDialogContent CloseOnOverlayClick="false" CloseOnEscape="false" ShowClose="false">
+        <BbDialogHeader>
+            <BbDialogTitle>You're back</BbDialogTitle>
+            <BbDialogDescription>@_durationText</BbDialogDescription>
+        </BbDialogHeader>
 
         @if (_showSpecifyInput)
         {
@@ -27,13 +19,9 @@
                        placeholder="e.g. Reviewing architecture docs"
                        autofocus />
                 <div class="specify-actions">
-                    <button type="button"
-                            class="btn-primary"
-                            aria-label="Save"
-                            @onclick="SubmitSpecify">Save</button>
-                    <button type="button"
-                            class="btn-secondary"
-                            @onclick='() => _showSpecifyInput = false'>Back</button>
+                    <BbButton OnClick="SubmitSpecify">Save</BbButton>
+                    <BbButton Variant="ButtonVariant.Outline"
+                              OnClick="@(() => { _showSpecifyInput = false; })">Back</BbButton>
                 </div>
             </div>
         }
@@ -41,25 +29,25 @@
         {
             <div class="idle-options" role="group" aria-label="What happened while you were away?">
                 <button type="button" class="idle-option-btn" @onclick='() => Resolve("break")'>
-                    Break
+                    <span class="option-label">Break</span>
                     <span class="option-hint">Stop timer here, add a break</span>
                 </button>
                 <button type="button" class="idle-option-btn" @onclick='() => Resolve("meeting")'>
-                    Meeting
+                    <span class="option-label">Meeting</span>
                     <span class="option-hint">Log as a meeting</span>
                 </button>
-                <button type="button" class="idle-option-btn" @onclick='() => _showSpecifyInput = true'>
-                    Specify
+                <button type="button" class="idle-option-btn" @onclick='() => { _showSpecifyInput = true; }'>
+                    <span class="option-label">Specify</span>
                     <span class="option-hint">I'll tell you what I was doing</span>
                 </button>
                 <button type="button" class="idle-option-btn" @onclick='() => Resolve("keep")'>
-                    Keep
+                    <span class="option-label">Keep</span>
                     <span class="option-hint">Pretend I was still working</span>
                 </button>
             </div>
         }
-    </dialog>
-}
+    </BbDialogContent>
+</BbDialog>
 
 @code {
     [Parameter] public EventCallback OnResolved { get; set; }

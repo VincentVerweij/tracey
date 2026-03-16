@@ -5,7 +5,7 @@
 
 <div class="projects-page">
     <div class="projects-header">
-        <h1>Projects</h1>
+        <h1 class="page-title">Projects</h1>
         <div class="projects-toolbar">
             <label class="show-archived-label">
                 <input type="checkbox"
@@ -13,20 +13,21 @@
                        @bind:after="LoadClients" />
                 Show archived
             </label>
-            <button type="button"
-                    @onclick='() => _showAddClient = !_showAddClient'
-                    aria-label="Add client">+ Add Client</button>
+            <BbButton Size="ButtonSize.Small"
+                      OnClick="@(() => { _showAddClient = !_showAddClient; })"
+                      AriaLabel="Add client">
+                + Add Client
+            </BbButton>
         </div>
     </div>
 
     @if (_errorMessage != null)
     {
-        <div role="alert" class="alert alert-danger">
-            @_errorMessage
-            <button type="button"
-                    aria-label="Dismiss error"
-                    @onclick='() => _errorMessage = null'>&#x2715;</button>
-        </div>
+        <BbAlert Variant="AlertVariant.Danger" AccentBorder Dismissible
+                 OnDismiss="@(() => { _errorMessage = null; })">
+            <BbAlertTitle>Error</BbAlertTitle>
+            <BbAlertDescription>@_errorMessage</BbAlertDescription>
+        </BbAlert>
     }
 
     @if (_showAddClient)
@@ -57,14 +58,8 @@
                        aria-label="Logo path" />
             </div>
             <div class="form-actions">
-                <button type="button"
-                        class="btn-primary"
-                        @onclick="SaveNewClient"
-                        aria-label="Save client">Save</button>
-                <button type="button"
-                        class="btn-secondary"
-                        @onclick="CancelAddClient"
-                        aria-label="Cancel add client">Cancel</button>
+                <BbButton OnClick="SaveNewClient" AriaLabel="Save client">Save</BbButton>
+                <BbButton Variant="ButtonVariant.Outline" OnClick="CancelAddClient" AriaLabel="Cancel add client">Cancel</BbButton>
             </div>
         </div>
     }
@@ -83,18 +78,19 @@
             @foreach (var client in _clients)
             {
                 var isClientExpanded = _expandedClients.Contains(client.Id);
-                <div class="client-card @(client.IsArchived ? "archived" : "")">
+                <BbCard Class="@($"client-card{(client.IsArchived ? " archived" : "")}")">
 
                     <div class="client-header">
-                        <button type="button"
-                                class="chevron-btn"
-                                @onclick="() => ToggleClientExpand(client.Id)"
-                                aria-label="@ExpandLabel(isClientExpanded, client.Name)"
-                                aria-expanded="@isClientExpanded.ToString().ToLower()">
-                            @(isClientExpanded ? "▼" : "▶")
-                        </button>
+                        <BbButton Variant="ButtonVariant.Ghost"
+                                  Size="ButtonSize.Small"
+                                  OnClick="() => ToggleClientExpand(client.Id)"
+                                  AriaLabel="@ExpandLabel(isClientExpanded, client.Name)"
+                                  Class="chevron-btn"
+                                  AdditionalAttributes="@(new Dictionary<string, object> { ["aria-expanded"] = isClientExpanded.ToString().ToLower() })">
+                            <span class="chevron @(isClientExpanded ? "open" : "")">&#8250;</span>
+                        </BbButton>
                         <span class="color-swatch"
-                              style="background: @client.Color; width:1rem; height:1rem; display:inline-block; border-radius:50%;"
+                              style="background: @client.Color"
                               aria-label="color swatch"></span>
                         <span class="client-name">@client.Name</span>
                         @if (client.IsArchived)
@@ -104,19 +100,19 @@
                         <div class="client-actions">
                             @if (client.IsArchived)
                             {
-                                <button type="button" class="btn-sm"
-                                        @onclick="() => UnarchiveClient(client.Id)"
-                                        aria-label="@($"Unarchive {client.Name}")">Unarchive</button>
+                                <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                          OnClick="() => UnarchiveClient(client.Id)"
+                                          AriaLabel="@($"Unarchive {client.Name}")">Unarchive</BbButton>
                             }
                             else
                             {
-                                <button type="button" class="btn-sm"
-                                        @onclick="() => ArchiveClient(client.Id)"
-                                        aria-label="@($"Archive {client.Name}")">Archive</button>
+                                <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                          OnClick="() => ArchiveClient(client.Id)"
+                                          AriaLabel="@($"Archive {client.Name}")">Archive</BbButton>
                             }
-                            <button type="button" class="btn-sm btn-danger"
-                                    @onclick="() => ConfirmDeleteClient(client)"
-                                    aria-label="@($"Delete {client.Name}")">Delete</button>
+                            <BbButton Variant="ButtonVariant.Destructive" Size="ButtonSize.Small"
+                                      OnClick="() => ConfirmDeleteClient(client)"
+                                      AriaLabel="@($"Delete {client.Name}")">Delete</BbButton>
                         </div>
                     </div>
 
@@ -125,14 +121,15 @@
                         <div role="dialog"
                              aria-label="@($"Confirm delete {client.Name}")"
                              class="inline-confirm">
+                            <span class="warn-icon">⚠️</span>
                             <p>Are you sure? This will delete all projects and tasks under <strong>@client.Name</strong>. Orphaned time entries will be detached.</p>
                             <div class="form-actions">
-                                <button type="button" class="btn-danger"
-                                        @onclick="() => DeleteClient(client.Id)"
-                                        aria-label="@($"Confirm delete {client.Name}")">Confirm Delete</button>
-                                <button type="button" class="btn-secondary"
-                                        @onclick='() => _pendingDeleteClient = null'
-                                        aria-label="Cancel delete">Cancel</button>
+                                <BbButton Variant="ButtonVariant.Destructive"
+                                          OnClick="() => DeleteClient(client.Id)"
+                                          AriaLabel="@($"Confirm delete {client.Name}")">Confirm Delete</BbButton>
+                                <BbButton Variant="ButtonVariant.Outline"
+                                          OnClick="@(() => { _pendingDeleteClient = null; })"
+                                          AriaLabel="Cancel delete">Cancel</BbButton>
                             </div>
                         </div>
                     }
@@ -156,13 +153,14 @@
                                     <div class="project-row @(project.IsArchived ? "archived" : "")">
 
                                         <div class="project-header">
-                                            <button type="button"
-                                                    class="chevron-btn"
-                                                    @onclick="() => ToggleProjectExpand(project.Id)"
-                                                    aria-label="@ExpandLabel(isProjectExpanded, project.Name)"
-                                                    aria-expanded="@isProjectExpanded.ToString().ToLower()">
-                                                @(isProjectExpanded ? "▼" : "▶")
-                                            </button>
+                                            <BbButton Variant="ButtonVariant.Ghost"
+                                                      Size="ButtonSize.Small"
+                                                      OnClick="() => ToggleProjectExpand(project.Id)"
+                                                      AriaLabel="@ExpandLabel(isProjectExpanded, project.Name)"
+                                                      Class="chevron-btn"
+                                                      AdditionalAttributes="@(new Dictionary<string, object> { ["aria-expanded"] = isProjectExpanded.ToString().ToLower() })">
+                                                <span class="chevron @(isProjectExpanded ? "open" : "")">&#8250;</span>
+                                            </BbButton>
                                             <span class="project-name">@project.Name</span>
                                             @if (project.IsArchived)
                                             {
@@ -171,19 +169,19 @@
                                             <div class="project-actions">
                                                 @if (project.IsArchived)
                                                 {
-                                                    <button type="button" class="btn-sm"
-                                                            @onclick="() => UnarchiveProject(project.Id, client.Id)"
-                                                            aria-label="@($"Unarchive {project.Name}")">Unarchive</button>
+                                                    <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                                              OnClick="() => UnarchiveProject(project.Id, client.Id)"
+                                                              AriaLabel="@($"Unarchive {project.Name}")">Unarchive</BbButton>
                                                 }
                                                 else
                                                 {
-                                                    <button type="button" class="btn-sm"
-                                                            @onclick="() => ArchiveProject(project.Id, client.Id)"
-                                                            aria-label="@($"Archive {project.Name}")">Archive</button>
+                                                    <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                                              OnClick="() => ArchiveProject(project.Id, client.Id)"
+                                                              AriaLabel="@($"Archive {project.Name}")">Archive</BbButton>
                                                 }
-                                                <button type="button" class="btn-sm btn-danger"
-                                                        @onclick="() => ConfirmDeleteProject(project)"
-                                                        aria-label="@($"Delete {project.Name}")">Delete</button>
+                                                <BbButton Variant="ButtonVariant.Destructive" Size="ButtonSize.Small"
+                                                          OnClick="() => ConfirmDeleteProject(project)"
+                                                          AriaLabel="@($"Delete {project.Name}")">Delete</BbButton>
                                             </div>
                                         </div>
 
@@ -192,14 +190,15 @@
                                             <div role="dialog"
                                                  aria-label="@($"Confirm delete {project.Name}")"
                                                  class="inline-confirm">
+                                                <span class="warn-icon">⚠️</span>
                                                 <p>Are you sure? Deleting <strong>@project.Name</strong> will also delete its tasks. Orphaned time entries will be detached.</p>
                                                 <div class="form-actions">
-                                                    <button type="button" class="btn-danger"
-                                                            @onclick="() => DeleteProject(project.Id, client.Id)"
-                                                            aria-label="@($"Confirm delete {project.Name}")">Confirm Delete</button>
-                                                    <button type="button" class="btn-secondary"
-                                                            @onclick='() => _pendingDeleteProject = null'
-                                                            aria-label="Cancel delete">Cancel</button>
+                                                    <BbButton Variant="ButtonVariant.Destructive"
+                                                              OnClick="() => DeleteProject(project.Id, client.Id)"
+                                                              AriaLabel="@($"Confirm delete {project.Name}")">Confirm Delete</BbButton>
+                                                    <BbButton Variant="ButtonVariant.Outline"
+                                                              OnClick="@(() => { _pendingDeleteProject = null; })"
+                                                              AriaLabel="Cancel delete">Cancel</BbButton>
                                                 </div>
                                             </div>
                                         }
@@ -221,9 +220,9 @@
                                                     {
                                                         <div class="task-row">
                                                             <span class="task-name">@task.Name</span>
-                                                            <button type="button" class="btn-sm btn-danger"
-                                                                    @onclick="() => DeleteTask(task.Id, project.Id)"
-                                                                    aria-label="@($"Delete task {task.Name}")">Delete</button>
+                                                            <BbButton Variant="ButtonVariant.Destructive" Size="ButtonSize.Small"
+                                                                      OnClick="() => DeleteTask(task.Id, project.Id)"
+                                                                      AriaLabel="@($"Delete task {task.Name}")">Delete</BbButton>
                                                         </div>
                                                     }
                                                 }
@@ -234,19 +233,15 @@
                                                                @bind="_newTaskName[project.Id]"
                                                                placeholder="Task name"
                                                                aria-label="New task name for @project.Name" />
-                                                        <button type="button" class="btn-primary"
-                                                                @onclick="() => SaveNewTask(project.Id)"
-                                                                aria-label="Save task">Save</button>
-                                                        <button type="button" class="btn-secondary"
-                                                                @onclick="() => HideAddTask(project.Id)"
-                                                                aria-label="Cancel add task">Cancel</button>
+                                                        <BbButton OnClick="() => SaveNewTask(project.Id)" AriaLabel="Save task">Save</BbButton>
+                                                        <BbButton Variant="ButtonVariant.Outline" OnClick="() => HideAddTask(project.Id)" AriaLabel="Cancel add task">Cancel</BbButton>
                                                     </div>
                                                 }
                                                 else
                                                 {
-                                                    <button type="button" class="btn-sm"
-                                                            @onclick="() => ShowAddTask(project.Id)"
-                                                            aria-label="@($"Add task to {project.Name}")">+ Add Task</button>
+                                                    <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                                              OnClick="() => ShowAddTask(project.Id)"
+                                                              AriaLabel="@($"Add task to {project.Name}")">+ Add Task</BbButton>
                                                 }
                                             </div>
                                         }
@@ -261,23 +256,19 @@
                                            @bind="_newProjectName[client.Id]"
                                            placeholder="Project name"
                                            aria-label="New project name for @client.Name" />
-                                    <button type="button" class="btn-primary"
-                                            @onclick="() => SaveNewProject(client.Id)"
-                                            aria-label="Save project">Save</button>
-                                    <button type="button" class="btn-secondary"
-                                            @onclick="() => HideAddProject(client.Id)"
-                                            aria-label="Cancel add project">Cancel</button>
+                                    <BbButton OnClick="() => SaveNewProject(client.Id)" AriaLabel="Save project">Save</BbButton>
+                                    <BbButton Variant="ButtonVariant.Outline" OnClick="() => HideAddProject(client.Id)" AriaLabel="Cancel add project">Cancel</BbButton>
                                 </div>
                             }
                             else
                             {
-                                <button type="button" class="btn-sm"
-                                        @onclick="() => ShowAddProject(client.Id)"
-                                        aria-label="@($"Add project to {client.Name}")">+ Add Project</button>
+                                <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                          OnClick="() => ShowAddProject(client.Id)"
+                                          AriaLabel="@($"Add project to {client.Name}")">+ Add Project</BbButton>
                             }
                         </div>
                     }
-                </div>
+                </BbCard>
             }
         </div>
     }

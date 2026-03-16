@@ -7,6 +7,10 @@
 <PageTitle>Tracey</PageTitle>
 
 <div class="dashboard">
+    <div class="dashboard-header">
+        <h1 class="page-title">Today</h1>
+        <span class="page-date">@DateTime.Now.ToString("dddd, MMMM d")</span>
+    </div>
     <QuickEntryBar OnTimerStarted="RefreshList" OnTimerStopped="RefreshList" />
     <TimeEntryList @ref="_entryList" />
 </div>
