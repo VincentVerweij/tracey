@@ -25,6 +25,11 @@ pub fn run() {
             commands::preferences_get,
             commands::preferences_update,
             commands::health_get,
+            commands::timer::timer_start,
+            commands::timer::timer_stop,
+            commands::timer::timer_get_active,
+            commands::timer::time_entry_list,
+            commands::timer::time_entry_autocomplete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

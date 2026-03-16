@@ -162,6 +162,35 @@
 
 ---
 
+### 2026-03-16: T020/T021/T022/T025 — Timer & Time Entry IPC Commands (cargo check PASS)
+
+**File:** `src-tauri/src/commands/timer.rs` (new file)
+
+**What was added:**
+- `timer_start` (T020), `timer_stop` (T021), `timer_get_active` (T021), `time_entry_list` (T022), `time_entry_autocomplete` (T025)
+- `pub mod timer;` added to `commands/mod.rs`
+- All 5 commands registered in `lib.rs` `generate_handler![]`
+- `ulid = "1"` added to `Cargo.toml`
+
+**ULID generation:** `use ulid::Ulid; fn new_id() -> String { Ulid::new().to_string() }`
+
+**`stop_running_timer` helper pattern:**
+- Private fn taking `&rusqlite::Connection` and `ended_at: &str`
+- Shared by `timer_start` (auto-stop) and `timer_stop` (manual stop)
+- Matches `rusqlite::Error::QueryReturnedNoRows` to distinguish "no running timer" from a real error
+
+**Schema findings (from 001_initial_schema.sql):**
+- `is_break INTEGER NOT NULL DEFAULT 0` EXISTS in `time_entries` — read from DB in `time_entry_list`, NOT hardcoded false
+- `device_id TEXT NOT NULL` EXISTS in `time_entries` — briefing's INSERT was missing it; fixed to use `std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".to_string())`
+- `projects.client_id` confirmed present → two-level JOIN `projects p → clients c` is correct in `time_entry_list`
+- `is_break` column confirmed, so `time_entry_list` maps `r.get::<_, bool>(9)?` directly
+
+**NULL-safe SQL pattern:** `project_id IS ?2` with rusqlite `params![]` — when `?2 = None`, SQLite evaluates `project_id IS NULL` (correct null-safe comparison). Used in `time_entry_autocomplete` tag-lookup subquery.
+
+**cargo check result: PASS** — 19 dead_code warnings (all pre-existing stubs), zero errors.
+
+---
+
 ### 2026-03-15: Phase 2 Session Completion Note (Scribe)
 
 T012 confirmed complete: first-launch init runs inside `db::open()` immediately after migrations. Creates `{exe_dir}/screenshots/` directory (non-fatal on failure) and seeds `user_preferences` with 12 explicit column values. Idempotent — guarded by `COUNT(*)` check. T011, T013, T014, T017b also complete this session. cargo check 0 errors across all tasks.

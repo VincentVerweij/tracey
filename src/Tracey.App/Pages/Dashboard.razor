@@ -1,5 +1,29 @@
 @page "/dashboard"
 @page "/"
+@inject ITimerStateService Timer
+@implements IDisposable
 
-<h1>Dashboard</h1>
-<p>Coming soon.</p>
+<PageTitle>Tracey</PageTitle>
+
+<div class="dashboard">
+    <QuickEntryBar OnTimerStarted="RefreshList" OnTimerStopped="RefreshList" />
+    <TimeEntryList @ref="_entryList" />
+</div>
+
+@code {
+    private TimeEntryList? _entryList;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Timer is TimerStateService ts)
+            await ts.InitializeAsync();
+    }
+
+    private async Task RefreshList()
+    {
+        if (_entryList != null)
+            await _entryList.LoadPage(1);
+    }
+
+    public void Dispose() { }
+}

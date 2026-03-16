@@ -1,4 +1,5 @@
 ﻿@inject TauriEventService Events
+@inject ITimerStateService TimerService
 
 <Router AppAssembly="@typeof(App).Assembly">
     <Found Context="routeData">
@@ -17,5 +18,8 @@
         // Subscribe to Rust-side events once on app startup.
         // Full callback routing requires the JS shim (see decisions inbox).
         await Events.InitializeAsync();
+        // Wire timer-tick payloads to TimerStateService
+        if (TimerService is TimerStateService ts)
+            Events.OnTimerTick += p => ts.HandleTimerTick(p.ElapsedSeconds);
     }
 }

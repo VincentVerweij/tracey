@@ -1,0 +1,171 @@
+@inject ITimerStateService Timer
+@inject TauriIpcService Tauri
+@implements IDisposable
+
+<div class="quick-entry-bar" role="search">
+    <div class="entry-input-wrapper">
+        <input type="text"
+               @ref="_inputRef"
+               @bind="_description"
+               @bind:event="oninput"
+               @onkeydown="HandleKeyDown"
+               aria-label="What are you working on?"
+               placeholder="What are you working on?"
+               autocomplete="off"
+               class="entry-input @(Timer.IsRunning ? "is-running" : "")" />
+
+        @if (Timer.IsRunning)
+        {
+            <button type="button"
+                    aria-label="Stop timer"
+                    class="stop-btn"
+                    @onclick="StopTimer">
+                Stop
+            </button>
+        }
+    </div>
+
+    @if (_suggestions.Count > 0 && !Timer.IsRunning)
+    {
+        <ul class="autocomplete-dropdown" role="listbox" aria-label="Recent entries">
+            @foreach (var s in _suggestions)
+            {
+                <li role="option"
+                    class="suggestion-item @(s.IsOrphaned ? "is-orphaned" : "")"
+                    @onclick="() => SelectSuggestion(s)"
+                    tabindex="0"
+                    @onkeydown="(e) => HandleSuggestionKey(e, s)">
+                    <span class="suggestion-description">@s.Description</span>
+                    @if (s.IsOrphaned)
+                    {
+                        <span class="orphan-warning"
+                              title="The linked project or task no longer exists"
+                              aria-label="Warning: project or task no longer exists">
+                            ⚠
+                        </span>
+                    }
+                    else if (s.ProjectName != null)
+                    {
+                        <span class="suggestion-project">@s.ProjectName</span>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback OnTimerStarted { get; set; }
+    [Parameter] public EventCallback OnTimerStopped { get; set; }
+
+    private string _description = string.Empty;
+    private List<AutocompleteSuggestion> _suggestions = new();
+    private ElementReference _inputRef;
+    private System.Timers.Timer? _debounceTimer;
+
+    protected override void OnInitialized()
+    {
+        if (Timer.IsRunning && Timer.CurrentDescription != null)
+        {
+            _description = Timer.CurrentDescription;
+        }
+        Timer.OnStateChanged += StateHasChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try { await _inputRef.FocusAsync(); } catch { /* WebView2 timing */ }
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_description))
+        {
+            await StartTimer();
+        }
+        else if (e.Key == " " && e.CtrlKey)
+        {
+            await ToggleTimer();
+        }
+        else if (e.Key == "Escape")
+        {
+            _suggestions.Clear();
+        }
+        else
+        {
+            TriggerAutocompleteDebounced();
+        }
+    }
+
+    private void TriggerAutocompleteDebounced()
+    {
+        _debounceTimer?.Dispose();
+        if (_description.Length < 2) { _suggestions.Clear(); return; }
+        _debounceTimer = new System.Timers.Timer(200);
+        _debounceTimer.Elapsed += async (_, _) =>
+        {
+            _debounceTimer?.Dispose();
+            await InvokeAsync(LoadSuggestions);
+        };
+        _debounceTimer.AutoReset = false;
+        _debounceTimer.Start();
+    }
+
+    private async Task LoadSuggestions()
+    {
+        if (_description.Length < 2) { _suggestions.Clear(); return; }
+        try
+        {
+            var result = await Tauri.TimeEntryAutocompleteAsync(new TimeEntryAutocompleteRequest(_description, 10));
+            _suggestions = result.Suggestions.ToList();
+            StateHasChanged();
+        }
+        catch { _suggestions.Clear(); }
+    }
+
+    private async Task StartTimer()
+    {
+        _suggestions.Clear();
+        await Timer.StartAsync(_description.Trim());
+        await OnTimerStarted.InvokeAsync();
+    }
+
+    private async Task StopTimer()
+    {
+        await Timer.StopAsync();
+        _description = string.Empty;
+        await OnTimerStopped.InvokeAsync();
+    }
+
+    private async Task ToggleTimer()
+    {
+        if (Timer.IsRunning)
+            await StopTimer();
+        else if (!string.IsNullOrWhiteSpace(_description))
+            await StartTimer();
+        else
+            try { await _inputRef.FocusAsync(); } catch { }
+    }
+
+    private async Task SelectSuggestion(AutocompleteSuggestion s)
+    {
+        _description = s.Description;
+        _suggestions.Clear();
+        await StartTimer();
+    }
+
+    private async Task HandleSuggestionKey(KeyboardEventArgs e, AutocompleteSuggestion s)
+    {
+        if (e.Key == "Enter" || e.Key == " ")
+            await SelectSuggestion(s);
+    }
+
+    public void Dispose()
+    {
+        Timer.OnStateChanged -= StateHasChanged;
+        _debounceTimer?.Dispose();
+    }
+}

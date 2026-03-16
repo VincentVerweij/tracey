@@ -10,5 +10,6 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 builder.Services.AddScoped<TauriIpcService>();
 builder.Services.AddScoped<TauriEventService>();
+builder.Services.AddScoped<ITimerStateService, TimerStateService>();
 
 await builder.Build().RunAsync();

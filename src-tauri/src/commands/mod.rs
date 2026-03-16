@@ -1,3 +1,5 @@
+pub mod timer;
+
 use tauri::State;
 use serde::{Deserialize, Serialize};
 use crate::models::UserPreferences;

@@ -69,6 +69,45 @@ T015/T016/T017 complete. dotnet build 0 errors, 0 warnings. **Known open item fo
 
 ---
 
+### 2026-03-16: T027/T028/T029/T030 — TimerStateService + Dashboard Components (completed)
+
+**Build result**: `Build succeeded in 9.4s — 0 Warning(s), 0 Error(s)` on `Tracey.slnx`
+
+**T027 — TimerStateService** (`src/Tracey.App/Services/TimerStateService.cs`):
+- Implements full `ITimerStateService` as specified by Shaw (T019), including `CurrentProjectId` and `CurrentTaskId` (present in Shaw's test file, not in prompt stub)
+- `HandleTimerTick(long elapsedSeconds)` — called from `TauriEventService.OnTimerTick` via wiring in `App.razor`
+- `InitializeAsync()` — calls `timer_get_active` IPC on startup to restore state across restarts; calculates elapsed from `started_at` UTC diff
+- `StopAsync()` — no-op guard when `!_isRunning`; swallows `no_active_timer` errors
+- Registered in `Program.cs` as `AddScoped<ITimerStateService, TimerStateService>()`
+- Timer tick wired in `App.razor` `OnAfterRenderAsync`: `Events.OnTimerTick += p => ts.HandleTimerTick(p.ElapsedSeconds)` (cast pattern — same as Dashboard)
+
+**T028 — QuickEntryBar** (`src/Tracey.App/Components/QuickEntryBar.razor`):
+- `aria-label="What are you working on?"` — matches Shaw's Playwright locator
+- Enter → `Timer.StartAsync(description.Trim())`
+- Ctrl+Space → toggles running/stopped, focuses input when idle
+- Stop button with `aria-label="Stop timer"` — matches Shaw's `role="button" name=/stop/i`
+- Autocomplete: 200ms debounce, ≥2 char threshold, `⚠` orphan indicator
+- Type corrections applied: `TimeEntryAutocompleteRequest` (not `AutocompleteRequest`), `result.Suggestions.ToList()`
+
+**T029 — TimeEntryList** (`src/Tracey.App/Components/TimeEntryList.razor`):
+- Running timer row with `role="timer"` — matches Shaw's Playwright locator
+- Grouped by date (descending), `DateOnly.Parse(e.StartedAt[..10])` for grouping
+- `LoadPage` is `public` — called from `Dashboard.razor` via `@ref`
+- Type corrections: `TimeEntryItem` (not `TimeEntryListItem`), `TimeEntryContinueAsync(entryId)` string not request object
+- `FormatTime` handles nullable `string?` (`ended_at` can be null on running entry hypothetically)
+
+**T030 — Dashboard** (`src/Tracey.App/Pages/Dashboard.razor`):
+- Replaced stub; composes `<QuickEntryBar>` + `<TimeEntryList>`; calls `ts.InitializeAsync()` on mount via cast
+
+**Other file updates**:
+- `_Imports.razor`: added `@using Tracey.App.Components`
+- `App.razor`: added `@inject ITimerStateService TimerService` + timer tick wiring in `OnAfterRenderAsync`
+- `Program.cs`: `AddScoped<ITimerStateService, TimerStateService>()` registered
+
+**Components directory**: `src/Tracey.App/Components/` created (new)
+
+---
+
 ### 2026-03-15: Bug Fix — JsonPropertyName Mismatches + beforeDevCommand (Root)
 
 **Bug fix (Finch blocking bug on T015):**
