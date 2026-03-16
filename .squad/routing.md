@@ -15,6 +15,7 @@ How to decide who handles what.
 | SQLite schema, migrations, WAL, Postgres sync strategy, data modeling | Leon | Schema design, migration runner, sync contract |
 | Session logging | Scribe | Automatic — never needs routing |
 | Backlog, issue triage, PR monitoring | Ralph | Work queue management |
+| HTML/CSS styling, visual design, Blazor component UI design | UXer | Layout, visual polish, component structure |
 
 ## Multi-Domain Task Routing
 

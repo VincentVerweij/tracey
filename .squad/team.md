@@ -24,6 +24,7 @@
 | Leon | Data Engineer | SQLite schema, migration runner, Postgres sync strategy, WAL mode | 📊 Data |
 | Scribe | Session Logger | Memory, decisions, orchestration logs | 📋 Scribe |
 | Ralph | Work Monitor | Work queue, backlog tracking, issue triage | 🔄 Monitor |
+| UXer | Frontend Designer | HTML, CSS, Blazor Component UI | 🎨 Design |
 
 ## Project Context
 
