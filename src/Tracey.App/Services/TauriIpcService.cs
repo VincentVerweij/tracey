@@ -50,6 +50,9 @@ public class TauriIpcService
     public Task<TimerStartResponse> TimeEntryContinueAsync(string sourceEntryId) =>
         Invoke<TimerStartResponse>("time_entry_continue", new { source_entry_id = sourceEntryId });
 
+    public Task<ModifiedAtResponse> TimeEntryUpdateAsync(TimeEntryUpdateRequest request) =>
+        Invoke<ModifiedAtResponse>("time_entry_update", request);
+
     public Task<TimeEntryAutocompleteResponse> TimeEntryAutocompleteAsync(TimeEntryAutocompleteRequest request) =>
         Invoke<TimeEntryAutocompleteResponse>("time_entry_autocomplete", request);
 
@@ -285,6 +288,16 @@ public record TimeEntryCreateManualRequest(
     [property: JsonPropertyName("project_id")] string? ProjectId,
     [property: JsonPropertyName("task_id")] string? TaskId,
     [property: JsonPropertyName("tag_ids")] string[] TagIds);
+
+public record TimeEntryUpdateRequest(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("description")] string Description,
+    [property: JsonPropertyName("project_id")] string? ProjectId,
+    [property: JsonPropertyName("task_id")] string? TaskId,
+    [property: JsonPropertyName("tag_ids")] string[]? TagIds,
+    [property: JsonPropertyName("started_at")] string StartedAt,
+    [property: JsonPropertyName("ended_at")] string EndedAt,
+    [property: JsonPropertyName("force")] bool Force);
 
 public record TimeEntryAutocompleteRequest(
     [property: JsonPropertyName("query")] string Query,

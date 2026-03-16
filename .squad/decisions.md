@@ -339,3 +339,68 @@
 **By:** Root (Phase 2 fix)
 **What:** `beforeDevCommand` in `tauri.conf.json` set to `"dotnet watch run --project src/Tracey.App --urls http://localhost:5000"`. `devUrl` stays `http://localhost:5000`. `Tracey.App` is pure client-side WASM served via `Microsoft.AspNetCore.Components.WebAssembly.DevServer` (Kestrel-based static file server with hot-reload).
 **Why:** Without `beforeDevCommand`, `cargo tauri dev` opened a blank WebView2 — nothing was starting the Blazor dev server at port 5000. `dotnet watch run` provides hot-reload; `dotnet publish` reserved for release (`beforeBuildCommand`).
+
+---
+
+## Phase 3 batch 1 Decisions (2026-03-16)
+
+### Reese — T020/T021/T022/T025: Rust Timer Commands
+
+#### 2026-03-16: `device_id` — `COMPUTERNAME` Hostname (Phase 3 Interim)
+**By:** Reese (T020)
+**What:** `time_entries.device_id` resolved via `std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".to_string())` in `timer_start`. Long-term strategy (UUID generated once and stored in `user_preferences`) deferred. Hostname is acceptable for Phase 3 (single-device local SQLite).
+**Why:** `device_id TEXT NOT NULL` has no default. Briefing INSERT omitted it, causing a would-be NOT NULL constraint failure at runtime. Hostname fix unblocks Phase 3; UUID strategy deferred to Phase 4+.
+
+#### 2026-03-16: `is_break` Column — Confirmed Present, Read from DB
+**By:** Reese (T022)
+**What:** `is_break INTEGER NOT NULL DEFAULT 0` exists in `time_entries`. `time_entry_list` reads it via `r.get::<_, bool>(9)?`. `timer_start` inserts `is_break = 0` (quick-entry is never a break). Phase 4 break flow may set `is_break = 1` via a future `time_entry_update`.
+**Why:** Briefing comment said "TODO: determine break status / hardcode false" — implying the column might be absent. It is present. Reads are active now; break-write deferred.
+
+#### 2026-03-16: `project_id IS ?2` — NULL-Safe Binding in `time_entry_autocomplete`
+**By:** Reese (T025)
+**What:** Tag-lookup subquery in `time_entry_autocomplete` uses `project_id IS ?2` and `task_id IS ?3`. `rusqlite::params!` maps `Option<String>::None` to SQL NULL; `IS` evaluates `project_id IS NULL` correctly. Standard `= NULL` would silently return no rows.
+**Why:** SQL correctness. NULL-safe comparison required when filtering on nullable FK columns with optional parameters.
+
+#### 2026-03-16: IPC Contract Compliance — All Five Timer Commands
+**By:** Reese (T020–T025)
+**What:** All five command signatures (`timer_start`, `timer_stop`, `timer_get_active`, `time_entry_list`, `time_entry_autocomplete`) match `contracts/ipc-commands.md` exactly, including `is_orphaned` on `AutocompleteSuggestion` (Finch 2026-03-15 amendment).
+**Why:** Contract is authoritative. No deviations.
+
+---
+
+### Root — T027/T028/T029/T030: Blazor Frontend Phase 3
+
+#### 2026-03-16: `ITimerStateService` — `CurrentProjectId` + `CurrentTaskId` Included
+**By:** Root (T027)
+**What:** `ITimerStateService` includes `CurrentProjectId` and `CurrentTaskId` (nullable strings), present in Shaw's `TimerStateServiceTests.cs` but absent from the task prompt stub. Both propagated through `StartAsync`, `StopAsync`, `InitializeAsync`. Interface and implementation in single file `TimerStateService.cs`.
+**Why:** Shaw's tests are the TDD gate. Missing fields would fail test compilation.
+
+#### 2026-03-16: Type Name Corrections — `TimeEntryItem`, `TimeEntryAutocompleteRequest`
+**By:** Root (T027–T030)
+**What:** Task prompt used non-existent types. Corrected to actual types in `TauriIpcService.cs`: `TimeEntryListItem` → `TimeEntryItem`; `AutocompleteRequest` → `TimeEntryAutocompleteRequest`; `TimeEntryContinueRequest(id)` → `string id` directly. `result.Suggestions` is `AutocompleteSuggestion[]` — `.ToList()` added.
+**Why:** Compilation fails on missing types. Prompt was written against an earlier version of `TauriIpcService.cs`.
+
+#### 2026-03-16: Timer Tick Wiring — Cast Pattern in `App.razor`
+**By:** Root (T027/T030)
+**What:** `TauriEventService.OnTimerTick` wired in `App.razor` after `Events.InitializeAsync()` using `if (TimerService is TimerStateService ts) Events.OnTimerTick += p => ts.HandleTimerTick(p.ElapsedSeconds);`. No ticks arrive until JS shim ships (Final Phase).
+**Why:** `HandleTimerTick` is not on `ITimerStateService`. Cast to concrete type avoids interface pollution; pattern is consistent with JS shim deferral.
+
+#### 2026-03-16: ARIA Roles Confirmed — `role="timer"`, `role="listbox"`, `role="option"`
+**By:** Root (T028/T029)
+**What:** Elapsed counter uses `role="timer" aria-live="off" aria-atomic="true"`. Autocomplete dropdown uses `role="listbox"` with items `role="option"`. Continue button: `role="button" name=/continue/i`. All match Shaw's T018 Playwright selectors (2026-03-15 TDD Gate spec).
+**Why:** Shaw's tests drive UI structure. Aria roles must match to avoid test failures.
+
+#### 2026-03-16: `Components/` Directory Added; `_Imports.razor` Updated
+**By:** Root (T028/T029)
+**What:** `src/Tracey.App/Components/` created for `QuickEntryBar.razor` and `TimeEntryList.razor`. `_Imports.razor` updated with `@using Tracey.App.Components`.
+**Why:** Components not in `Pages/` or `Layout/`. New directory required. Global using added for clean razor markup.
+
+#### 2026-03-16: `SaveInlineEdit` — Stub (T030b)
+**By:** Root (T029)
+**What:** `SaveInlineEdit` in `TimeEntryList.razor` is a stub (reloads page). Actual `time_entry_update` IPC call is T030b. `time_entry_update` command not yet in `contracts/ipc-commands.md` (per 2026-03-15 Root decision — blocked on contract).
+**Why:** Cannot implement update without contracted command shape. Stub prevents compile error.
+
+#### 2026-03-16: Scroll Position — sessionStorage Stub (T029a)
+**By:** Root (T029)
+**What:** Scroll position key `tracey.entry-list.scroll` written to `sessionStorage` as placeholder `"0"`. Full `scrollTop` read/restore deferred to T029a.
+**Why:** sessionStorage key established now so T029a knows the contract. Full implementation requires JSInterop to read element scroll position.

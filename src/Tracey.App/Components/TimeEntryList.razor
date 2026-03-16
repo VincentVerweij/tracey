@@ -37,20 +37,51 @@
                             role="listitem">
                             @if (_editingId == entry.Id)
                             {
-                                <div class="entry-edit-form">
-                                    <input type="text"
-                                           value="@entry.Description"
-                                           @onblur="() => SaveInlineEdit(entry)"
-                                           aria-label="Entry description" />
-                                    <button type="button" @onclick="CancelEdit"
-                                            aria-label="Cancel edit">Cancel</button>
+                                <div class="entry-edit-form" role="form" aria-label="Edit time entry">
+                                    <div class="edit-field">
+                                        <label for="desc-@entry.Id">Description</label>
+                                        <input id="desc-@entry.Id"
+                                               type="text"
+                                               @bind="_editDescription"
+                                               @bind:event="oninput"
+                                               aria-label="Entry description"
+                                               @onblur="() => AutoSave(entry)" />
+                                    </div>
+                                    <div class="edit-times">
+                                        <div class="edit-field">
+                                            <label for="start-@entry.Id">Start</label>
+                                            <input id="start-@entry.Id"
+                                                   type="datetime-local"
+                                                   @bind="_editStarted"
+                                                   @onblur="() => AutoSave(entry)"
+                                                   aria-label="Start time" />
+                                        </div>
+                                        <div class="edit-field">
+                                            <label for="end-@entry.Id">End</label>
+                                            <input id="end-@entry.Id"
+                                                   type="datetime-local"
+                                                   @bind="_editEnded"
+                                                   @onblur="() => AutoSave(entry)"
+                                                   aria-label="End time" />
+                                        </div>
+                                    </div>
+                                    @if (_editError != null)
+                                    {
+                                        <p class="edit-error" role="alert">@_editError</p>
+                                    }
+                                    <button type="button"
+                                            class="cancel-edit-btn"
+                                            aria-label="Cancel edit"
+                                            @onclick="CancelEdit">
+                                        Cancel
+                                    </button>
                                 </div>
                             }
                             else
                             {
                                 <button type="button"
                                         class="entry-description-btn"
-                                        @onclick="() => StartInlineEdit(entry.Id)"
+                                        @onclick="() => StartInlineEdit(entry)"
                                         aria-label="@entry.Description (click to edit)">
                                     @entry.Description
                                 </button>
@@ -92,6 +123,13 @@
     private int _currentPage = 1;
     private string? _editingId;
     private ElementReference _listRef;
+
+    // Inline edit fields
+    private string _editDescription = string.Empty;
+    private DateTime _editStarted;
+    private DateTime _editEnded;
+    private string? _editError;
+    private bool _isSaving = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -157,14 +195,68 @@
         }
     }
 
-    private void StartInlineEdit(string entryId) => _editingId = entryId;
-    private void CancelEdit() => _editingId = null;
-
-    private async Task SaveInlineEdit(TimeEntryItem entry)
+    private void StartInlineEdit(TimeEntryItem entry)
     {
-        // T030b — auto-save on blur (stub for now, full impl in T030b)
+        _editingId = entry.Id;
+        _editDescription = entry.Description;
+        _editStarted = DateTime.TryParse(entry.StartedAt, null,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var s)
+            ? s.ToLocalTime() : DateTime.Now;
+        _editEnded = DateTime.TryParse(entry.EndedAt, null,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var e)
+            ? e.ToLocalTime() : DateTime.Now;
+        _editError = null;
+    }
+
+    private void CancelEdit()
+    {
         _editingId = null;
-        await LoadPage(1);
+        _editError = null;
+    }
+
+    private async Task AutoSave(TimeEntryItem entry)
+    {
+        if (_isSaving) return;
+        if (_editingId != entry.Id) return;
+        _isSaving = true;
+        _editError = null;
+
+        try
+        {
+            var startUtc = _editStarted.ToUniversalTime().ToString("o");
+            var endUtc = _editEnded.ToUniversalTime().ToString("o");
+
+            await Tauri.TimeEntryUpdateAsync(new TimeEntryUpdateRequest(
+                entry.Id,
+                _editDescription,
+                null,   // project_id — no change
+                null,   // task_id — no change
+                null,   // tag_ids — no change
+                startUtc,
+                endUtc,
+                false   // force = false; if overlap, show error
+            ));
+
+            _editingId = null;
+            await LoadPage(1);
+        }
+        catch (Exception ex) when (ex.Message.Contains("overlap_detected"))
+        {
+            _editError = "This time overlaps with another entry. Adjust the times or cancel.";
+        }
+        catch (Exception ex) when (ex.Message.Contains("invalid_time_range"))
+        {
+            _editError = "End time must be after start time.";
+        }
+        catch (Exception ex)
+        {
+            _editError = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
     }
 
     private async void OnTimerStateChanged()

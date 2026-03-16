@@ -69,6 +69,33 @@ T015/T016/T017 complete. dotnet build 0 errors, 0 warnings. **Known open item fo
 
 ---
 
+### 2026-03-16: T030b — Full Inline Edit Mode in TimeEntryList (completed)
+
+**Build result**: `Build succeeded in 4.4s — 0 Warning(s), 0 Error(s)` on `Tracey.slnx`
+
+**Files changed**:
+- `src/Tracey.App/Components/TimeEntryList.razor` — full inline edit form + AutoSave
+- `src/Tracey.App/Services/TauriIpcService.cs` — `TimeEntryUpdateAsync` + `TimeEntryUpdateRequest`
+- `specs/001-window-activity-tracker/contracts/ipc-commands.md` — `time_entry_update` contract added
+
+**Inline edit behaviour**:
+- Click completed entry row → `StartInlineEdit(TimeEntryItem entry)` captures full entry (description + both UTC timestamps converted to local `DateTime`)
+- Edit form: description `<input type="text">`, start and end `<input type="datetime-local">` — all in-place, no modal
+- Blur from any field → `AutoSave(entry)` — converts local `DateTime` back to UTC ISO string (`.ToString("o")`), calls `time_entry_update` IPC, clears `_editingId`, reloads list
+- `_isSaving` guard prevents concurrent saves on rapid tab-through
+- Overlap / invalid-time errors shown inline via `<p class="edit-error" role="alert">`; `_editingId` is NOT cleared on error — user can correct and blur again
+- Cancel button discards edits; no save call
+
+**Type corrections**:
+- `StartInlineEdit` signature changed from `(string entryId)` to `(TimeEntryItem entry)` — caller updated to pass full object
+- `SaveInlineEdit` removed; replaced by `AutoSave(TimeEntryItem entry)`
+
+**IPC additions**:
+- `time_entry_update` contract written into `ipc-commands.md` (input: id, description, project_id, task_id, tag_ids, started_at, ended_at, force; output: `{ "modified_at": ... }`; errors: not_found, invalid_time_range, overlap_detected)
+- `TimeEntryUpdateRequest` record + `TimeEntryUpdateAsync` method added to `TauriIpcService.cs` (returns `ModifiedAtResponse`, consistent with other update commands)
+
+---
+
 ### 2026-03-16: T027/T028/T029/T030 — TimerStateService + Dashboard Components (completed)
 
 **Build result**: `Build succeeded in 9.4s — 0 Warning(s), 0 Error(s)` on `Tracey.slnx`

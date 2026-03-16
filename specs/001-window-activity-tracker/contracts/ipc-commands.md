@@ -145,6 +145,32 @@ Manually create a completed time entry (no running timer created).
 
 ---
 
+### `time_entry_update`
+Update a completed time entry's fields.
+
+**Input**:
+```json
+{
+  "id":          "string (ULID)",
+  "description": "string",
+  "project_id":  "string | null",
+  "task_id":     "string | null",
+  "tag_ids":     ["string"] | null,
+  "started_at":  "string (UTC ISO 8601)",
+  "ended_at":    "string (UTC ISO 8601)",
+  "force":       "boolean (override overlap_detected warning)"
+}
+```
+
+**Output**:
+```json
+{ "modified_at": "string (UTC ISO 8601)" }
+```
+
+**Errors**: `"not_found"`, `"invalid_time_range"`, `"overlap_detected"` (warning; requires `force: true` to override)
+
+---
+
 ### `time_entry_continue`
 Start a new timer copying description, project, task, and tags from a past entry.
 
