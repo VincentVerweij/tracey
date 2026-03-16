@@ -13,7 +13,7 @@ struct IdleState {
 /// Start the idle detection background loop.
 /// Uses PlatformHooks.get_idle_seconds() — NOT tauri-plugin-system-idle (that plugin doesn't exist).
 pub fn start_idle_loop(app: AppHandle) {
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let mut state = IdleState {
             is_idle: false,
             idle_started_at: None,

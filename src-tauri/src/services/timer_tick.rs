@@ -6,7 +6,7 @@ use crate::commands::AppState;
 /// Call once from lib.rs `.setup()`. Emits `tracey://timer-tick` every second
 /// while a timer is running, with `{ elapsed_seconds, entry_id }` payload.
 pub fn start_tick_loop(app: AppHandle) {
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 

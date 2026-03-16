@@ -31,7 +31,7 @@ public class TauriIpcService
     // ── Timer ─────────────────────────────────────────────────────────────
 
     public Task<TimerStartResponse> TimerStartAsync(TimerStartRequest request) =>
-        Invoke<TimerStartResponse>("timer_start", request);
+        Invoke<TimerStartResponse>("timer_start", new { request });
 
     public Task<TimerStopResponse> TimerStopAsync() =>
         Invoke<TimerStopResponse>("timer_stop");
@@ -42,19 +42,19 @@ public class TauriIpcService
     // ── Time Entries ──────────────────────────────────────────────────────
 
     public Task<TimeEntryListResponse> TimeEntryListAsync(TimeEntryListRequest request) =>
-        Invoke<TimeEntryListResponse>("time_entry_list", request);
+        Invoke<TimeEntryListResponse>("time_entry_list", new { request });
 
     public Task<IdResponse> TimeEntryCreateManualAsync(TimeEntryCreateManualRequest request) =>
-        Invoke<IdResponse>("time_entry_create_manual", request);
+        Invoke<IdResponse>("time_entry_create_manual", new { request });
 
     public Task<TimerStartResponse> TimeEntryContinueAsync(string sourceEntryId) =>
-        Invoke<TimerStartResponse>("time_entry_continue", new { source_entry_id = sourceEntryId });
+        Invoke<TimerStartResponse>("time_entry_continue", new { request = new { source_entry_id = sourceEntryId } });
 
     public Task<ModifiedAtResponse> TimeEntryUpdateAsync(TimeEntryUpdateRequest request) =>
-        Invoke<ModifiedAtResponse>("time_entry_update", request);
+        Invoke<ModifiedAtResponse>("time_entry_update", new { request });
 
     public Task<TimeEntryAutocompleteResponse> TimeEntryAutocompleteAsync(TimeEntryAutocompleteRequest request) =>
-        Invoke<TimeEntryAutocompleteResponse>("time_entry_autocomplete", request);
+        Invoke<TimeEntryAutocompleteResponse>("time_entry_autocomplete", new { request });
 
     // ── Clients ───────────────────────────────────────────────────────────
 
@@ -62,10 +62,10 @@ public class TauriIpcService
         Invoke<ClientListResponse>("client_list", new { include_archived = includeArchived });
 
     public Task<IdResponse> ClientCreateAsync(ClientCreateRequest request) =>
-        Invoke<IdResponse>("client_create", request);
+        Invoke<IdResponse>("client_create", new { request });
 
     public Task<ModifiedAtResponse> ClientUpdateAsync(ClientUpdateRequest request) =>
-        Invoke<ModifiedAtResponse>("client_update", request);
+        Invoke<ModifiedAtResponse>("client_update", new { request });
 
     public Task<ModifiedAtResponse> ClientArchiveAsync(string id) =>
         Invoke<ModifiedAtResponse>("client_archive", new { id });
@@ -82,10 +82,10 @@ public class TauriIpcService
         Invoke<ProjectListResponse>("project_list", new { client_id = clientId, include_archived = includeArchived });
 
     public Task<IdResponse> ProjectCreateAsync(ProjectCreateRequest request) =>
-        Invoke<IdResponse>("project_create", request);
+        Invoke<IdResponse>("project_create", new { request });
 
     public Task<ModifiedAtResponse> ProjectUpdateAsync(ProjectUpdateRequest request) =>
-        Invoke<ModifiedAtResponse>("project_update", request);
+        Invoke<ModifiedAtResponse>("project_update", new { request });
 
     public Task<ModifiedAtResponse> ProjectArchiveAsync(string id) =>
         Invoke<ModifiedAtResponse>("project_archive", new { id });
@@ -102,10 +102,10 @@ public class TauriIpcService
         Invoke<TaskListResponse>("task_list", new { project_id = projectId });
 
     public Task<IdResponse> TaskCreateAsync(TaskCreateRequest request) =>
-        Invoke<IdResponse>("task_create", request);
+        Invoke<IdResponse>("task_create", new { request });
 
     public Task<ModifiedAtResponse> TaskUpdateAsync(TaskUpdateRequest request) =>
-        Invoke<ModifiedAtResponse>("task_update", request);
+        Invoke<ModifiedAtResponse>("task_update", new { request });
 
     public Task<AffectedEntriesResponse> TaskDeleteAsync(string id) =>
         Invoke<AffectedEntriesResponse>("task_delete", new { id });
@@ -143,7 +143,7 @@ public class TauriIpcService
         Invoke<IdleStatusResponse>("idle_get_status");
 
     public Task<IdleResolveResponse> IdleResolveAsync(IdleResolveRequest request) =>
-        Invoke<IdleResolveResponse>("idle_resolve", request);
+        Invoke<IdleResolveResponse>("idle_resolve", new { request });
 
     // ── Sync ──────────────────────────────────────────────────────────────
 
@@ -160,10 +160,18 @@ public class TauriIpcService
 
     private async Task<T> Invoke<T>(string command, object? args = null)
     {
-        return await _js.InvokeAsync<T>(
-            "window.__TAURI_INTERNALS__.invoke",
-            command,
-            args);
+        try
+        {
+            return await _js.InvokeAsync<T>(
+                "window.__TAURI_INTERNALS__.invoke",
+                command,
+                args);
+        }
+        catch (JSException ex) when (ex.Message.Contains("__TAURI_INTERNALS__"))
+        {
+            // Running in a plain browser without the Tauri host — return default gracefully.
+            return default!;
+        }
     }
 }
 
