@@ -191,6 +191,41 @@
 
 ---
 
+### 2026-03-16: T023/T024/T026/T030a — Manual Create, Continue, Tick Emitter, Update (cargo check PASS)
+
+**Files changed:**
+- `src-tauri/src/commands/timer.rs` — T023, T024, T030a added; `timer_start` refactored
+- `src-tauri/src/services/timer_tick.rs` — new file (T026)
+- `src-tauri/src/services/mod.rs` — `pub mod timer_tick;` added
+- `src-tauri/src/lib.rs` — `.setup()` wires tick loop; 3 new commands registered
+
+**T023 — `time_entry_create_manual`**
+- Validates `started_at < ended_at`
+- Overlap check (skipped if `force: true`): `started_at < ?2 AND ended_at > ?1`
+- INSERT uses exact schema columns including `device_id` (COMPUTERNAME env var, fallback "local") and `is_break = 0`
+- 9 bound params: id, description, project_id, task_id, started_at, ended_at, device_id, created_at, modified_at
+
+**T024 — `time_entry_continue`**
+- Refactored `timer_start` to call private `insert_new_timer(conn, description, project_id, task_id, tag_ids, now) -> (id, started_at)`
+- Both `timer_start` and `time_entry_continue` call `insert_new_timer`; `stopped_entry` assembled by the caller
+- Borrow-checker gotcha: `tag_stmt.query_map(...)?` chain inside a block fails with E0597 because the `?` operator creates a `ControlFlow` temporary that extends `tag_stmt`'s borrow. Fix: bind collect result to named `x` before block end (`let x = ...; x`), so MappedRows is fully consumed before tag_stmt drops.
+
+**T026 — `tracey://timer-tick` emitter**
+- `services/timer_tick.rs`: `tokio::spawn` in `.setup()` hook; polls DB every 1 second
+- Lock released before each `await` — MutexGuard dropped in inner block, not held across sleep
+- `tauri::Emitter` + `tauri::Manager` traits both required for `app.emit()` and `app.state::<T>()`
+- Emits only when a running timer exists (`ended_at IS NULL`); silent when idle
+
+**T030a — `time_entry_update`**
+- `Option<Option<String>>` for nullable field updates (absent = don't touch, `null` = clear, value = set)
+- Uses custom `deserialize_option_nullable` fn with `#[serde(default, deserialize_with = "...")]` — no extra crates needed
+- Overlap check excludes self: `WHERE id != ?1`
+- Tag update uses delete-then-insert pattern
+
+**cargo check result: PASS** — 19 dead_code warnings (all pre-existing stubs), zero errors.
+
+---
+
 ### 2026-03-15: Phase 2 Session Completion Note (Scribe)
 
 T012 confirmed complete: first-launch init runs inside `db::open()` immediately after migrations. Creates `{exe_dir}/screenshots/` directory (non-fatal on failure) and seeds `user_preferences` with 12 explicit column values. Idempotent — guarded by `COUNT(*)` check. T011, T013, T014, T017b also complete this session. cargo check 0 errors across all tasks.

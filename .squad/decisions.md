@@ -404,3 +404,70 @@
 **By:** Root (T029)
 **What:** Scroll position key `tracey.entry-list.scroll` written to `sessionStorage` as placeholder `"0"`. Full `scrollTop` read/restore deferred to T029a.
 **Why:** sessionStorage key established now so T029a knows the contract. Full implementation requires JSInterop to read element scroll position.
+
+---
+
+### Reese  Phase 3 Batch 2 (2026-03-16)
+
+#### 2026-03-16: Overlap Detection Query  Create vs Update
+**By:** Reese (T023, T030a)
+**What:** Two variants of the overlap query. Create: `SELECT COUNT(*) FROM time_entries WHERE ended_at IS NOT NULL AND started_at < ?2 AND ended_at > ?1`. Update adds `id != ?1` to exclude self. Bypassed when `force: true`.
+**Why:** Two intervals overlap if `A.start < B.end AND A.end > B.start`. Active timer (NULL ended_at) is never included. `force` flag allows override.
+
+#### 2026-03-16: Timer-Tick Emitter  `tokio::spawn` in `.setup()` (T026)
+**By:** Reese (T026)
+**What:** `services::timer_tick::start_tick_loop(app.handle().clone())` called inside Tauri's `.setup()` hook. `AppHandle` is `Clone + Send + 'static`, safe to move into spawned task. `MutexGuard<rusqlite::Connection>` must be dropped before any `.await`  inner `{}` block holds lock, computes `tick_payload: Option<Value>`, drops guard, then `app.emit()` called outside block. Requires `use tauri::{Emitter, Manager}` in `timer_tick.rs`.
+**Why:** Cleanest pattern for background async tasks in Tauri v2. Guard drop discipline prevents deadlock on await.
+
+#### 2026-03-16: device_id in Manual Create  COMPUTERNAME Env Var (T023)
+**By:** Reese (T023)
+**What:** `std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".to_string())` used in all insert paths (timer_start, time_entry_create_manual). Manual entries carry the ID of the creating device.
+**Why:** `device_id TEXT NOT NULL` has no DEFAULT. Cross-device manual-create not in scope; current device is correct attribution.
+
+#### 2026-03-16: `insert_new_timer` Shared Helper Refactor (T024)
+**By:** Reese (T024)
+**What:** `#[tauri::command]` fns cannot be called directly (State<'_, T> not hand-constructible). Extracted `insert_new_timer(conn: &rusqlite::Connection, ...)` as a private helper returning `Result<(String, String), String>`. Both `timer_start` and `time_entry_continue` call it. Borrow-checker fix: bind fully-consumed result (`let x: Vec<String> = stmt.query_map(...)?.filter_map(|r| r.ok()).collect(); x`) before block end to release borrow on statement.
+**Why:** Code reuse without Tauri command call. E0597 fix: `collect()` consumes iterator and releases borrow before drop.
+
+#### 2026-03-16: `Option<Option<T>>` for Nullable Patch Fields (T030a)
+**By:** Reese (T030a)
+**What:** Custom `deserialize_option_nullable` fn + `#[serde(default, deserialize_with = "...")]`. Absent field  `None` (don't change). `null`  `Some(None)` (clear). Value  `Some(Some(v))` (set). `unwrap_or(curr_value)` implements merge. No extra crates.
+**Why:** Standard serde cannot distinguish absent from null for `Option<T>`. This pattern is the minimal inline solution.
+
+---
+
+### Root  T030b (2026-03-16)
+
+#### 2026-03-16: Auto-Save on Blur  No Save Button (T030b)
+**By:** Root (T030b)
+**What:** `@onblur` on each field (description, start, end) triggers save. `_isSaving` bool guards concurrent saves when user tabs through all fields rapidly. On error, `_editingId` is NOT cleared  user sees inline error and can retry. Cancel discards.
+**Why:** Matches UX tone guide (automatic persistence). Shaw's T030c verifies Tab triggers save.
+
+#### 2026-03-16: DateTime UTC  Local Conversion (T030b)
+**By:** Root (T030b)
+**What:** Open for edit: parse UTC ISO string with `DateTimeStyles.RoundtripKind`, call `.ToLocalTime()` to populate `<input type="datetime-local">`. Save: call `.ToUniversalTime().ToString("o")` before IPC send.
+**Why:** `<input type="datetime-local">` has no timezone concept. User edits wall-clock; Rust stores UTC. Pure C#  no JS interop needed.
+
+#### 2026-03-16: Overlap/Invalid-Time Error Display (T030b)
+**By:** Root (T030b)
+**What:** `ex.Message.Contains("overlap_detected")`  "This time overlaps with another entry. Adjust the times or cancel." `"invalid_time_range"`  "End time must be after start time." Others  "Save failed: {ex.Message}". Rendered as `<p class="edit-error" role="alert">`.
+**Why:** Tauri IPC exceptions propagate as JS Error objects with Rust error code in message string. `role="alert"` announces errors to screen readers immediately.
+
+#### 2026-03-16: `time_entry_update` IPC Contract Added (T030b)
+**By:** Root (T030b)
+**What:** Contract added to `contracts/ipc-commands.md`. Input: `id`, `description`, `project_id?`, `task_id?`, `tag_ids?`, `started_at`, `ended_at`, `force` (bool). Output: `{ "modified_at": "string" }`. Errors: `not_found`, `invalid_time_range`, `overlap_detected`.
+**Why:** Deferred from 2026-03-15 pending Finch spec. Root added based on T030a task description and existing create_manual pattern.
+
+---
+
+### Shaw  Phase 3 Batch 2 (2026-03-16)
+
+#### 2026-03-16: 7 New E2E Tests  Total 27 in timer.spec.ts (T025a, T029a, T030c)
+**By:** Shaw (T025a, T029a, T030c)
+**What:** 3 new `test.describe` blocks appended to `timer.spec.ts` (was 20 tests, now 27). T025a: 2 orphaned-autocomplete tests (self-guard if no pre-seeded orphan data). T029a: 1 scroll-preservation test (self-guard if list not scrollable). T030c: 4 inline-edit tests (self-guard if no completed entry visible). All self-guard with early return rather than hard-fail.
+**Why:** Pre-condition dependencies require pre-seeded fixtures not yet wired. Self-guarding prevents CI noise while contracts are being built.
+
+#### 2026-03-16: Selector Contracts for Root (T030c)
+**By:** Shaw (T030c)
+**What:** Shaw's tests require: `.autocomplete-dropdown`, `.suggestion-item.is-orphaned`, `.orphan-warning[title]` (title contains "no longer exists"), `.time-entry-list`, `.entry-description-btn`, `.entry-edit-form`, `input[aria-label="Entry description"]`, `input[aria-label="Start time"]`, `input[aria-label="End time"]`, `button` matching `/cancel edit/i`. TypeScript: 0 errors.
+**Why:** Shaw's selectors drive Root's DOM contracts. Both sides must honour these for tests to pass.

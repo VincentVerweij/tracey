@@ -17,8 +17,9 @@ pub fn run() {
         .manage(AppState {
             db: std::sync::Mutex::new(conn),
         })
-        .setup(|_app| {
+        .setup(|app| {
             log::info!("Tracey starting up");
+            services::timer_tick::start_tick_loop(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -30,6 +31,9 @@ pub fn run() {
             commands::timer::timer_get_active,
             commands::timer::time_entry_list,
             commands::timer::time_entry_autocomplete,
+            commands::timer::time_entry_create_manual,
+            commands::timer::time_entry_continue,
+            commands::timer::time_entry_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

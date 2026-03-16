@@ -1,2 +1,2 @@
 pub mod logger;
-// Other background services — implemented in later tasks
+pub mod timer_tick;

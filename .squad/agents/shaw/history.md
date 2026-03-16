@@ -69,3 +69,12 @@ Additional tests beyond the 5 spec scenarios (from tasks.md):
 - T025a: orphaned autocomplete indicator (delete project → autocomplete shows orphan warning on suggestion)
 - T029a: scroll-position preserved after navigation away and back
 - T030c: inline edit auto-save on blur (no manual save button needed)
+
+### 2026-03-16: T025a / T029a / T030c — Phase 3 Batch 2 tests appended to timer.spec.ts
+- **7 tests added** across 3 new `test.describe` blocks; total timer.spec.ts count now 27 (20 original + 7 new)
+- T025a (2 tests): orphaned autocomplete warning indicator + click-through still starts timer. Both tests self-guard with conditional checks (no orphaned state → console.log, no hard skip). Requires pre-seeded data: create entry with project → delete project → type description.
+- T029a (1 test): scroll-position preservation. Self-guards: skips if `.time-entry-list` absent, skips if content not tall enough to scroll (scrollTop < 10). Requires pre-existing entries to produce scrollable list.
+- T030c (4 tests): inline edit opens → auto-save on Tab blur (no Save button) → Cancel discards → overlap error shows start/end inputs. All 4 tests self-guard with early return if no completed entries present.
+- TypeScript compilation: **0 errors** (`npx tsc --noEmit` clean after append)
+- Pre-condition dependencies: all three groups require pre-existing DB state; automated coverage gated on Fusco wiring up the seeded test fixture
+- Selector contracts Root must honour: `.autocomplete-dropdown`, `.suggestion-item.is-orphaned`, `.orphan-warning[title]`, `.time-entry-list`, `.entry-description-btn`, `.entry-edit-form`, `input[aria-label="Entry description"]`, `input[aria-label="Start time"]`, `input[aria-label="End time"]`, `button[name="cancel edit"]`
