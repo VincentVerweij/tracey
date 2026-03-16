@@ -12,14 +12,20 @@ pub fn run() {
     commands::init_health();
     let conn = db::open().expect("DB init failed");
 
+    use platform::windows::WindowsPlatformHooks;
+    use std::sync::Arc;
+    let platform: Arc<dyn platform::PlatformHooks + Send + Sync> = Arc::new(WindowsPlatformHooks);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .manage(AppState {
             db: std::sync::Mutex::new(conn),
+            platform,
         })
         .setup(|app| {
             log::info!("Tracey starting up");
             services::timer_tick::start_tick_loop(app.handle().clone());
+            services::idle_service::start_idle_loop(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -34,6 +40,8 @@ pub fn run() {
             commands::timer::time_entry_create_manual,
             commands::timer::time_entry_continue,
             commands::timer::time_entry_update,
+            commands::idle::idle_get_status,
+            commands::idle::idle_resolve,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

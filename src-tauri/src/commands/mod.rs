@@ -1,13 +1,17 @@
+pub mod idle;
 pub mod timer;
 
 use tauri::State;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use crate::models::UserPreferences;
+use crate::platform::PlatformHooks;
 
-/// Application-wide shared state holding the DB connection.
+/// Application-wide shared state holding the DB connection and platform hooks.
 /// Wrapped in Mutex so Tauri commands (which run concurrently) get exclusive access.
 pub struct AppState {
     pub db: std::sync::Mutex<rusqlite::Connection>,
+    pub platform: Arc<dyn PlatformHooks + Send + Sync>,
 }
 
 // ─────────────────────────────────────────────────────────────

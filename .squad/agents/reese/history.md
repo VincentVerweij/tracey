@@ -229,3 +229,45 @@
 ### 2026-03-15: Phase 2 Session Completion Note (Scribe)
 
 T012 confirmed complete: first-launch init runs inside `db::open()` immediately after migrations. Creates `{exe_dir}/screenshots/` directory (non-fatal on failure) and seeds `user_preferences` with 12 explicit column values. Idempotent — guarded by `COUNT(*)` check. T011, T013, T014, T017b also complete this session. cargo check 0 errors across all tasks.
+
+---
+
+### 2026-03-16: T032/T033/T034 — IdleService, idle_get_status, idle_resolve (cargo check PASS)
+
+**Files changed:**
+- `src-tauri/src/commands/mod.rs` — `platform: Arc<dyn PlatformHooks + Send + Sync>` added to `AppState`; `pub mod idle;` added
+- `src-tauri/src/lib.rs` — constructs `WindowsPlatformHooks` wrapped in `Arc`, passes to `AppState`; wires `idle_service::start_idle_loop` in `.setup()`; registers `idle_get_status` + `idle_resolve`
+- `src-tauri/src/services/idle_service.rs` — new file (T032)
+- `src-tauri/src/services/mod.rs` — `pub mod idle_service;` added
+- `src-tauri/src/commands/idle.rs` — new file (T033 + T034)
+
+**Platform hooks thread safety (Task A):**
+- `platform/mod.rs` already had `Send + Sync` bounds on `PlatformHooks` trait from T017b — no change required.
+- `WindowsPlatformHooks` is a zero-field struct; bounds satisfied implicitly.
+
+**AppState platform injection (Task B):**
+- `AppState` now holds `pub platform: Arc<dyn PlatformHooks + Send + Sync>`
+- Constructed in `lib.rs::run()` before builder; `Arc::new(WindowsPlatformHooks)` cast to trait object
+- `use platform::windows::WindowsPlatformHooks` is `#[cfg(target_os = "windows")]` — safe for current Windows-only target
+
+**T032 — IdleService (`services/idle_service.rs`):**
+- Background `tokio::spawn` loop; polls every 1 second
+- Never holds `Mutex<Connection>` across `await` — conn locked and dropped in inner sync block, same pattern as `timer_tick.rs`
+- Reads `inactivity_timeout_seconds` from `user_preferences` each tick (supports runtime changes)
+- Idle transition (not_idle → idle): emits `tracey://idle-detected` **only** when `had_active_timer = true`
+- Active return (idle → not_idle): resets state silently (decision: no prompt if no running timer on return)
+- `get_current_idle_status()` public fn queries platform directly — used by `idle_get_status` command, not the loop's internal state
+- `idle_started_at` computed as `Utc::now() - Duration::seconds(idle_secs)` — clock-accurate even after sleep
+
+**T033 — `idle_get_status` (`commands/idle.rs`):**
+- Reads threshold from `user_preferences`, calls `idle_service::get_current_idle_status(state.platform.as_ref(), threshold)`
+- Returns `IdleStatusResponse { is_idle, idle_seconds, idle_since: Option<String> }`
+
+**T034 — `idle_resolve` (`commands/idle.rs`):**
+- Four resolution branches: `"keep"` (no-op), `"break"`, `"meeting"`, `"specify"`
+- Timer stopped at `idle_started_at` (not at resolution time) — matches decision in decisions.md
+- `insert_entry` helper: full 10-column INSERT with `device_id` from `COMPUTERNAME` env var (fallback `"local"`) — matches `timer.rs` exact pattern
+- `is_break = TRUE` only for `"break"` resolution; false for `"meeting"` and `"specify"`
+- `"specify"` validates `entry_details` present or returns error; inserts `time_entry_tags` junction rows
+
+**cargo check result: PASS** — 17 dead_code warnings (all pre-existing stubs), zero errors.

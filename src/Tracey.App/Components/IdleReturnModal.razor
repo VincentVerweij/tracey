@@ -1,0 +1,147 @@
+@inject TauriIpcService Tauri
+@implements IDisposable
+
+@if (_isVisible)
+{
+    <div class="modal-backdrop" aria-hidden="true"></div>
+    <dialog class="idle-modal"
+            open
+            role="dialog"
+            aria-modal="true"
+            aria-label="You're back"
+            aria-describedby="idle-modal-desc">
+
+        <h2 class="idle-modal-title">You're back</h2>
+        <p id="idle-modal-desc" class="idle-duration-text">
+            @_durationText
+        </p>
+
+        @if (_showSpecifyInput)
+        {
+            <div class="specify-form">
+                <label for="specify-desc">What were you doing?</label>
+                <input id="specify-desc"
+                       type="text"
+                       @bind="_specifyDescription"
+                       aria-label="What were you doing?"
+                       placeholder="e.g. Reviewing architecture docs"
+                       autofocus />
+                <div class="specify-actions">
+                    <button type="button"
+                            class="btn-primary"
+                            aria-label="Save"
+                            @onclick="SubmitSpecify">Save</button>
+                    <button type="button"
+                            class="btn-secondary"
+                            @onclick='() => _showSpecifyInput = false'>Back</button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="idle-options" role="group" aria-label="What happened while you were away?">
+                <button type="button" class="idle-option-btn" @onclick='() => Resolve("break")'>
+                    Break
+                    <span class="option-hint">Stop timer here, add a break</span>
+                </button>
+                <button type="button" class="idle-option-btn" @onclick='() => Resolve("meeting")'>
+                    Meeting
+                    <span class="option-hint">Log as a meeting</span>
+                </button>
+                <button type="button" class="idle-option-btn" @onclick='() => _showSpecifyInput = true'>
+                    Specify
+                    <span class="option-hint">I'll tell you what I was doing</span>
+                </button>
+                <button type="button" class="idle-option-btn" @onclick='() => Resolve("keep")'>
+                    Keep
+                    <span class="option-hint">Pretend I was still working</span>
+                </button>
+            </div>
+        }
+    </dialog>
+}
+
+@code {
+    [Parameter] public EventCallback OnResolved { get; set; }
+
+    private bool _isVisible = false;
+    private bool _showSpecifyInput = false;
+    private string _specifyDescription = string.Empty;
+    private string _idleStartedAt = string.Empty;
+    private string _idleEndedAt = string.Empty;
+    private string _durationText = string.Empty;
+
+    /// Called by Dashboard when tracey://idle-detected fires.
+    public void Show(string idleSince)
+    {
+        _idleStartedAt = idleSince;
+        _idleEndedAt = DateTime.UtcNow.ToString("o");
+        _isVisible = true;
+        _showSpecifyInput = false;
+        _specifyDescription = string.Empty;
+
+        if (DateTime.TryParse(idleSince, null,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var start))
+        {
+            var duration = DateTime.UtcNow - start;
+            _durationText = duration.TotalMinutes >= 60
+                ? $"You were away for {(int)duration.TotalHours}h {duration.Minutes}m"
+                : $"You were away for {(int)duration.TotalMinutes} minute{((int)duration.TotalMinutes == 1 ? "" : "s")}";
+        }
+        else
+        {
+            _durationText = "You were away for a while";
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task Resolve(string resolution)
+    {
+        try
+        {
+            await Tauri.IdleResolveAsync(new IdleResolveRequest(
+                resolution,
+                _idleStartedAt,
+                _idleEndedAt,
+                null
+            ));
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[IdleModal] idle_resolve failed: {ex.Message}");
+        }
+        finally
+        {
+            _isVisible = false;
+            await OnResolved.InvokeAsync();
+        }
+    }
+
+    private async Task SubmitSpecify()
+    {
+        if (string.IsNullOrWhiteSpace(_specifyDescription)) return;
+
+        try
+        {
+            await Tauri.IdleResolveAsync(new IdleResolveRequest(
+                "specify",
+                _idleStartedAt,
+                _idleEndedAt,
+                new IdleEntryDetails(_specifyDescription, null, null, [])
+            ));
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[IdleModal] specify resolve failed: {ex.Message}");
+        }
+        finally
+        {
+            _isVisible = false;
+            _showSpecifyInput = false;
+            await OnResolved.InvokeAsync();
+        }
+    }
+
+    public void Dispose() { }
+}

@@ -1,6 +1,7 @@
 @page "/dashboard"
 @page "/"
 @inject ITimerStateService Timer
+@inject TauriEventService Events
 @implements IDisposable
 
 <PageTitle>Tracey</PageTitle>
@@ -10,13 +11,34 @@
     <TimeEntryList @ref="_entryList" />
 </div>
 
+<IdleReturnModal @ref="_idleModal" OnResolved="HandleIdleResolved" />
+
 @code {
     private TimeEntryList? _entryList;
+    private IdleReturnModal? _idleModal;
 
     protected override async Task OnInitializedAsync()
     {
         if (Timer is TimerStateService ts)
             await ts.InitializeAsync();
+
+        Events.OnIdleDetected += HandleIdleDetected;
+    }
+
+    private void HandleIdleDetected(IdleDetectedPayload payload)
+    {
+        if (!payload.HadActiveTimer) return;
+
+        InvokeAsync(() =>
+        {
+            _idleModal?.Show(payload.IdleSince);
+            StateHasChanged();
+        });
+    }
+
+    private async Task HandleIdleResolved()
+    {
+        await RefreshList();
     }
 
     private async Task RefreshList()
@@ -25,5 +47,8 @@
             await _entryList.LoadPage(1);
     }
 
-    public void Dispose() { }
+    public void Dispose()
+    {
+        Events.OnIdleDetected -= HandleIdleDetected;
+    }
 }

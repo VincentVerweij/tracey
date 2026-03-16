@@ -70,6 +70,17 @@ Additional tests beyond the 5 spec scenarios (from tasks.md):
 - T029a: scroll-position preserved after navigation away and back
 - T030c: inline edit auto-save on blur (no manual save button needed)
 
+### 2026-03-16: T031 — US2 Idle Detection Playwright E2E tests (idle-detection.spec.ts)
+- **7 tests written** in `tests/e2e/specs/idle-detection.spec.ts` (new file)
+- All 7 tests currently FAIL with `net::ERR_CONNECTION_REFUSED` — app not running during test authoring (TDD gate: correct)
+- Tests cover all US2 acceptance scenarios: no-timer silent dismiss, modal appears after threshold, Keep, Break, Meeting, Specify, and preference-controlled threshold
+- Idle modal locator: `getByRole('dialog', { name: /idle|away|back/i })`
+- Specify flow: clicking Specify reveals a `role="textbox"` with `name=/description|what were you doing/i` inside the modal; user fills + clicks Save/Confirm
+- All 4 option buttons: `role="button"` with names `/break/i`, `/meeting/i`, `/specify/i`, `/keep/i`
+- `preferences_update` IPC used to set `inactivity_timeout_seconds: 5` for fast test runs (wrapped in `setInactivityTimeout()` helper)
+- TypeScript compilation: **0 errors** (`npx tsc --noEmit` — exit code 0)
+- Selector contracts Root must honour: `role="dialog"` with accessible name matching `/idle|away|back/i`, `role="timer"` visible when timer running, `role="link"` with name `/timeline/i` for nav
+
 ### 2026-03-16: T025a / T029a / T030c — Phase 3 Batch 2 tests appended to timer.spec.ts
 - **7 tests added** across 3 new `test.describe` blocks; total timer.spec.ts count now 27 (20 original + 7 new)
 - T025a (2 tests): orphaned autocomplete warning indicator + click-through still starts timer. Both tests self-guard with conditional checks (no orphaned state → console.log, no hard skip). Requires pre-seeded data: create entry with project → delete project → type description.

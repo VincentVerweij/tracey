@@ -78,6 +78,35 @@ T015/T016/T017 complete. dotnet build 0 errors, 0 warnings. **Known open item fo
 - `src/Tracey.App/Services/TauriIpcService.cs` — `TimeEntryUpdateAsync` + `TimeEntryUpdateRequest`
 - `specs/001-window-activity-tracker/contracts/ipc-commands.md` — `time_entry_update` contract added
 
+---
+
+### 2026-03-16: T035/T036 — IdleReturnModal + Dashboard idle wiring (completed)
+
+**Build result**: `Build succeeded in 6.1s — 0 Warning(s), 0 Error(s)` on `Tracey.slnx`
+
+**Task A — IPC verification**: `IdleGetStatusAsync()` and `IdleResolveAsync(IdleResolveRequest)` already existed with correct signatures. `IdleResolveRequest`, `IdleEntryDetails`, `IdleResolveResponse`, `IdleStatusResponse` all present. No changes to `TauriIpcService.cs` needed.
+
+**Task B (T035) — `IdleReturnModal.razor`** (`src/Tracey.App/Components/`):
+- `<dialog>` element with `role="dialog"` and `aria-label="You're back"` — matches Shaw's Playwright locator `role="dialog" name=/idle|away|back/i`
+- Displays human-readable idle duration computed from `idle_since` UTC timestamp
+- Four buttons in order: Break / Meeting / Specify / Keep
+- "Specify" reveals inline description input (`aria-label="What were you doing?"`) — matches Shaw's locator `role="textbox" name=/description|what were you doing/i`
+- All `@onclick` lambdas with string literals use single-quote outer attribute to avoid Razor conflicting-quote parse error
+- Calls `IdleResolveAsync` on selection; raises `OnResolved` EventCallback for Dashboard refresh
+- `Dispose()` is a no-op (no subscriptions owned by this component)
+
+**Task C (T036) — `Dashboard.razor`**:
+- Added `@inject TauriEventService Events`
+- Added `<IdleReturnModal @ref="_idleModal" OnResolved="HandleIdleResolved" />`
+- `OnInitializedAsync` subscribes `Events.OnIdleDetected += HandleIdleDetected`
+- `HandleIdleDetected` guards on `payload.HadActiveTimer`; calls `_idleModal?.Show(payload.IdleSince)` inside `InvokeAsync` for thread-safe component update
+- `Dispose()` unsubscribes `Events.OnIdleDetected -= HandleIdleDetected`
+
+**Idle modal pattern established**:
+- Modal is a child component with a `Show(string idleSince)` method called by the parent page
+- Parent subscribes/unsubscribes the Tauri event in `OnInitializedAsync`/`Dispose`
+- Resolution always flows: user picks option → `IdleResolveAsync` → `OnResolved.InvokeAsync()` → Dashboard `RefreshList()`
+
 **Inline edit behaviour**:
 - Click completed entry row → `StartInlineEdit(TimeEntryItem entry)` captures full entry (description + both UTC timestamps converted to local `DateTime`)
 - Edit form: description `<input type="text">`, start and end `<input type="datetime-local">` — all in-place, no modal

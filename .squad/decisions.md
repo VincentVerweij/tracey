@@ -471,3 +471,77 @@
 **By:** Shaw (T030c)
 **What:** Shaw's tests require: `.autocomplete-dropdown`, `.suggestion-item.is-orphaned`, `.orphan-warning[title]` (title contains "no longer exists"), `.time-entry-list`, `.entry-description-btn`, `.entry-edit-form`, `input[aria-label="Entry description"]`, `input[aria-label="Start time"]`, `input[aria-label="End time"]`, `button` matching `/cancel edit/i`. TypeScript: 0 errors.
 **Why:** Shaw's selectors drive Root's DOM contracts. Both sides must honour these for tests to pass.
+
+---
+
+## Phase 4 — US2 Idle Detection Decisions (2026-03-16)
+
+### Shaw — T031: Idle Detection E2E Tests
+
+#### 2026-03-16: 7 Failing E2E Tests — TDD Gate Open (T031)
+**By:** Shaw (T031)
+**What:** 7 new tests in `tests/e2e/specs/idle-detection.spec.ts`. All currently fail with `net::ERR_CONNECTION_REFUSED` (correct TDD state — app not running during authoring). Tests cover: no-modal-when-no-timer guard, modal appears + 4 buttons present, Keep option, Break option, Meeting option, Specify inline flow, threshold-from-preferences. TypeScript: 0 errors. `preferences_update` with `{ update: { inactivity_timeout_seconds: 5 } }` used to force fast detection. `timer_stop` called with try/catch at test start (ignores `"no_active_timer"` error). `window.__TAURI_INTERNALS__.invoke(...)` used in `page.evaluate()` with `@ts-ignore` (Tauri JS types unavailable in test env).
+**Why:** TDD gate: tests are the acceptance criteria. Root's modal must honour `role="dialog" name=/idle|away|back/i`, four `role="button"` options, `role="textbox" name=/description|what were you doing/i` for Specify inline flow.
+
+---
+
+### Reese — T032/T033/T034: IdleService + IPC Commands
+
+#### 2026-03-16: `AppState` holds `Arc<dyn PlatformHooks + Send + Sync>` (T032)
+**By:** Reese (T032)
+**What:** `AppState.platform` is `Arc<dyn PlatformHooks + Send + Sync>`, constructed in `lib.rs::run()` as `Arc::new(WindowsPlatformHooks)`. Trait already had `Send + Sync` bounds from T017b. `Arc` enables sharing between idle loop tokio thread and concurrent Tauri command handlers without copying.
+**Why:** Idle loop runs on a spawned tokio task; command handlers run concurrently. `Arc<dyn Trait + Send + Sync>` is the standard Rust pattern for shared trait objects across async tasks.
+
+#### 2026-03-16: Idle Loop — MutexGuard Dropped Before `.await` (T032)
+**By:** Reese (T032)
+**What:** `start_idle_loop` follows `timer_tick.rs` pattern: all DB access (`Mutex<Connection>`) and platform queries happen inside a synchronous inner block. `MutexGuard` is dropped before `tokio::time::sleep().await`. Holding a `std::sync::MutexGuard` across an `.await` point causes a compile error with `tokio::spawn`.
+**Why:** Mandatory. Holding `MutexGuard` across `.await` is a compile error under `tokio::spawn`. Same discipline as `timer_tick.rs`.
+
+#### 2026-03-16: `idle_resolve` — `ended_at` Set to `idle_started_at` (Not Resolution Time) (T034)
+**By:** Reese (T034)
+**What:** When any resolution branch stops the running timer ("break", "meeting", "specify"), `ended_at` is set to `idle_started_at` — the moment the user went idle — not `Utc::now()` at resolution time. New entry (break/meeting/specified) starts at `idle_started_at`, ends at `idle_ended_at` (return-from-idle timestamp from frontend).
+**Why:** Accurate time-entry boundaries. The user was productively working until idle — not until they clicked a button.
+
+#### 2026-03-16: `device_id` in Idle Inserts — `COMPUTERNAME` Env Var (T034)
+**By:** Reese (T034)
+**What:** `device_id = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".to_string())` in `idle_resolve` `insert_entry` helper calls. Consistent with `timer.rs::insert_new_timer` pattern.
+**Why:** `device_id TEXT NOT NULL`. Missing from initial briefing; required by schema. Same interim strategy as T020.
+
+#### 2026-03-16: `idle_get_status` — Live Platform Query, Not Loop State (T033)
+**By:** Reese (T033)
+**What:** `idle_get_status` calls `idle_service::get_current_idle_status(state.platform.as_ref(), threshold)` — a fresh `GetLastInputInfo`+`GetTickCount64` query at command invocation time. Loop's internal `IdleState` is private and not shared.
+**Why:** Avoids shared-state complexity. Accurate at invocation time. Frontend polling/events do not depend on stale loop state.
+
+#### 2026-03-16: CRITICAL — Direct Win32, NOT `tauri-plugin-system-idle` (T032)
+**By:** Reese (T032)
+**What:** Idle detection uses direct `GetLastInputInfo` + `GetTickCount64` Win32 calls in `platform/windows.rs` via `PlatformHooks::get_idle_seconds()`. `tauri-plugin-system-idle` does NOT exist on crates.io and is NOT used.
+**Why:** Plugin unavailable (confirmed T007/Control decision 2026-03-15). Direct Win32 already implemented in `platform/windows.rs`. `GetTickCount64` mandatory to avoid 32-bit rollover after ~49 days of uptime.
+
+---
+
+### Root — T035/T036: IdleReturnModal + Dashboard Wiring
+
+#### 2026-03-16: Modal ARIA — `role="dialog" aria-label="You're back"` (T035)
+**By:** Root (T035)
+**What:** `<dialog role="dialog" aria-modal="true" aria-label="You're back" aria-describedby="idle-modal-desc">`. `aria-label="You're back"` matches Shaw's Playwright locator `role="dialog" name=/idle|away|back/i`. Duration text is `aria-describedby` target so screen readers announce context after heading.
+**Why:** Shaw's T031 accessibility selectors are the acceptance contract. Modal name must match the regex.
+
+#### 2026-03-16: Specify Flow — Inline, Not New Modal (T035)
+**By:** Root (T035)
+**What:** "Specify" reveals inline form within the same `<dialog>`: `_showSpecifyInput = true` swaps button group for text input + Save/Back. `aria-label="What were you doing?"` on input matches Shaw's selector `role="textbox" name=/description|what were you doing/i`. "Back" resets `_showSpecifyInput = false` without calling resolve. "Save" calls `IdleResolveAsync` with `resolution = "specify"`.
+**Why:** Shaw's test asserts `role="textbox"` within the same modal dialog. Navigation or second modal would break the test and produce poor UX.
+
+#### 2026-03-16: `@onclick` Razor Quote Escaping — Single-Quote Outer (T035)
+**By:** Root (T035)
+**What:** `@onclick` lambdas with string literal arguments use single-quote outer syntax: `@onclick='() => Resolve("break")'`. Applies to all four resolution buttons.
+**Why:** Razor parser conflict bug: inner double-quotes inside `@onclick="..."` attribute cause parser failure. Single-quote outer avoids the conflict.
+
+#### 2026-03-16: Dashboard Wiring — `HadActiveTimer` Guard + `InvokeAsync` (T036)
+**By:** Root (T036)
+**What:** `TauriEventService.OnIdleDetected` subscribed in `OnInitializedAsync`, unsubscribed in `Dispose()`. Handler guards on `payload.HadActiveTimer` — no modal when no active timer. `InvokeAsync` wraps `Show()` + `StateHasChanged()` for Blazor thread safety. `OnResolved` triggers `RefreshList()` → `TimeEntryList.LoadPage(1)`.
+**Why:** Spec and `now.md` decision: no modal if no active timer. `InvokeAsync` required when Tauri events arrive on non-Blazor threads.
+
+#### 2026-03-16: `idle_ended_at` Captured at `Show()` Time (T036)
+**By:** Root (T036)
+**What:** `idle_ended_at` is `DateTime.UtcNow.ToString("o")` captured at `Show()` invocation time — not at button-click time. Passed as parameter to `IdleResolveAsync`.
+**Why:** Avoids drift if user reads the modal slowly. Arrival moment is the semantically correct return-from-idle timestamp.
