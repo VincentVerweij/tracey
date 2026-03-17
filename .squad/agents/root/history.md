@@ -199,6 +199,32 @@ Fixed 4 incorrect `[JsonPropertyName]` attributes in `TauriIpcService.cs`:
 
 All other fields in both records were confirmed correct against the IPC contract.
 
+---
+
+### 2026-03-17: T049 — Timeline.razor C# Plumbing (completed)
+
+**Build result**: `Build succeeded — 0 Error(s), 1 pre-existing Warning(s)` on `Tracey.slnx`
+
+**ScreenshotItem DTO**: Already present in `TauriIpcService.cs` from Phase 2 — no change needed.
+
+**ScreenshotListAsync fix**: Existing wrapper passed `new { from, to }` directly; corrected to `new { request = new { from, to } }` per IPC contract (`{ request: { from, to } }`).
+
+**ErrorPayload update** (`TauriEventService.cs`): Existing record had `message` field only; updated to match contract: `{ component, event, error }` — now has `Component`, `Event`, `Error` properties. `OnError` event declaration unchanged.
+
+**Timeline.razor** (`src/Tracey.App/Pages/Timeline.razor`): Replaced UXer stub with full C# implementation:
+- `@inject TauriEventService Events` added; subscribes `OnError` in `OnInitializedAsync`, unsubscribes in `Dispose()`
+- `_dateFilter: DateOnly` bound to `<input type="date">` via `@bind` / `@bind:after="LoadScreenshots"`
+- `LoadScreenshots()`: builds UTC ISO range from `DateOnly`, calls `ScreenshotListAsync`, null-guards result
+- `RunCleanup()`: calls `ScreenshotDeleteExpiredAsync`, reloads list on success
+- `SelectScreenshot()`: toggle-select pattern (`_selected = same ? null : s`)
+- `HandleScreenshotKeyDown()`: Enter/Space activates item — avoids Razor quote-conflict by extracting to method
+- `HandleError(ErrorPayload)`: surfaces `payload.Error` as dismissible banner via `InvokeAsync(StateHasChanged)`
+- `FormatTime()`: parses UTC ISO, converts to local `HH:mm:ss`
+- `FormatTrigger()`: switch on `interval` / `window_change` / `manual` → emoji labels
+- `GetImgSrc()`: `asset://localhost/` Tauri asset protocol, normalizes backslashes
+- HTML comment containing `@code` removed from template (Razor parses it as directive)
+- UXer's `BbButton` and local `ScreenshotEntry` stub removed; replaced by `ScreenshotItem` from IPC service
+
 **Dev server decision (`beforeDevCommand`):**
 `Tracey.App` uses `Microsoft.NET.Sdk.BlazorWebAssembly` (pure WASM, no ASP.NET host process), but includes `Microsoft.AspNetCore.Components.WebAssembly.DevServer` which provides a lightweight static-file dev server invokable via `dotnet run`. Set `beforeDevCommand` in `tauri.conf.json` to:
 ```
@@ -207,3 +233,21 @@ dotnet watch run --project src/Tracey.App --urls http://localhost:5000
 `devUrl` remains `http://localhost:5000`. This gives hot-reload in dev without a separate tool.
 
 **Build result:** `dotnet build Tracey.slnx` — Build succeeded, 0 errors, 0 warnings.
+
+---
+
+### 2026-03-17: Cross-Agent Notes (from Shaw T042 + UXer T049-UX)
+
+**`tracey://error` CustomEvent (from Shaw T042):**
+- Shaw's test 8 dispatches via `window.dispatchEvent(new CustomEvent('tracey://error', { detail: { message } }))`. `TauriEventService` must listen on the `window` object for this event name — not only via Tauri's native `listen()` API. If only listening via Tauri's event bus, test 8 will fail. T049 wired this; confirm `TauriEventService` handles the `window` CustomEvent path.
+
+**HTML scaffold ownership (from UXer T049-UX):**
+- UXer owns all HTML outside `@code{}`. Root replaces ONLY the `@code{}` block. Any HTML or CSS changes to Timeline.razor require UXer review. The CSS binding class names are the Root/UXer contract (see decisions.md 2026-03-17 UXer section for full table).
+
+**Selector contracts (from Shaw T042) — Root must honour at minimum one from each group:**
+- Empty state: `.empty-state-illustration`, `[data-testid="empty-state"]`
+- Screenshot item: `[data-testid="screenshot-item"]`, `[data-testid="screenshot-card"]`
+- Timestamp: `[data-testid="screenshot-timestamp"]`, `[class*="timestamp"]`, `[class*="time"]`
+- Trigger badge: `[data-testid="trigger-badge"]`, `[class*="trigger"]`, `[class*="badge"]`
+- Preview: `img[src]`, `role="img"`, `[data-testid="screenshot-preview"]`
+- Error banner dismiss button: `role="button"` name `/close|dismiss|×|✕/i` or `aria-label*="close"`/`"dismiss"`

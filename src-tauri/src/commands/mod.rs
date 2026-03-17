@@ -1,5 +1,6 @@
 pub mod hierarchy;
 pub mod idle;
+pub mod screenshot;
 pub mod timer;
 
 use tauri::State;

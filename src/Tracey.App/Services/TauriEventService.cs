@@ -84,4 +84,5 @@ public record NotificationSentPayload(
 /// <summary>tracey://error — emitted on recoverable errors requiring user notice.</summary>
 public record ErrorPayload(
     [property: JsonPropertyName("component")] string Component,
-    [property: JsonPropertyName("message")] string Message);
+    [property: JsonPropertyName("event")] string Event,
+    [property: JsonPropertyName("error")] string Error);

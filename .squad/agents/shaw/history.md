@@ -103,3 +103,35 @@ Additional tests beyond the 5 spec scenarios (from tasks.md):
 - TypeScript compilation: **0 errors** (`npx tsc --noEmit` clean after append)
 - Pre-condition dependencies: all three groups require pre-existing DB state; automated coverage gated on Fusco wiring up the seeded test fixture
 - Selector contracts Root must honour: `.autocomplete-dropdown`, `.suggestion-item.is-orphaned`, `.orphan-warning[title]`, `.time-entry-list`, `.entry-description-btn`, `.entry-edit-form`, `input[aria-label="Entry description"]`, `input[aria-label="Start time"]`, `input[aria-label="End time"]`, `button[name="cancel edit"]`
+
+### 2026-03-17: T042 — US4 Screenshot Timeline Playwright E2E tests (screenshot-timeline.spec.ts)
+- **10 tests written** in `tests/e2e/specs/screenshot-timeline.spec.ts` (new file — replaces empty stub `timeline.spec.ts`)
+- All 10 tests currently FAIL with `net::ERR_CONNECTION_REFUSED` — app not running during test authoring (TDD gate: OPEN, confirmed correct)
+- TypeScript compilation: **0 errors** (`npx tsc --noEmit` — exit code 0)
+- Tests cover all 10 required scenarios:
+  1. Navigate to `/timeline`, verify `<h1>` contains "Timeline"
+  2. Empty-state illustration visible when no screenshots exist (uses `preferences_update` + `screenshot_delete_expired` to purge)
+  3. Screenshot items appear after capture (3s interval, 5s wait, reload timeline)
+  4. `captured_at` timestamp visible in HH:MM format
+  5. Process name + window title visible per screenshot item
+  6. Trigger badge visible with text matching `/interval|window.?change|manual/i`
+  7. Click item → `<img>` or `role="img"` preview becomes visible
+  8. `tracey://error` CustomEvent → `role="alert"` banner shows error message → dismiss button removes it
+  9. `screenshot_delete_expired` IPC returns `{ deleted_count: number }`
+  10. Time range filter: wide range ≥ narrow range, all items in narrow also in wide; IPC contract shape verified
+- Capture-dependent tests (3–7) use `test.skip` guard: if `screenshot_list` returns empty after 5s wait, test skips (GDI test double not active)
+- IPC fixture helpers: `setScreenshotInterval()`, `getScreenshots()`, `deleteExpiredScreenshots()`, `secondsAgo()`, `hoursAgo()`
+- `goToTimeline()` helper added (navigates to `${APP_URL}/timeline`)
+- Selector contracts Root must honour:
+  - `role="link"` with name `/timeline/i` in nav
+  - `role="heading" level=1` containing "Timeline"
+  - `[aria-label*="empty" i]`, `.empty-state-illustration`, or `[data-testid="empty-state"]` for empty state
+  - `[data-testid="screenshot-item"]` or `[data-testid="screenshot-card"]` for list items
+  - `[data-testid="screenshot-timestamp"]` or `[class*="timestamp"]` for time display
+  - `[data-testid="process-name"]` or `[class*="process"]` for process name
+  - `[data-testid="window-title"]` or `[class*="window-title"]` for window title
+  - `[data-testid="trigger-badge"]` or `[class*="trigger"]` / `[class*="badge"]` for trigger
+  - `img[src]`, `role="img"`, or `[data-testid="screenshot-preview"]` for expanded preview
+  - `role="alert"`, `.bb-alert`, or `[data-testid="error-banner"]` for error banner
+  - Error banner must have close/dismiss button (`role="button"` with name `/close|dismiss|×|✕/i` or `aria-label*="close"/"dismiss"`)
+- Note: `tracey://error` event dispatched as `window.dispatchEvent(new CustomEvent('tracey://error', { detail: { message } }))` — TauriEventService must listen on `window` for this event name

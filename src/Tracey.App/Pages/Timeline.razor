@@ -1,13 +1,165 @@
 @page "/timeline"
+@inject TauriIpcService Tauri
+@inject TauriEventService Events
+@implements IDisposable
 
 <PageTitle>Timeline — Tracey</PageTitle>
 
-<div class="stub-page">
-    <h1 class="page-title">Timeline</h1>
-    <p class="text-muted">Browse screenshots and window activity captured throughout your day.</p>
-    <div class="empty-state-illustration" aria-hidden="true">
-        <span class="empty-state-emoji">📅</span>
-        <p class="empty-state-message">No timeline data yet.</p>
-        <p class="empty-state-hint">Screenshots and activity will appear here once tracking begins.</p>
+<div class="timeline-page">
+    @if (_errorMessage is not null)
+    {
+        <!-- dismissible error banner — UXer will style with BbAlert -->
+        <div role="alert" class="timeline-error-banner">
+            <span>@_errorMessage</span>
+            <button @onclick="DismissError" aria-label="Dismiss error">✕</button>
+        </div>
+    }
+
+    <div class="timeline-header">
+        <h1 class="page-title">Timeline</h1>
+        <div class="timeline-controls">
+            <input type="date" @bind="_dateFilter" @bind:after="LoadScreenshots" aria-label="Filter by date" />
+            <button @onclick="RunCleanup" class="btn-ghost" aria-label="Clean up expired screenshots">
+                Clean up
+            </button>
+        </div>
     </div>
+
+    @if (_isLoading)
+    {
+        <div class="timeline-loading" aria-live="polite">Loading…</div>
+    }
+    else if (_screenshots.Count == 0)
+    {
+        <div class="empty-state-illustration" aria-label="No screenshots yet">
+            <span class="empty-state-emoji">📅</span>
+            <p class="empty-state-message">No screenshots for this day.</p>
+            <p class="empty-state-hint">Screenshots are captured automatically while Tracey is running.</p>
+        </div>
+    }
+    else
+    {
+        <div class="screenshot-grid" role="list">
+            @foreach (var s in _screenshots)
+            {
+                <div class="screenshot-item @(_selected?.Id == s.Id ? "selected" : "")"
+                     role="listitem"
+                     data-testid="screenshot-item"
+                     tabindex="0"
+                     @onclick="() => SelectScreenshot(s)"
+                     @onkeydown="@(e => HandleScreenshotKeyDown(e, s))">
+                    <div class="screenshot-meta">
+                        <span class="screenshot-time">@FormatTime(s.CapturedAt)</span>
+                        <span class="screenshot-trigger" data-testid="trigger-badge">@FormatTrigger(s.Trigger)</span>
+                    </div>
+                    <div class="screenshot-app">
+                        <span class="screenshot-process">@s.ProcessName</span>
+                        <span class="screenshot-title">@s.WindowTitle</span>
+                    </div>
+                </div>
+            }
+        </div>
+
+        @if (_selected is not null)
+        {
+            <div class="screenshot-preview" role="region" aria-label="Screenshot preview">
+                <img src="@GetImgSrc(_selected.FilePath)"
+                     alt="Screenshot from @FormatTime(_selected.CapturedAt)"
+                     class="screenshot-img" />
+                <button @onclick="ClosePreview" aria-label="Close preview">✕</button>
+            </div>
+        }
+    }
 </div>
+
+@code {
+    private List<ScreenshotItem> _screenshots = new();
+    private ScreenshotItem? _selected;
+    private bool _isLoading;
+    private string? _errorMessage;
+    private DateOnly _dateFilter = DateOnly.FromDateTime(DateTime.Today);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Events.OnError += HandleError;
+        await LoadScreenshots();
+    }
+
+    private async Task LoadScreenshots()
+    {
+        _isLoading = true;
+        _selected = null;
+        StateHasChanged();
+        try
+        {
+            var from = _dateFilter.ToDateTime(TimeOnly.MinValue).ToUniversalTime().ToString("o");
+            var to   = _dateFilter.ToDateTime(TimeOnly.MaxValue).ToUniversalTime().ToString("o");
+            var result = await Tauri.ScreenshotListAsync(from, to);
+            _screenshots = (result ?? Array.Empty<ScreenshotItem>()).ToList();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load screenshots: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task RunCleanup()
+    {
+        try
+        {
+            var result = await Tauri.ScreenshotDeleteExpiredAsync();
+            _errorMessage = null;
+            await LoadScreenshots();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Cleanup failed: {ex.Message}";
+        }
+    }
+
+    private void SelectScreenshot(ScreenshotItem s)
+    {
+        _selected = _selected?.Id == s.Id ? null : s;
+    }
+
+    private void HandleScreenshotKeyDown(KeyboardEventArgs e, ScreenshotItem s)
+    {
+        if (e.Key is "Enter" or " ") SelectScreenshot(s);
+    }
+
+    private void ClosePreview() => _selected = null;
+    private void DismissError() => _errorMessage = null;
+
+    private void HandleError(ErrorPayload payload)
+    {
+        _errorMessage = $"Screenshot error: {payload.Error}";
+        InvokeAsync(StateHasChanged);
+    }
+
+    private static string FormatTime(string utcIso)
+    {
+        if (DateTime.TryParse(utcIso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+            return dt.ToLocalTime().ToString("HH:mm:ss");
+        return utcIso;
+    }
+
+    private static string FormatTrigger(string trigger) => trigger switch
+    {
+        "interval"      => "⏱ Interval",
+        "window_change" => "🔄 Window change",
+        "manual"        => "📸 Manual",
+        _               => trigger
+    };
+
+    private static string GetImgSrc(string filePath) =>
+        $"asset://localhost/{filePath.Replace('\\', '/').TrimStart('/')}";
+
+    public void Dispose()
+    {
+        Events.OnError -= HandleError;
+    }
+}

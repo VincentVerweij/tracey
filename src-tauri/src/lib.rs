@@ -26,6 +26,7 @@ pub fn run() {
             log::info!("Tracey starting up");
             services::timer_tick::start_tick_loop(app.handle().clone());
             services::idle_service::start_idle_loop(app.handle().clone());
+            services::screenshot_service::start_screenshot_loop(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -58,6 +59,8 @@ pub fn run() {
             commands::hierarchy::task_create,
             commands::hierarchy::task_update,
             commands::hierarchy::task_delete,
+            commands::screenshot::screenshot_list,
+            commands::screenshot::screenshot_delete_expired,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

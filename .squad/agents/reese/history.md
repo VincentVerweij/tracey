@@ -306,3 +306,71 @@ T012 confirmed complete: first-launch init runs inside `db::open()` immediately 
 **Inline params for simple id-only commands:** `client_archive(state, id: String)` style used (not a wrapper struct) — cleaner for 1-field inputs.
 
 **cargo check result: PASS** — 18 dead_code warnings (all pre-existing stubs), zero errors.
+
+---
+
+### 2026-03-17: T043/T044/T045/T046/T048 — screenshot_service.rs (cargo check PASS)
+
+**Files created/updated:**
+- `src-tauri/src/services/screenshot_service.rs` — new file
+- `src-tauri/src/services/mod.rs` — `pub mod screenshot_service;` added
+- `src-tauri/Cargo.toml` — NO changes needed (all required windows features already present)
+
+**Briefing corrections applied (DO NOT REPEAT):**
+- Import: `use crate::commands::AppState;` — never `use crate::commands::mod::AppState;` (invalid syntax)
+- `PlatformHooks::get_foreground_window_info` returns `Option<WindowInfo>` — no `.ok()` call needed
+- `WindowInfo` field is `title` (not `window_title`) — always check `platform/mod.rs` for exact struct shape
+- `screenshots` table has NO `created_at` column — 7 columns: `id, file_path, captured_at, window_title, process_name, trigger, device_id`
+- Use `tauri::async_runtime::spawn_blocking` (not `tokio::task::spawn_blocking`) — rule: never use tokio directly
+- `query_map` fix in `cleanup_expired`: use `match stmt.query_map(...) { Ok(mapped) => mapped.filter_map(...).collect(), Err(_) => return }` — the `.unwrap_or_else(|_| Box::new(std::iter::empty()))` pattern does NOT compile (type mismatch)
+- `HBITMAP → HGDIOBJ` conversion: `HGDIOBJ(hbm.0)` — both wrap `*mut core::ffi::c_void` in windows 0.58
+- GDI cleanup: `DeleteObject(HGDIOBJ(hbm.0))` and `DeleteDC(hdc_mem)` return `BOOL` (`#[must_use]`); suppress with `let _ =`
+
+**E0597 State borrow lifetime fixes:**
+- `match state.db.lock() { ... }` as last expression in a block → bind to `let x = ...; x` pattern so the `Result` temporary drops before `state` drops
+- `if let Ok(conn) = state.db.lock()` → add `;` after the `if let` block close so the `Result` temporary drops before `state` drops at the outer block end
+- This pattern applies whenever `app.state::<T>()` binding is in same scope as a `lock()` match at block-end position
+
+**GDI capture notes:**
+- `biCompression: BI_RGB.0` — `BITMAPINFOHEADER.biCompression` is `u32` in windows 0.58; `BI_RGB.0` extracts the `u32` from `BI_COMPRESSION` newtype ✓
+- Production capture: `GetDesktopWindow` in `Win32_UI_WindowsAndMessaging`; all GDI ops in `Win32_Graphics_Gdi`
+- BGRA→RGB: `chunks_exact(4).flat_map(|bgra| [bgra[2], bgra[1], bgra[0]])` — reverses channel order for device (GDI bottom-up stores BGR, biHeight<0 makes it top-down)
+- `image::DynamicImage::from(resized)` via `Into` — `RgbImage` into `DynamicImage` before `.write_to()`
+
+**NOT wired into lib.rs** — Reese-B handles `start_screenshot_loop` wiring.
+
+**cargo check result: PASS** — 24 dead_code warnings (all expected stubs, none new errors), zero errors.
+
+---
+
+### 2026-03-17: T047 — screenshot.rs IPC Commands + lib.rs Wiring (cargo check PASS)
+
+**Files created/updated:**
+- `src-tauri/src/commands/screenshot.rs` — new file (T047)
+- `src-tauri/src/commands/mod.rs` — `pub mod screenshot;` added
+- `src-tauri/src/lib.rs` — 2 commands + service loop wired
+
+**Commands implemented:**
+
+- `screenshot_list(request: ScreenshotListRequest) -> Result<Vec<ScreenshotItem>, String>`
+  - Query: `SELECT id, file_path, captured_at, window_title, process_name, trigger FROM screenshots WHERE captured_at >= ?1 AND captured_at <= ?2 ORDER BY captured_at DESC`
+  - No `created_at` in SELECT — column does not exist in schema (7 columns: id, file_path, captured_at, window_title, process_name, trigger, device_id)
+
+- `screenshot_delete_expired() -> Result<serde_json::Value, String>`
+  - Reads `screenshot_retention_days` from `user_preferences` (defaults to 30 on error)
+  - Collects `file_path` values for expired rows, calls `std::fs::remove_file` for each (ignores individual failures)
+  - DELETEs DB rows; returns `{ "deleted_count": N }`
+
+**lib.rs changes:**
+- `.setup()` now calls `services::screenshot_service::start_screenshot_loop(app.handle().clone())` after `start_idle_loop`
+- `generate_handler![]` extended with `commands::screenshot::screenshot_list` and `commands::screenshot::screenshot_delete_expired`
+
+**cargo check result: PASS** — 16 dead_code warnings (all pre-existing stubs), zero errors.
+
+---
+
+### 2026-03-17: Cross-Agent Note (from Root T049) — IPC Wrapper Pattern Confirmed
+
+- Root T049 found `screenshot_list` was being called with bare `new { from, to }` instead of `new { request = new { from, to } }`. **Established Phase 2 convention:** all IPC commands taking a Rust struct as input must be invoked from Blazor with `new { request = ... }` wrapper. This is how `window.__TAURI_INTERNALS__.invoke` maps named args to the Rust `#[tauri::command]` struct parameter.
+- Single-field inline commands (`client_archive(state, id: String)` style) do NOT use a wrapper — the arg name matches the parameter directly.
+- Root corrected `ErrorPayload` from `{ component, message }` to `{ component, event, error }` per `tracey://error` contract. Future Rust event emissions must use this payload shape.

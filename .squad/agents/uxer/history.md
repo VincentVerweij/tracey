@@ -42,3 +42,47 @@
 - Idle option buttons kept as raw `<button>` (not BbButton) — they need card-like multi-line layout that BbButton's Tailwind classes would conflict with.
 - BlazorBlueprint CSS loaded before Bootstrap in index.html so BB Tailwind reset is available, Bootstrap then overrides where needed, finally app.css and scoped CSS win.
 - Stub pages (Tags, Timeline, Settings) given emoji empty states + descriptive text; PageTitle tags added.
+
+## Phase 6 — Timeline Design Pass (2026-03-17)
+
+**What was delivered:**
+- `Timeline.razor.css` — full scoped CSS for the screenshot timeline page.
+- `Timeline.razor` — stub replaced with proper HTML scaffold; `@implements IDisposable` and stub `@code {}` added so Root can wire C# logic without touching HTML.
+- `Projects.razor` error banner already uses `BbAlert` from Phase 5.5 — no change needed.
+- Build: 0 errors (3 pre-existing warnings: RZ10012 BbPortalHost + 2 CS0649 stubs Root will fill).
+
+**CSS design decisions:**
+- Screenshot grid: `auto-fill` with `minmax(280px, 1fr)` — adapts from 1 column (narrow) to 3+ columns (wide) without media queries.
+- `.screenshot-item.selected` — indigo border + 15% opacity ring (same accent hue) for clear but not garish selection state.
+- `.screenshot-time` — monospace font stack, accent colour, 600w — visually anchors the card timestamp.
+- `.screenshot-trigger` — pill badge (9999px radius), surface-alt background — distinguishes metadata from content without heavy colour.
+- `.screenshot-preview` — `position: sticky; bottom: 1.5rem` — preview floats at viewport bottom while user scrolls the grid above.
+- Error banner — custom hand-rolled `div.timeline-error-banner` (not BbAlert) — tighter left-accent-border style matching the design spec layout (dismiss button inline right).
+- All muted colours reference `var(--tracey-text-muted)` and `var(--tracey-surface-alt)` — no hard-coded hex fallbacks needed since tokens are defined in app.css.
+
+**Accessibility notes:**
+- `.screenshot-item:focus-visible` — explicit 2px indigo outline at 2px offset; `outline: none` on base rule removes browser default only (CHK038 coverage).
+- Grid container `role="list"`, items `role="listitem"` — semantic list for screen readers (CHK039).
+- Error banner `role="alert"` — announced immediately on appearance.
+- Empty state emoji is `aria-hidden="true"` per Phase 5.5 pattern.
+- Date input has explicit `aria-label`; clean-up button has `AriaLabel` prop.
+
+---
+
+### 2026-03-17: Cross-Agent Note (from Shaw T042) — Selector Contracts UXer HTML Must Honour
+
+Shaw's T042 tests require at least one matching selector from each group on UXer-owned Timeline.razor HTML:
+
+| Element | Required selectors (at least one) |
+|---|---|
+| Empty state | `.empty-state-illustration`, `[data-testid="empty-state"]` |
+| Screenshot item | `[data-testid="screenshot-item"]`, `[data-testid="screenshot-card"]` |
+| Timestamp | `[data-testid="screenshot-timestamp"]`, `[class*="timestamp"]`, `[class*="time"]` |
+| Process name | `[data-testid="process-name"]`, `[class*="process"]` |
+| Window title | `[data-testid="window-title"]`, `[class*="window-title"]`, `[class*="title"]` |
+| Trigger badge | `[data-testid="trigger-badge"]`, `[class*="trigger"]`, `[class*="badge"]` |
+| Preview image | `img[src]`, `role="img"`, `[data-testid="screenshot-preview"]` |
+| Error banner | `role="alert"` (already present in scaffold) |
+| Dismiss button | `role="button"` name `/close\|dismiss\|×\|✕/i` or `aria-label*="close"`/`"dismiss"` |
+
+Current scaffold CSS classes (`.screenshot-time`, `.screenshot-trigger`, `.empty-state-illustration`) already cover most groups. No `data-testid` attributes are required if class-based selectors match — but adding them is safe and reduces Shaw selector fragility.

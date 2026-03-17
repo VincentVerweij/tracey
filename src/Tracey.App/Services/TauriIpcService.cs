@@ -132,7 +132,7 @@ public class TauriIpcService
     // ── Screenshots ───────────────────────────────────────────────────────
 
     public Task<ScreenshotItem[]> ScreenshotListAsync(string from, string to) =>
-        Invoke<ScreenshotItem[]>("screenshot_list", new { from, to });
+        Invoke<ScreenshotItem[]>("screenshot_list", new { request = new { from, to } });
 
     public Task<DeletedCountResponse> ScreenshotDeleteExpiredAsync() =>
         Invoke<DeletedCountResponse>("screenshot_delete_expired");

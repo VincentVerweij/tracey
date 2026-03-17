@@ -1,0 +1,200 @@
+/* =========================================
+   Timeline — Page layout
+   ========================================= */
+
+.timeline-page {
+    max-width: 1000px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.timeline-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.timeline-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.timeline-controls input[type="date"] {
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--tracey-border);
+    border-radius: var(--tracey-radius);
+    font-family: inherit;
+    font-size: 0.875rem;
+    color: var(--tracey-text);
+    background: var(--tracey-surface);
+}
+
+/* =========================================
+   Error banner
+   ========================================= */
+
+.timeline-error-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-left: 3px solid #ef4444;
+    border-radius: var(--tracey-radius);
+    color: #991b1b;
+    font-size: 0.875rem;
+}
+
+.timeline-error-banner button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #991b1b;
+    font-size: 1rem;
+    padding: 0 0.25rem;
+    line-height: 1;
+}
+
+/* =========================================
+   Screenshot grid
+   ========================================= */
+
+.screenshot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.screenshot-item {
+    background: var(--tracey-surface);
+    border: 1px solid var(--tracey-border);
+    border-radius: var(--tracey-radius);
+    padding: 0.875rem 1rem;
+    cursor: pointer;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    outline: none; /* keyboard focus handled via :focus-visible */
+}
+
+.screenshot-item:hover {
+    box-shadow: var(--tracey-shadow);
+    border-color: #d1d5db;
+}
+
+.screenshot-item:focus-visible {
+    outline: 2px solid var(--tracey-accent);
+    outline-offset: 2px;
+}
+
+.screenshot-item.selected {
+    border-color: var(--tracey-accent);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.screenshot-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.screenshot-time {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--tracey-accent);
+}
+
+.screenshot-trigger {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 9999px;
+    background: var(--tracey-surface-alt);
+    color: var(--tracey-text-muted);
+    white-space: nowrap;
+}
+
+.screenshot-app {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.screenshot-process {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--tracey-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.screenshot-title {
+    font-size: 0.75rem;
+    color: var(--tracey-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* =========================================
+   Preview panel
+   ========================================= */
+
+.screenshot-preview {
+    position: sticky;
+    bottom: 1.5rem;
+    background: var(--tracey-surface);
+    border: 1px solid var(--tracey-border);
+    border-radius: var(--tracey-radius);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.screenshot-img {
+    max-width: 100%;
+    max-height: 400px;
+    border-radius: calc(var(--tracey-radius) - 2px);
+    object-fit: contain;
+    background: var(--tracey-surface-alt);
+}
+
+.screenshot-preview button {
+    align-self: flex-end;
+    background: none;
+    border: 1px solid var(--tracey-border);
+    border-radius: var(--tracey-radius);
+    padding: 0.25rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: var(--tracey-text-muted);
+    transition: background 0.1s;
+}
+
+.screenshot-preview button:hover {
+    background: var(--tracey-surface-alt);
+}
+
+/* =========================================
+   Loading state
+   ========================================= */
+
+.timeline-loading {
+    text-align: center;
+    color: var(--tracey-text-muted);
+    padding: 3rem;
+    font-size: 0.9rem;
+}

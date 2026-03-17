@@ -474,6 +474,119 @@
 **Why:** `HandleTimerTick` is not on `ITimerStateService`. Cast to concrete type avoids interface pollution; pattern is consistent with JS shim deferral.
 
 #### 2026-03-16: ARIA Roles Confirmed — `role="timer"`, `role="listbox"`, `role="option"`
+
+---
+
+## Phase 6 Decisions (2026-03-17)
+
+### Reese — T043-T048 / T047: Screenshot Service + IPC Commands
+
+#### 2026-03-17: `screenshots` Table — 7 Columns, No `created_at`
+**By:** Reese (T043-T048, T047)
+**What:** `screenshots` table has exactly 7 columns: `id, file_path, captured_at, window_title, process_name, trigger, device_id`. No `created_at` column. Any command querying this table must use only these 7 columns.
+**Why:** Discovered during T047 implementation. Column does not exist in Leon's schema. Any SELECT or INSERT referencing `created_at` will fail at runtime.
+
+#### 2026-03-17: GDI Capture — Critical Implementation Notes
+**By:** Reese (T044)
+**What:** Several non-obvious Rust/Win32 corrections required:
+- `use crate::commands::AppState;` — never `crate::commands::mod::AppState` (invalid syntax)
+- `PlatformHooks::get_foreground_window_info` returns `Option<WindowInfo>` — no `.ok()` needed
+- `WindowInfo` field is `title` (not `window_title`) — check `platform/mod.rs` for exact shape
+- `tauri::async_runtime::spawn_blocking` not `tokio::task::spawn_blocking` — never use tokio directly
+- `query_map` in cleanup: bind result via `match stmt.query_map(...) { Ok(mapped) => ... }` — chained `.unwrap_or_else(Box::new(std::iter::empty()))` does not compile
+- `HBITMAP → HGDIOBJ`: `HGDIOBJ(hbm.0)` — both wrap `*mut core::ffi::c_void` in windows 0.58
+- GDI cleanup: `DeleteObject`/`DeleteDC` return `BOOL` (`#[must_use]`); suppress with `let _ =`
+- `biCompression = BI_RGB.0` — `BITMAPINFOHEADER.biCompression` is `u32`; `.0` extracts from newtype
+- BGRA→RGB: `chunks_exact(4).flat_map(|bgra| [bgra[2], bgra[1], bgra[0]])` reverses channels
+**Why:** Multiple silent compile errors or incorrect runtime behaviour without these corrections.
+
+#### 2026-03-17: E0597 State Borrow Lifetime Pattern
+**By:** Reese (T043)
+**What:** When `app.state::<T>()` binding is in same scope as `lock()` match at block-end position, rustc E0597 fires. Fix: bind collect result to named variable before block end (`let x = ...; x`) so `MappedRows` is fully consumed before `state` drops. Also: add `;` after `if let Ok(conn) = state.db.lock()` block close so `Result` temporary drops before `state` drops at outer block end.
+**Why:** Borrow checker rule — shared reference from `app.state()` must not outlive the `app` handle in the same scope as the state value.
+
+#### 2026-03-17: `screenshot_delete_expired` — Manually Invoked (No Background Schedule Yet)
+**By:** Reese (T047)
+**What:** `screenshot_delete_expired` is a manually-invoked IPC command (called from Blazor). It is NOT automatically scheduled. Root wires the "Run Cleanup" button. A future task may add app-startup background scheduling.
+**Why:** Separate cleanup button pattern chosen for Phase 6. Background scheduling deferred.
+
+---
+
+### Root — T049: Timeline.razor C# Plumbing
+
+#### 2026-03-17: IPC Wrapper Pattern — `new { request = ... }` Required for Struct Inputs
+**By:** Root (T049)
+**What:** All IPC commands that take a Rust struct as input MUST be called from Blazor with `new { request = ... }` wrapper. Example: `screenshot_list` → `new { request = new { from, to } }`. Calling with bare `new { from, to }` sends wrong shape (top-level instead of nested) — Rust deserialization silently fails with `missing field` error.
+**Why:** Established Phase 2 convention. `screenshot_list` was incorrectly called with bare args; corrected in T049.
+
+#### 2026-03-17: `ErrorPayload` — `{ component, event, error }` Not `{ component, message }`
+**By:** Root (T049)
+**What:** `ErrorPayload` in `TauriEventService.cs` updated to `{ Component, Event, Error }` matching the `tracey://error` contract. Previous `Message` field was a deviation. `Event` is valid as a C# record parameter name (only lowercase `event` is a keyword).
+**Why:** Timeline.razor needs `payload.Error`. No existing component was consuming `payload.Message`.
+
+#### 2026-03-17: Razor `@code` Inside HTML Comments — Parse Error
+**By:** Root (T049)
+**What:** Do NOT place `@code` inside `<!-- -->` comments in `.razor` files. Razor parser interprets `@code` as a directive even inside HTML comments, causing RZ2005/RZ1017 parse errors. Remove any such comments.
+**Why:** Discovered when UXer's scaffold included a documentation comment referencing `@code`.
+
+#### 2026-03-17: Keyboard Handlers in Razor — Extract to Named Methods
+**By:** Root (T049)
+**What:** `@onkeydown` lambdas containing string comparisons (`"Enter"`, `" "`) inside double-quoted Razor attributes cause parse failures (Razor quote conflict). Always extract to a named C# method. C# `is "Enter" or " "` pattern expression is idiomatic .NET 9+.
+**Why:** Same class of issue as `ExpandLabel` workaround in T041 (Projects.razor).
+
+---
+
+### Shaw — T042: US4 Screenshot Timeline E2E Tests
+
+#### 2026-03-17: TDD Gate OPEN — 10 Tests, 0 TypeScript Errors
+**By:** Shaw (T042)
+**What:** `tests/e2e/specs/screenshot-timeline.spec.ts` — 10 tests, all fail `net::ERR_CONNECTION_REFUSED` (TDD gate open, correct). TypeScript: 0 errors. File replaces the empty `timeline.spec.ts` stub.
+**Why:** TDD rule: failing tests committed before implementation.
+
+#### 2026-03-17: `tracey://error` CustomEvent Dispatch Contract
+**By:** Shaw (T042)
+**What:** Shaw's test 8 dispatches the error event via `window.dispatchEvent(new CustomEvent('tracey://error', { detail: { message } }))`. `TauriEventService.cs` MUST listen on the `window` object for `tracey://error` (not only via Tauri's `listen()` API) to pass test 8. If the service uses Tauri's event bus exclusively, Root must add a `window.addEventListener('tracey://error', ...)` path or Shaw adapts test 8 in Phase 6 review.
+**Why:** Test 8 simulates the error condition by injecting a DOM CustomEvent. Tauri's native event bus does not fire from `window.dispatchEvent`.
+
+#### 2026-03-17: Capture-Dependent Tests Use `test.skip` Guard
+**By:** Shaw (T042)
+**What:** Tests 3–7 (screenshot item rendering, timestamp, process name, trigger badge, preview) guard: if `screenshot_list` returns empty after 5s wait, `test.skip()` is called. No hard failure without `--features test` build.
+**Why:** GDI test double only active when built with `cargo tauri build --features test`.
+
+---
+
+### UXer — T049-UX: Timeline HTML Scaffold + CSS
+
+#### 2026-03-17: Error Banner — Custom Div, Not BbAlert
+**By:** UXer (T049-UX)
+**What:** `.timeline-error-banner` is a hand-rolled `<div role="alert">` with left accent border + inline dismiss button on the right. `BbAlert` not used here.
+**Why:** Spec requires dismiss button inline-right of error text. BbAlert's dismiss chrome is above content, not beside it. `BbAlert` remains correct for full-width warning panels (Projects.razor).
+
+#### 2026-03-17: Screenshot Grid — `auto-fill minmax(280px, 1fr)`
+**By:** UXer (T049-UX)
+**What:** Grid: `repeat(auto-fill, minmax(280px, 1fr))`. No media query breakpoints.
+**Why:** Tauri window freely resizable. `auto-fill` collapses to 1 column at ≤600px and expands to 3+ columns. Fixed breakpoints create awkward jumps.
+
+#### 2026-03-17: Preview Panel — `position: sticky; bottom: 1.5rem`
+**By:** UXer (T049-UX)
+**What:** Expanded screenshot preview is `position: sticky; bottom: 1.5rem` in page flow — not a modal or overlay.
+**Why:** Stays visible while user scrolls grid. Modal would block grid; overlay complicates z-index in WebView2. Fallback for short pages: panel appears inline (still visible — acceptable).
+
+#### 2026-03-17: HTML Scaffold Ownership Boundary
+**By:** UXer (T049-UX)
+**What:** UXer owns all HTML outside `@code{}`. Root replaces only the `@code{}` block with real C# logic. HTML/CSS changes require UXer review. Agreed binding class names:
+- `.timeline-error-banner` → `_errorMessage != null`
+- `.timeline-loading` → `_loading == true`
+- `.empty-state-illustration` → `_screenshots.Count == 0 && !_loading`
+- `.screenshot-grid` → `_screenshots.Count > 0`
+- `.screenshot-item` → per item; `.screenshot-item.selected` → `item == _selected`
+- `.screenshot-preview` → `_selected != null`
+**Why:** Clean division of frontend responsibility. CSS selectors are the contract.
+
+#### 2026-03-17: Accessibility — CHK039 Arrow-Key Navigation Deferred
+**By:** UXer (T049-UX)
+**What:** Grid `role="list"`, items `role="listitem"`, `tabindex="0"`, error `role="alert"`, preview `<img alt>` with timestamp. Tab-based focus traversal implemented. Arrow-key navigation within grid NOT yet implemented — flagged for Final Phase.
+**Why:** CHK038 spec asks for keyboard scrolling. Arrow-key handling in grid deferred; Root may add `@onkeydown` to grid container in Final Phase.
 **By:** Root (T028/T029)
 **What:** Elapsed counter uses `role="timer" aria-live="off" aria-atomic="true"`. Autocomplete dropdown uses `role="listbox"` with items `role="option"`. Continue button: `role="button" name=/continue/i`. All match Shaw's T018 Playwright selectors (2026-03-15 TDD Gate spec).
 **Why:** Shaw's tests drive UI structure. Aria roles must match to avoid test failures.
