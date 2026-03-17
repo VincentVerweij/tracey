@@ -76,6 +76,16 @@
 
 ## Learnings
 
+### 2026-03-17: IPC camelCase, DateTimeOffset, Timeline scroll-zoom (dotnet build PASS)
+
+**Build result:** 0 errors, 1 pre-existing RZ10012 warning on `Tracey.App.csproj`
+
+**TauriIpcService.cs (Fix A):** Tauri 2.0 renames Rust `snake_case` params to `camelCase` on the JS bridge. Fixed `client_list` (`include_archived` → `includeArchived`), `project_list` (`client_id` + `include_archived` → `clientId` + `includeArchived`), `task_list` (`project_id` → `projectId`), and `fuzzy_match_tasks` (`project_id` → `projectId`). Pattern: always use C# anonymous-object property shorthand `new { camelCaseName }` so JSON serialization matches Tauri bridge expectations.
+
+**TimerStateService.cs (Fix B):** Replace `DateTime.TryParse` + `RoundtripKind` with `DateTimeOffset.TryParse` for `started_at` elapsed calculation. Rust's `+00:00` suffix caused `DateTime` to parse as `Kind=Local`, making `DateTime.UtcNow - localStart` produce ±UTC-offset error (~3592s for UTC+1). `DateTimeOffset` subtraction is always frame-consistent. Added `Math.Max(0, ...)` guard against clock-skew negative.
+
+**Timeline.razor (Fix C - Scroll Zoom):** Added `_zoomHours` (default 24) + `_viewStartHours` (default 0) state fields. `HandleBarWheel(WheelEventArgs)` zooms ±1.5× anchored on mouse position; clamped 0.5–24h; clamps view start to [0, 24−zoom]. `ResetZoom()` on double-click. `FormatZoomLevel()` formats badge text. `TimeToPercent()` de-staticed; now maps hours into zoom window: `(hours − viewStart) / zoomHours × 100`. Hour markers skip those outside ±2% of visible range. `@onwheel:preventDefault` stops page scroll. Zoom indicator badge (`.timeline-zoom-indicator`) shown when `_zoomHours < 23.9` with reset button.
+
 ### 2026-03-17: Bug Fixes — Tauri bridge, timer tick, Timeline redesign (dotnet build PASS)
 
 **Build result:** 0 errors, 0 warnings on `Tracey.App.csproj`

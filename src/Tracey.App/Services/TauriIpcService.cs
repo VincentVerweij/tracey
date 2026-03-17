@@ -59,7 +59,7 @@ public class TauriIpcService
     // ── Clients ───────────────────────────────────────────────────────────
 
     public Task<ClientListResponse> ClientListAsync(bool includeArchived = false) =>
-        Invoke<ClientListResponse>("client_list", new { include_archived = includeArchived });
+        Invoke<ClientListResponse>("client_list", new { includeArchived });
 
     public Task<IdResponse> ClientCreateAsync(ClientCreateRequest request) =>
         Invoke<IdResponse>("client_create", new { request });
@@ -79,7 +79,7 @@ public class TauriIpcService
     // ── Projects ──────────────────────────────────────────────────────────
 
     public Task<ProjectListResponse> ProjectListAsync(string? clientId = null, bool includeArchived = false) =>
-        Invoke<ProjectListResponse>("project_list", new { client_id = clientId, include_archived = includeArchived });
+        Invoke<ProjectListResponse>("project_list", new { clientId, includeArchived });
 
     public Task<IdResponse> ProjectCreateAsync(ProjectCreateRequest request) =>
         Invoke<IdResponse>("project_create", new { request });
@@ -99,7 +99,7 @@ public class TauriIpcService
     // ── Tasks ─────────────────────────────────────────────────────────────
 
     public Task<TaskListResponse> TaskListAsync(string projectId) =>
-        Invoke<TaskListResponse>("task_list", new { project_id = projectId });
+        Invoke<TaskListResponse>("task_list", new { projectId });
 
     public Task<IdResponse> TaskCreateAsync(TaskCreateRequest request) =>
         Invoke<IdResponse>("task_create", new { request });
@@ -127,7 +127,7 @@ public class TauriIpcService
         Invoke<FuzzyMatchProjectsResponse>("fuzzy_match_projects", new { query, limit });
 
     public Task<FuzzyMatchTasksResponse> FuzzyMatchTasksAsync(string projectId, string query, int limit = 8) =>
-        Invoke<FuzzyMatchTasksResponse>("fuzzy_match_tasks", new { project_id = projectId, query, limit });
+        Invoke<FuzzyMatchTasksResponse>("fuzzy_match_tasks", new { projectId, query, limit });
 
     // ── Screenshots ───────────────────────────────────────────────────────
 

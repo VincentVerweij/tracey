@@ -97,10 +97,9 @@ public class TimerStateService : ITimerStateService
                 _currentProjectId = active.ProjectId;
                 _currentTaskId = active.TaskId;
                 _startedAt = active.StartedAt;
-                if (DateTime.TryParse(active.StartedAt, null,
-                    System.Globalization.DateTimeStyles.RoundtripKind, out var start))
+                if (DateTimeOffset.TryParse(active.StartedAt, out var startOffset))
                 {
-                    _elapsedSeconds = (long)(DateTime.UtcNow - start).TotalSeconds;
+                    _elapsedSeconds = (long)Math.Max(0, (DateTimeOffset.UtcNow - startOffset).TotalSeconds);
                 }
                 if (_isRunning) StartLocalTicker();
                 OnStateChanged?.Invoke();

@@ -72,6 +72,18 @@
 - IPC helpers reuse: `createClient()`/`deleteClient()` match projects.spec.ts style; `setScreenshotInterval()`/`getScreenshots()` match screenshot-timeline.spec.ts style
 - Selector contracts Root must honour (new): `.project-list` or `[data-testid="project-list"]` for project list container; `[data-testid="screenshot-item"] img` or `.screenshot-img` for screenshot thumbnail
 
+### 2026-03-17: Issue Regression Tests — issue-regressions.spec.ts (6 tests, 5 issues)
+- **6 tests written** in `tests/e2e/specs/issue-regressions.spec.ts` (new file — TDD gate for March 17 issue batch)
+- All 6 tests FAIL before fixes applied — TDD gate: OPEN (confirmed correct)
+- **Issue 2** (timer elapsed jumps ~1h after nav): starts timer, navigates away and back, asserts elapsed `< 1 minute`; root cause is `started_at` stored with `+00:00` suffix, C# parses as Local kind, `DateTime.UtcNow - startLocal` wrong by UTC offset
+- **Issue 3** (task_list camelCase): expands project in UI, asserts `.task-list` visible + "No tasks yet." + no error banner; root cause is C# sending `project_id` but Tauri 2.0 expects `projectId`
+- **Issue 4** (project_list clientId filter): creates two clients each with a project, expands client A, asserts only Project-A-Only present under it; root cause is C# sending `client_id` but Tauri 2.0 expects `clientId`
+- **Issue 5a** (includeArchived): archives client, verifies hidden by default, checks checkbox, verifies visible; root cause is C# sending `include_archived` vs Tauri 2.0 expecting `includeArchived`
+- **Issue 5b** (archived name conflict): archives client "X", creates new client "X", asserts no error thrown; root cause is SQL uniqueness check not excluding archived rows
+- **Issue 1** (timeline zoom): scrolls wheel over `.timeline-bar-inner`, asserts `.timeline-zoom-indicator` visible containing "window", double-clicks to reset, asserts indicator gone; self-guards if bar not visible (no screenshots)
+- IPC helpers: `createClient`, `archiveClient`, `createProject`, `deleteClient`, `startTimer`, `stopTimer` — all via `window.__TAURI_INTERNALS__.invoke()`
+- Selector contracts Root must honour (new): `.timeline-bar-inner`, `.timeline-zoom-indicator`, `[data-testid="timer-elapsed"]` or `.timer-elapsed` or `.elapsed`, `.client-name`, `.client-header`, `.client-card`, `.project-row`
+
 ### 2026-03-17: T042 — US4 Screenshot Timeline Playwright E2E tests (screenshot-timeline.spec.ts)
 - **10 tests written** in `tests/e2e/specs/screenshot-timeline.spec.ts` (new file — replaces empty stub `timeline.spec.ts`)
 - All 10 tests currently FAIL with `net::ERR_CONNECTION_REFUSED` — app not running during test authoring (TDD gate: OPEN, confirmed correct)

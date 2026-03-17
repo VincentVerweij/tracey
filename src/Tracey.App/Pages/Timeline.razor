@@ -44,18 +44,30 @@
     {
         <div class="timeline-day-bar"
              aria-label="24-hour timeline for @_dateFilter.ToString("yyyy-MM-dd")">
+            @if (_zoomHours < 23.9)
+            {
+                <div class="timeline-zoom-indicator" aria-live="polite">
+                    <span class="zoom-level-text">@FormatZoomLevel()</span>
+                    <button class="zoom-reset-btn" @onclick="ResetZoom" title="Reset to full day view" aria-label="Reset zoom">↺ full day</button>
+                </div>
+            }
             <div class="timeline-bar-inner"
                  @onmousemove="HandleBarMouseMove"
                  @onmouseleave="HandleBarMouseLeave"
-                 @onclick="HandleBarClick">
+                 @onclick="HandleBarClick"
+                 @onwheel="HandleBarWheel"
+                 @onwheel:preventDefault="true"
+                 @ondblclick="ResetZoom"
+                 data-zoom="@_zoomHours.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)">
 
-                @* Hour markers *@
+                @* Hour markers — only render hours within the current zoom window *@
                 @for (int h = 0; h <= 23; h++)
                 {
-                    var pct = h / 24.0 * 100.0;
+                    var hPct = (h - _viewStartHours) / _zoomHours * 100.0;
+                    if (hPct < -2 || hPct > 102) continue;
                     var hour = h;
                     <div class="timeline-hour-marker"
-                         style="left: @pct.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%"
+                         style="left: @hPct.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%"
                          aria-hidden="true">
                         <span class="hour-label">@hour.ToString("D2")</span>
                     </div>
@@ -135,6 +147,10 @@
     private DateOnly _dateFilter = DateOnly.FromDateTime(DateTime.Today);
     private double _hoverPct = 0;
     private string? _hoverTimeLabel;
+
+    // Zoom state
+    private double _zoomHours = 24.0;    // hours visible in the window (24 = full day)
+    private double _viewStartHours = 0.0; // hours from midnight where view starts
 
     protected override async Task OnInitializedAsync()
     {
@@ -230,9 +246,9 @@
         var pct = await GetMousePercentAsync(e.OffsetX);
         _hoverPct = pct;
 
-        var totalMinutes = pct / 100.0 * 24 * 60;
-        var h = (int)(totalMinutes / 60);
-        var m = (int)(totalMinutes % 60);
+        var actualHours = _viewStartHours + pct / 100.0 * _zoomHours;
+        var h = (int)actualHours;
+        var m = (int)((actualHours - h) * 60);
         _hoverTimeLabel = $"{h:D2}:{m:D2}";
 
         _hoverNearest = FindNearestScreenshot(pct);
@@ -295,12 +311,13 @@
         }
     }
 
-    private static double TimeToPercent(string utcIso)
+    private double TimeToPercent(string utcIso)
     {
         if (DateTime.TryParse(utcIso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
         {
             var local = dt.ToLocalTime();
-            return (local.Hour * 3600 + local.Minute * 60 + local.Second) / 86400.0 * 100.0;
+            var hours = local.Hour + local.Minute / 60.0 + local.Second / 3600.0;
+            return (hours - _viewStartHours) / _zoomHours * 100.0;
         }
         return 0;
     }
@@ -319,6 +336,41 @@
         "manual"        => "📸 Manual",
         _               => trigger
     };
+
+    private async Task HandleBarWheel(WheelEventArgs e)
+    {
+        // DeltaY > 0 = scroll down = zoom out; DeltaY < 0 = scroll up = zoom in
+        var factor = e.DeltaY > 0 ? 1.5 : (1.0 / 1.5);
+        var newZoom = Math.Clamp(_zoomHours * factor, 0.5, 24.0);
+        if (Math.Abs(newZoom - _zoomHours) < 0.001) return;
+
+        // Get mouse position as fraction [0,1] within bar
+        var rawPct = await GetMousePercentAsync(e.OffsetX);
+        // Mouse is at this hour in the current view
+        var mouseHours = _viewStartHours + rawPct / 100.0 * _zoomHours;
+
+        // Anchor zoom around mouse position
+        _viewStartHours = mouseHours - (rawPct / 100.0 * newZoom);
+        _zoomHours = newZoom;
+
+        // Clamp so we don't scroll past midnight
+        _viewStartHours = Math.Clamp(_viewStartHours, 0.0, Math.Max(0.0, 24.0 - _zoomHours));
+        StateHasChanged();
+    }
+
+    private void ResetZoom()
+    {
+        _zoomHours = 24.0;
+        _viewStartHours = 0.0;
+        StateHasChanged();
+    }
+
+    private string FormatZoomLevel()
+    {
+        if (_zoomHours < 1) return $"{(int)(_zoomHours * 60)}min window";
+        if (_zoomHours < 1.5) return "1h window";
+        return $"{_zoomHours:F0}h window";
+    }
 
     public void Dispose()
     {

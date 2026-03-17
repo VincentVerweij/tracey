@@ -89,7 +89,7 @@
 .timeline-bar-inner {
     position: relative;
     height: 80px;
-    cursor: crosshair;
+    cursor: ns-resize;
     background: linear-gradient(to bottom, #1e1e2e 0%, #16213e 100%);
     user-select: none;
     overflow: hidden;
@@ -281,4 +281,41 @@
     font-size: 0.875rem;
     padding: 3rem;
     text-align: center;
+}
+
+/* ─── Zoom indicator ───────────────────────────────────────── */
+.timeline-zoom-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    background: var(--tracey-surface);
+    border-bottom: 1px solid var(--tracey-border);
+    font-size: 0.75rem;
+    color: var(--tracey-text-muted, #6b7280);
+}
+
+.zoom-level-text {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.03em;
+}
+
+.zoom-reset-btn {
+    background: none;
+    border: 1px solid var(--tracey-border);
+    border-radius: var(--tracey-radius);
+    color: var(--tracey-text-muted, #6b7280);
+    cursor: pointer;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.4rem;
+    line-height: 1.4;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.zoom-reset-btn:hover {
+    background: var(--tracey-accent, #6366f1);
+    color: #ffffff;
+    border-color: var(--tracey-accent, #6366f1);
 }

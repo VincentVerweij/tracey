@@ -92,7 +92,7 @@ pub fn client_create(
 
     let count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM clients WHERE name = ?1",
+            "SELECT COUNT(*) FROM clients WHERE name = ?1 AND is_archived = 0",
             params![name],
             |r| r.get(0),
         )

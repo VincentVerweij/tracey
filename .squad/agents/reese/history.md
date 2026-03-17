@@ -81,6 +81,15 @@
 
 **cargo check: PASS** — 15 dead_code warnings (all pre-existing), 0 errors.
 
+### 2026-03-17: Archive name-conflict fix in client_create (cargo check PASS)
+
+**File updated:**
+- `commands/hierarchy.rs`: `client_create` name-conflict SQL changed from `WHERE name = ?1` → `WHERE name = ?1 AND is_archived = 0`
+
+**Why:** The old check counted archived clients, so re-using a previously-archived client name was incorrectly blocked with `"name_conflict"`. Adding `AND is_archived = 0` restricts the uniqueness check to active records only — archived clients no longer pollute the namespace.
+
+**cargo check: PASS** — 16 dead_code warnings (all pre-existing), 0 errors.
+
 ---
 
 ## Archived Sessions (condensed)
