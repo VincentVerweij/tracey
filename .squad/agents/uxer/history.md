@@ -48,6 +48,17 @@
 **What was delivered:**
 - `Timeline.razor.css` — full scoped CSS for the screenshot timeline page.
 - `Timeline.razor` — stub replaced with proper HTML scaffold; `@implements IDisposable` and stub `@code {}` added so Root can wire C# logic without touching HTML.
+
+## Feature 7 — Horizontal 24h Timeline CSS (2026-03-17)
+
+**What was delivered:**
+- `Timeline.razor.css` — complete rewrite for the 24h horizontal timeline UI.
+- Old card-grid classes (`.screenshot-grid`, `.screenshot-item`, `.screenshot-meta`, etc.) fully removed.
+- New classes: `.timeline-day-bar`, `.timeline-bar-inner` — full-width dark gradient track (80px height, crosshair cursor).
+- `.timeline-hour-marker` + `.hour-label` — 24 absolute-positioned tick lines; nth-child rule hides crowded labels (shows every 6th = hours 0, 6, 12, 18).
+- `.timeline-screenshot-dot` + `.timeline-dot-selected` — indigo circles absolutely positioned by left%, scale + glow on hover/selected, focus-visible ring for keyboard nav.
+- `.timeline-hover-indicator` + `.hover-time-label` — 1px vertical hairline with monospace time bubble follows mouse; z-index 4 floats above dots.
+- `.timeline-preview-area`, `.preview-header`, `.preview-header-hover`, `.preview-close`, `.preview-time`, `.preview-trigger`, `.preview-process`, `.preview-title-text`, `.preview-placeholder`, `.screenshot-img`, `.screenshot-img-hover` — full preview panel below the bar.
 - `Projects.razor` error banner already uses `BbAlert` from Phase 5.5 — no change needed.
 - Build: 0 errors (3 pre-existing warnings: RZ10012 BbPortalHost + 2 CS0649 stubs Root will fill).
 

@@ -1,253 +1,109 @@
-# Root — Project History
+﻿# Root — Project History
 
 ## Core Context
 
 - **Owner:** Vincent Verweij
 - **Project:** Tracey — Window Activity Timetracking Tool
 - **Branch:** `001-window-activity-tracker`
-- **Stack:** Blazor WebAssembly .NET 10 (no server process), BlazorBlueprint.Components, IJSRuntime for Tauri IPC, WebView2 inside Tauri
+- **Stack:** Blazor WebAssembly .NET 10, BlazorBlueprint.Components 3.5.2, IJSRuntime for Tauri IPC, WebView2 inside Tauri
 - **My files:** `src/Tracey.App/` (Pages/, Components/, Services/, wwwroot/)
-- **IPC contract:** `specs/001-window-activity-tracker/contracts/ipc-commands.md` — all commands I call come from here
-- **Data model:** `specs/001-window-activity-tracker/data-model.md` — entity shapes I render
+- **IPC contract:** `specs/001-window-activity-tracker/contracts/ipc-commands.md`
 - **Created:** 2026-03-15
+- Solution: `Tracey.slnx` (.NET 10 XML format); builds 0 errors, 1 pre-existing RZ10012 warning (BbPortalHost TFM mismatch — harmless)
+- `window.__TAURI_INTERNALS__.invoke` — Tauri 2.0 IPC bridge
+- `TauriEventService.cs`: real `DotNetObjectReference` bridge (`wwwroot/js/tauri-bridge.js`); `[JSInvokable] RouteEvent` dispatches typed C# events
+
+### Critical Patterns
+- BB class interpolation: `Class="@($"base{(cond ? " extra" : "")}")"` — `Class="base @(expr)"` causes RZ9986
+- `@bind:after` for post-change callbacks (e.g., archive toggle + reload)
+- `@onclick` lambdas with string literals: use single-quote outer attribute `@onclick='() => Resolve("break")'`
+- `@onkeydown` with string comparisons: extract to named method (Razor quote conflict)
+- `@code` inside HTML comments causes `RZ2005`/`RZ1017` parse errors — never do this
+- IPC wrapper: `new { request = new { ... } }` for Rust struct params; single-field commands pass arg name directly
+- `JsonPropertyName`: `local_timezone` (not `timezone`), `page_size` (not `entries_per_page`)
+- `ErrorPayload`: `{ Component, Event, Error }` — not `{ message }`
+- `tracey://error` must be wired via both Tauri `listen()` AND `window.addEventListener` path (Shaw test 8 requirement)
+- `convertFileSrc`: `https://asset.localhost/C%3A/...` — colon URL-encoded, provided by `tauri-bridge.js`
+
+### Files Implemented (Phases 1–6)
+- `Services/TauriIpcService.cs`: All IPC DTOs + command wrappers (all phases)
+- `Services/TauriEventService.cs`: `DotNetObjectReference` bridge; `[JSInvokable] RouteEvent`; `IDisposable`
+- `Services/TimerStateService.cs`: `ITimerStateService` + local `PeriodicTimer` fallback ticker
+- `wwwroot/js/tauri-bridge.js`: IIFE bridge; `initializeTauriBridge`; `disposeTauriBridge`; `convertFileSrc`
+- `Components/QuickEntryBar.razor`: Entry input + autocomplete + Ctrl+Space toggle; `⚠` orphan indicator
+- `Components/TimeEntryList.razor`: Grouped list, running row (`role="timer"`), inline edit + autosave on blur
+- `Components/IdleReturnModal.razor`: Idle return `<dialog>`; Break/Meeting/Specify/Keep; inline Specify input
+- `Pages/Dashboard.razor`: QuickEntryBar + TimeEntryList; subscribes `OnTimerTick` + `OnIdleDetected`
+- `Pages/Projects.razor`: Full client/project/task CRUD; lazy expand; inline forms; archive toggle
+- `Pages/Timeline.razor`: 24h horizontal timeline bar, screenshot dots, hover preview, auto-refresh
+- `_Imports.razor`: `@using Tracey.App.Components` added
+
+### Timer Architecture
+- `TimerStateService`: local `PeriodicTimer` 1s ticker for smooth UI; `HandleTimerTick(long)` snaps to Rust's authoritative value
+- `StartLocalTicker()` called from `StartAsync()` and `InitializeAsync()` (if restoring running timer); `StopLocalTicker()` from `StopAsync()`
+- `Dashboard.OnInitializedAsync` must call `await Events.InitializeAsync()` before subscribing tick events
+
+### Timeline (Feature 7)
+- Horizontal 24h bar: `.timeline-day-bar` > `.timeline-bar-inner` > dots + markers
+- `TimeToPercent()`: UTC→local→seconds/86400×100%
+- Hover: `HandleBarMouseMove` + `.timeline-hover-indicator` + `.hover-time-label`
+- `GetImgSrcAsync` calls `traceyBridge.convertFileSrc` for correctly-encoded asset URLs
+- CSS class contract locked with UXer (see decisions.md 2026-03-17 Bug-Fix Sprint section)
+
+### Projects.razor Key Patterns
+- Lazy load: clients on `OnInitializedAsync`, projects on expand, tasks on project expand
+- Inline forms with `bool` toggle flags per level — no modal
+- `ExpandLabel(bool, string)` helper avoids nested quotes in `aria-label` attributes
+- `@bind` on dictionary indexers works when key is pre-initialized in show handlers
+- Delete counts silently discarded (per spec — generic confirmation only)
+
+### IdleReturnModal Pattern
+- `<dialog role="dialog" aria-label="You're back">` — matches Shaw's `/idle|away|back/i`
+- Four buttons: Break / Meeting / Specify / Keep
+- Specify → inline input `aria-label="What were you doing?"` (not a second modal)
+- `idle_ended_at` captured at `Show()` time (not button-click time)
+- `InvokeAsync` wraps `Show()` + `StateHasChanged()` for Blazor thread safety
+
+### Selector Contracts (Shaw-driven)
+- `role="timer" aria-live="off" aria-atomic="true"` — elapsed counter
+- `role="listbox"` / `role="option"` — autocomplete dropdown
+- `.autocomplete-dropdown`, `.suggestion-item.is-orphaned`, `.orphan-warning[title]`
+- `.time-entry-list`, `.entry-description-btn`, `.entry-edit-form`
+- `input[aria-label="Entry description"]`, `input[aria-label="Start time"]`, `input[aria-label="End time"]`
+- Timeline: `[data-testid="screenshot-item"]`, `[data-testid="screenshot-timestamp"]`, `[data-testid="trigger-badge"]`
+
+---
 
 ## Learnings
 
-### 2026-03-15: T002 — Blazor WASM Scaffold (completed)
-- **.NET version**: net10.0 (SDK 10.0.104 installed — .NET 10 was available, no fallback needed)
-- **Solution format**: .NET 10 `dotnet new sln` creates `.slnx` (new XML-based format), not `.sln` — use `Tracey.slnx` not `Tracey.sln`
-- **BlazorBlueprint.Components**: FOUND on NuGet — version **3.5.2** installed successfully (with BlazorBlueprint.Primitives 3.5.0 and BlazorBlueprint.Icons.Lucide 2.0.0 as transitive deps)
-- **MailKit**: installed version **4.15.1** successfully
-- **dotnet build outcome**: `Build succeeded. 0 Warning(s). 0 Error(s)` on Tracey.slnx after scaffold
-- **Stub pages created**: Dashboard.razor (`/dashboard`, also `/`), Projects.razor, Tags.razor, Timeline.razor, Settings.razor — all in `Tracey.App/Pages/`
-- **Service stub created**: `Tracey.App/Services/TauriIpcService.cs` — empty class, typed overloads deferred to T015
-- **Template pages kept**: Home.razor, Counter.razor, Weather.razor, NotFound.razor — can be removed in a later cleanup task
-- **T005**: Tone-of-voice guide written to `docs/ux/tone.md`
+### 2026-03-17: Bug Fixes — Tauri bridge, timer tick, Timeline redesign (dotnet build PASS)
 
-### 2026-03-15: T015/T016/T017 — IPC Service, DI, Nav Shell (completed)
+**Build result:** 0 errors, 0 warnings on `Tracey.App.csproj`
 
-**Build result**: `Build succeeded in 8.5s — 0 Warning(s), 0 Error(s)` on `Tracey.slnx`
+**tauri-bridge.js** (`wwwroot/js/tauri-bridge.js`): IIFE bridge replacing no-op stub. `initializeTauriBridge(dotNetRef)` registers `__TAURI_INTERNALS__.listen` for all 7 `tracey://` events; each routes payload via `dotNetRef.invokeMethodAsync('RouteEvent', eventName, JSON.stringify(payload))`. `convertFileSrc` handles Windows drive-letter `%3A` encoding. Added `<script>` to `index.html` after `blazor.webassembly.js`.
 
-**TauriIpcService structure** (`src/Tracey.App/Services/TauriIpcService.cs`):
-- Private `Invoke<T>(command, args?)` helper calls `window.__TAURI_INTERNALS__.invoke` (Tauri 2.0)
-- Typed methods for all 34 IPC commands in the contract: health, preferences, timer (start/stop/get_active), time_entry (list/create_manual/continue/autocomplete), client CRUD+archive, project CRUD+archive, task CRUD, tag CRUD, fuzzy_match (projects/tasks), screenshot_list/delete_expired, idle_get_status/resolve, sync_get/configure/trigger
-- All request/response types as C# `record` with `[property: JsonPropertyName("snake_case")]` — serialization matches Rust field names
-- `AutocompleteSuggestion.IsOrphaned` included per architectural decision 2026-03-15
-- `ScreenshotItem[]` returned directly (raw array) per contract's "Array of..." wording — see decisions inbox
+**TauriEventService.cs**: `DotNetObjectReference`-based; `[JSInvokable] RouteEvent` deserializes JSON and dispatches typed events; graceful `JSException` fallback when outside Tauri host; `IDisposable`.
 
-**TauriEventService structure** (`src/Tracey.App/Services/TauriEventService.cs`):
-- All 7 contract events registered: `timer-tick`, `idle-detected`, `idle-resolved`, `screenshot-captured`, `sync-status-changed`, `notification-sent`, `error`
-- Payload types match contract (not task-prompt example — see decisions inbox for deviations)
-- `Listen<T>` is a stub; JS shim for `DotNetObjectReference` callback bridge is deferred to Final Phase
+**Dashboard.razor**: `OnInitializedAsync` subscribes `OnTimerTick` + `OnIdleDetected`, then calls `await Events.InitializeAsync()`, then `ts.InitializeAsync()`. Added `HandleTimerTick(TimerTickPayload)` → `ts.HandleTimerTick(payload.ElapsedSeconds)`. `Dispose()` unsubscribes both.
 
-**DI registrations** (`Program.cs`): `AddScoped<TauriIpcService>`, `AddScoped<TauriEventService>`
+**TimerStateService.cs**: Added `_localTicker` (`PeriodicTimer`) + `_tickerCts`. `StartLocalTicker()` / `StopLocalTicker()` manage 1s increment loop. `HandleTimerTick(long)` snaps to Rust value. Ticker wired in `StartAsync`, `StopAsync`, and `InitializeAsync` (if `_isRunning`).
 
-**App.razor**: `TauriEventService.InitializeAsync()` called from `OnAfterRenderAsync(firstRender)` — event subscriptions fire once at app root. Standard `<NotFound>` render fragment replaces erroneous `NotFoundPage` attribute.
+**TimeEntryList.razor**: `StateHasChanged()` added to `LoadPage` finally block.
 
-**MainLayout.razor**: Replaced default Bootstrap shell with Tracey sidebar nav (Timer/Projects/Tags/Timeline/Settings). Health check logged to browser console on first render. Uses `HealthResponse.Running`/`EventsPerSec`/`MemoryMb` (contract fields, not the task-example's non-existent `Status`/`Version` fields).
-
-**`_Imports.razor`**: Added `@using Tracey.App.Services`.
+**Timeline.razor**: 24h horizontal bar replacing card grid (Feature 7). Hour markers, screenshot dots at `TimeToPercent()` positions, hover indicator + nearest preview, selected dot with close. Auto-refresh on `OnScreenshotCaptured`. `GetImgSrcAsync` calls `traceyBridge.convertFileSrc`.
 
 ---
 
-### 2026-03-15: Team Setup & Key Design Notes
-- Blazor WASM (not Hybrid, not Server) — compiles C# to WASM, runs in WebView2 with no .NET server process
-- All data writes go through Reese's IPC commands; I use `Microsoft.Data.Sqlite` for local read-only queries only
-- Fuzzy match quickentry algorithm: pure C#, no JS, fully unit-testable, slash-delimited notation
-- Time entry autocomplete shows `is_orphaned: true` indicator when referenced project/task was deleted
-- All modals use the same BlazorBlueprint modal component (UX consistency, verified by Finch)
-- Timezone: display in user's configured local timezone; all storage in UTC via Reese's commands
-- Quick-entry bar is the highest-priority UI surface (drives daily workflow — US1)
-- Tauri events to subscribe: `tracey://timer-tick`, `tracey://idle-detected`, `tracey://sync-status-changed`, `tracey://error`
-- `TauriIpcService` is the single IPC abstraction — all Tauri calls go through it
+## Archived Sessions (condensed)
 
----
+### 2026-03-16: T027–T030 — TimerStateService + Dashboard + QuickEntryBar + TimeEntryList (build PASS)
+Implemented `ITimerStateService` / `TimerStateService` (startup restore via `timer_get_active`), `QuickEntryBar` (Ctrl+Space, autocomplete, 200ms debounce, orphan indicator), `TimeEntryList` (grouped by date, `role="timer"` running row, inline edit stubs), `Dashboard` (composes both). `_Imports.razor` + `Program.cs` updated.
 
-### 2026-03-15: Phase 2 Session Completion Note (Scribe)
+### 2026-03-16: T035/T036 — IdleReturnModal + Dashboard idle wiring (build PASS)
+`IdleReturnModal.razor` with `<dialog>`, four buttons, inline Specify input. Dashboard subscribes `OnIdleDetected`, guards `HadActiveTimer`, calls `InvokeAsync`. `idle_ended_at` captured at `Show()` time.
 
-T015/T016/T017 complete. dotnet build 0 errors, 0 warnings. **Known open item for Final Phase:** JS event shim (`wwwroot/tauri-events.js`) is not yet implemented. `TauriEventService.Listen<T>` is a stub — all event subscriptions are wired as C# events but payloads are never delivered to components until the `DotNetObjectReference` callback bridge is built. Any component that depends on real-time Tauri events (TimerStateService T027, idle prompts, etc.) must be aware of this gap and must not assume events arrive before the Final Phase shim is in place.
+### 2026-03-16: T041 — Projects.razor CRUD (build PASS)
+Full client/project/task lazy-expand CRUD. Inline add forms, inline delete confirmation `role="dialog"`. `@bind:after` archive toggle. `ExpandLabel` helper. All existing TauriIpcService DTOs reused — no new types needed.
 
----
-
-### 2026-03-16: T030b — Full Inline Edit Mode in TimeEntryList (completed)
-
-**Build result**: `Build succeeded in 4.4s — 0 Warning(s), 0 Error(s)` on `Tracey.slnx`
-
-**Files changed**:
-- `src/Tracey.App/Components/TimeEntryList.razor` — full inline edit form + AutoSave
-- `src/Tracey.App/Services/TauriIpcService.cs` — `TimeEntryUpdateAsync` + `TimeEntryUpdateRequest`
-- `specs/001-window-activity-tracker/contracts/ipc-commands.md` — `time_entry_update` contract added
-
----
-
-### 2026-03-16: T041 — Projects.razor + TauriIpcService wrappers (completed)
-
-**Build result**: `Build succeeded in 23.0s — 0 Warning(s), 0 Error(s)` on `Tracey.slnx`
-
-**TauriIpcService.cs**: Already had all client/project/task DTOs and IPC methods from a prior session — no changes needed. Existing types used: `ClientItem`, `ProjectItem`, `TaskItem`, `ClientListResponse`, `ProjectListResponse`, `TaskListResponse`, `ClientCreateRequest`, `ProjectCreateRequest`, `TaskCreateRequest`, `ClientDeleteResponse`, `ModifiedAtResponse`, etc.
-
-**Projects.razor** (`src/Tracey.App/Pages/Projects.razor`): Full implementation replacing stub.
-- Lazy-load pattern: clients on `OnInitializedAsync`, projects on client expand, tasks on project expand
-- Inline add forms (toggle `bool` flag per level) — no modal needed
-- Delete confirmation: `_pendingDeleteClient` / `_pendingDeleteProject` inline `role="dialog"` inline-confirm divs
-- Archive/Unarchive buttons with `aria-label` on all actions
-- "Show archived" checkbox with `@bind:after="LoadClients"` — reload on toggle
-- Error display: `<div role="alert" class="alert alert-danger">` with dismiss button
-- All lambdas using string interpolation in attributes use `@($"...")` to avoid Razor quote-conflict
-- `ExpandLabel(bool, string)` helper method avoids nested quotes in `aria-label` attributes
-- `@bind` on dictionary indexers (`_newTaskName[project.Id]`) works when key pre-initialized in `ShowAddTask`/`ShowAddProject`
-
-**App.razor**: No changes — `/projects` nav link already present in `MainLayout.razor`
-
-**Learnings**:
-- T041 done — Projects.razor + TauriIpcService wrappers, dotnet build 0 errors
-
----
-
-### 2026-03-16: T035/T036 — IdleReturnModal + Dashboard idle wiring (completed)
-
-**Build result**: `Build succeeded in 6.1s — 0 Warning(s), 0 Error(s)` on `Tracey.slnx`
-
-**Task A — IPC verification**: `IdleGetStatusAsync()` and `IdleResolveAsync(IdleResolveRequest)` already existed with correct signatures. `IdleResolveRequest`, `IdleEntryDetails`, `IdleResolveResponse`, `IdleStatusResponse` all present. No changes to `TauriIpcService.cs` needed.
-
-**Task B (T035) — `IdleReturnModal.razor`** (`src/Tracey.App/Components/`):
-- `<dialog>` element with `role="dialog"` and `aria-label="You're back"` — matches Shaw's Playwright locator `role="dialog" name=/idle|away|back/i`
-- Displays human-readable idle duration computed from `idle_since` UTC timestamp
-- Four buttons in order: Break / Meeting / Specify / Keep
-- "Specify" reveals inline description input (`aria-label="What were you doing?"`) — matches Shaw's locator `role="textbox" name=/description|what were you doing/i`
-- All `@onclick` lambdas with string literals use single-quote outer attribute to avoid Razor conflicting-quote parse error
-- Calls `IdleResolveAsync` on selection; raises `OnResolved` EventCallback for Dashboard refresh
-- `Dispose()` is a no-op (no subscriptions owned by this component)
-
-**Task C (T036) — `Dashboard.razor`**:
-- Added `@inject TauriEventService Events`
-- Added `<IdleReturnModal @ref="_idleModal" OnResolved="HandleIdleResolved" />`
-- `OnInitializedAsync` subscribes `Events.OnIdleDetected += HandleIdleDetected`
-- `HandleIdleDetected` guards on `payload.HadActiveTimer`; calls `_idleModal?.Show(payload.IdleSince)` inside `InvokeAsync` for thread-safe component update
-- `Dispose()` unsubscribes `Events.OnIdleDetected -= HandleIdleDetected`
-
-**Idle modal pattern established**:
-- Modal is a child component with a `Show(string idleSince)` method called by the parent page
-- Parent subscribes/unsubscribes the Tauri event in `OnInitializedAsync`/`Dispose`
-- Resolution always flows: user picks option → `IdleResolveAsync` → `OnResolved.InvokeAsync()` → Dashboard `RefreshList()`
-
-**Inline edit behaviour**:
-- Click completed entry row → `StartInlineEdit(TimeEntryItem entry)` captures full entry (description + both UTC timestamps converted to local `DateTime`)
-- Edit form: description `<input type="text">`, start and end `<input type="datetime-local">` — all in-place, no modal
-- Blur from any field → `AutoSave(entry)` — converts local `DateTime` back to UTC ISO string (`.ToString("o")`), calls `time_entry_update` IPC, clears `_editingId`, reloads list
-- `_isSaving` guard prevents concurrent saves on rapid tab-through
-- Overlap / invalid-time errors shown inline via `<p class="edit-error" role="alert">`; `_editingId` is NOT cleared on error — user can correct and blur again
-- Cancel button discards edits; no save call
-
-**Type corrections**:
-- `StartInlineEdit` signature changed from `(string entryId)` to `(TimeEntryItem entry)` — caller updated to pass full object
-- `SaveInlineEdit` removed; replaced by `AutoSave(TimeEntryItem entry)`
-
-**IPC additions**:
-- `time_entry_update` contract written into `ipc-commands.md` (input: id, description, project_id, task_id, tag_ids, started_at, ended_at, force; output: `{ "modified_at": ... }`; errors: not_found, invalid_time_range, overlap_detected)
-- `TimeEntryUpdateRequest` record + `TimeEntryUpdateAsync` method added to `TauriIpcService.cs` (returns `ModifiedAtResponse`, consistent with other update commands)
-
----
-
-### 2026-03-16: T027/T028/T029/T030 — TimerStateService + Dashboard Components (completed)
-
-**Build result**: `Build succeeded in 9.4s — 0 Warning(s), 0 Error(s)` on `Tracey.slnx`
-
-**T027 — TimerStateService** (`src/Tracey.App/Services/TimerStateService.cs`):
-- Implements full `ITimerStateService` as specified by Shaw (T019), including `CurrentProjectId` and `CurrentTaskId` (present in Shaw's test file, not in prompt stub)
-- `HandleTimerTick(long elapsedSeconds)` — called from `TauriEventService.OnTimerTick` via wiring in `App.razor`
-- `InitializeAsync()` — calls `timer_get_active` IPC on startup to restore state across restarts; calculates elapsed from `started_at` UTC diff
-- `StopAsync()` — no-op guard when `!_isRunning`; swallows `no_active_timer` errors
-- Registered in `Program.cs` as `AddScoped<ITimerStateService, TimerStateService>()`
-- Timer tick wired in `App.razor` `OnAfterRenderAsync`: `Events.OnTimerTick += p => ts.HandleTimerTick(p.ElapsedSeconds)` (cast pattern — same as Dashboard)
-
-**T028 — QuickEntryBar** (`src/Tracey.App/Components/QuickEntryBar.razor`):
-- `aria-label="What are you working on?"` — matches Shaw's Playwright locator
-- Enter → `Timer.StartAsync(description.Trim())`
-- Ctrl+Space → toggles running/stopped, focuses input when idle
-- Stop button with `aria-label="Stop timer"` — matches Shaw's `role="button" name=/stop/i`
-- Autocomplete: 200ms debounce, ≥2 char threshold, `⚠` orphan indicator
-- Type corrections applied: `TimeEntryAutocompleteRequest` (not `AutocompleteRequest`), `result.Suggestions.ToList()`
-
-**T029 — TimeEntryList** (`src/Tracey.App/Components/TimeEntryList.razor`):
-- Running timer row with `role="timer"` — matches Shaw's Playwright locator
-- Grouped by date (descending), `DateOnly.Parse(e.StartedAt[..10])` for grouping
-- `LoadPage` is `public` — called from `Dashboard.razor` via `@ref`
-- Type corrections: `TimeEntryItem` (not `TimeEntryListItem`), `TimeEntryContinueAsync(entryId)` string not request object
-- `FormatTime` handles nullable `string?` (`ended_at` can be null on running entry hypothetically)
-
-**T030 — Dashboard** (`src/Tracey.App/Pages/Dashboard.razor`):
-- Replaced stub; composes `<QuickEntryBar>` + `<TimeEntryList>`; calls `ts.InitializeAsync()` on mount via cast
-
-**Other file updates**:
-- `_Imports.razor`: added `@using Tracey.App.Components`
-- `App.razor`: added `@inject ITimerStateService TimerService` + timer tick wiring in `OnAfterRenderAsync`
-- `Program.cs`: `AddScoped<ITimerStateService, TimerStateService>()` registered
-
-**Components directory**: `src/Tracey.App/Components/` created (new)
-
----
-
-### 2026-03-15: Bug Fix — JsonPropertyName Mismatches + beforeDevCommand (Root)
-
-**Bug fix (Finch blocking bug on T015):**
-Fixed 4 incorrect `[JsonPropertyName]` attributes in `TauriIpcService.cs`:
-- `UserPreferences.Timezone`: `"timezone"` → `"local_timezone"`
-- `UserPreferences.EntriesPerPage`: `"entries_per_page"` → `"page_size"`
-- `PreferencesUpdateRequest.Timezone`: `"timezone"` → `"local_timezone"`
-- `PreferencesUpdateRequest.EntriesPerPage`: `"entries_per_page"` → `"page_size"`
-
-All other fields in both records were confirmed correct against the IPC contract.
-
----
-
-### 2026-03-17: T049 — Timeline.razor C# Plumbing (completed)
-
-**Build result**: `Build succeeded — 0 Error(s), 1 pre-existing Warning(s)` on `Tracey.slnx`
-
-**ScreenshotItem DTO**: Already present in `TauriIpcService.cs` from Phase 2 — no change needed.
-
-**ScreenshotListAsync fix**: Existing wrapper passed `new { from, to }` directly; corrected to `new { request = new { from, to } }` per IPC contract (`{ request: { from, to } }`).
-
-**ErrorPayload update** (`TauriEventService.cs`): Existing record had `message` field only; updated to match contract: `{ component, event, error }` — now has `Component`, `Event`, `Error` properties. `OnError` event declaration unchanged.
-
-**Timeline.razor** (`src/Tracey.App/Pages/Timeline.razor`): Replaced UXer stub with full C# implementation:
-- `@inject TauriEventService Events` added; subscribes `OnError` in `OnInitializedAsync`, unsubscribes in `Dispose()`
-- `_dateFilter: DateOnly` bound to `<input type="date">` via `@bind` / `@bind:after="LoadScreenshots"`
-- `LoadScreenshots()`: builds UTC ISO range from `DateOnly`, calls `ScreenshotListAsync`, null-guards result
-- `RunCleanup()`: calls `ScreenshotDeleteExpiredAsync`, reloads list on success
-- `SelectScreenshot()`: toggle-select pattern (`_selected = same ? null : s`)
-- `HandleScreenshotKeyDown()`: Enter/Space activates item — avoids Razor quote-conflict by extracting to method
-- `HandleError(ErrorPayload)`: surfaces `payload.Error` as dismissible banner via `InvokeAsync(StateHasChanged)`
-- `FormatTime()`: parses UTC ISO, converts to local `HH:mm:ss`
-- `FormatTrigger()`: switch on `interval` / `window_change` / `manual` → emoji labels
-- `GetImgSrc()`: `asset://localhost/` Tauri asset protocol, normalizes backslashes
-- HTML comment containing `@code` removed from template (Razor parses it as directive)
-- UXer's `BbButton` and local `ScreenshotEntry` stub removed; replaced by `ScreenshotItem` from IPC service
-
-**Dev server decision (`beforeDevCommand`):**
-`Tracey.App` uses `Microsoft.NET.Sdk.BlazorWebAssembly` (pure WASM, no ASP.NET host process), but includes `Microsoft.AspNetCore.Components.WebAssembly.DevServer` which provides a lightweight static-file dev server invokable via `dotnet run`. Set `beforeDevCommand` in `tauri.conf.json` to:
-```
-dotnet watch run --project src/Tracey.App --urls http://localhost:5000
-```
-`devUrl` remains `http://localhost:5000`. This gives hot-reload in dev without a separate tool.
-
-**Build result:** `dotnet build Tracey.slnx` — Build succeeded, 0 errors, 0 warnings.
-
----
-
-### 2026-03-17: Cross-Agent Notes (from Shaw T042 + UXer T049-UX)
-
-**`tracey://error` CustomEvent (from Shaw T042):**
-- Shaw's test 8 dispatches via `window.dispatchEvent(new CustomEvent('tracey://error', { detail: { message } }))`. `TauriEventService` must listen on the `window` object for this event name — not only via Tauri's native `listen()` API. If only listening via Tauri's event bus, test 8 will fail. T049 wired this; confirm `TauriEventService` handles the `window` CustomEvent path.
-
-**HTML scaffold ownership (from UXer T049-UX):**
-- UXer owns all HTML outside `@code{}`. Root replaces ONLY the `@code{}` block. Any HTML or CSS changes to Timeline.razor require UXer review. The CSS binding class names are the Root/UXer contract (see decisions.md 2026-03-17 UXer section for full table).
-
-**Selector contracts (from Shaw T042) — Root must honour at minimum one from each group:**
-- Empty state: `.empty-state-illustration`, `[data-testid="empty-state"]`
-- Screenshot item: `[data-testid="screenshot-item"]`, `[data-testid="screenshot-card"]`
-- Timestamp: `[data-testid="screenshot-timestamp"]`, `[class*="timestamp"]`, `[class*="time"]`
-- Trigger badge: `[data-testid="trigger-badge"]`, `[class*="trigger"]`, `[class*="badge"]`
-- Preview: `img[src]`, `role="img"`, `[data-testid="screenshot-preview"]`
-- Error banner dismiss button: `role="button"` name `/close|dismiss|×|✕/i` or `aria-label*="close"`/`"dismiss"`
+### 2026-03-17: T049 — Timeline.razor C# Plumbing (1 pre-existing warning)
+Initial C# plumbing for screenshot timeline. `ScreenshotListAsync` corrected to `new { request = new { from, to } }`. `ErrorPayload` updated to `{ Component, Event, Error }`. `GetImgSrc` used `asset://localhost/` (old format — corrected to `convertFileSrc` in bug-fix session above). `SelectScreenshot` is `async Task`.

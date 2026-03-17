@@ -1,6 +1,7 @@
 @page "/timeline"
 @inject TauriIpcService Tauri
 @inject TauriEventService Events
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Timeline — Tracey</PageTitle>
@@ -8,7 +9,6 @@
 <div class="timeline-page">
     @if (_errorMessage is not null)
     {
-        <!-- dismissible error banner — UXer will style with BbAlert -->
         <div role="alert" class="timeline-error-banner">
             <span>@_errorMessage</span>
             <button @onclick="DismissError" aria-label="Dismiss error">✕</button>
@@ -18,7 +18,10 @@
     <div class="timeline-header">
         <h1 class="page-title">Timeline</h1>
         <div class="timeline-controls">
-            <input type="date" @bind="_dateFilter" @bind:after="LoadScreenshots" aria-label="Filter by date" />
+            <input type="date"
+                   @bind="_dateFilter"
+                   @bind:after="LoadScreenshots"
+                   aria-label="Filter by date" />
             <button @onclick="RunCleanup" class="btn-ghost" aria-label="Clean up expired screenshots">
                 Clean up
             </button>
@@ -39,48 +42,103 @@
     }
     else
     {
-        <div class="screenshot-grid" role="list">
-            @foreach (var s in _screenshots)
+        <div class="timeline-day-bar"
+             aria-label="24-hour timeline for @_dateFilter.ToString("yyyy-MM-dd")">
+            <div class="timeline-bar-inner"
+                 @onmousemove="HandleBarMouseMove"
+                 @onmouseleave="HandleBarMouseLeave"
+                 @onclick="HandleBarClick">
+
+                @* Hour markers *@
+                @for (int h = 0; h <= 23; h++)
+                {
+                    var pct = h / 24.0 * 100.0;
+                    var hour = h;
+                    <div class="timeline-hour-marker"
+                         style="left: @pct.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%"
+                         aria-hidden="true">
+                        <span class="hour-label">@hour.ToString("D2")</span>
+                    </div>
+                }
+
+                @* Screenshot dots *@
+                @foreach (var s in _screenshots)
+                {
+                    var dotPct = TimeToPercent(s.CapturedAt);
+                    <button class="timeline-screenshot-dot @(_selected?.Id == s.Id ? "timeline-dot-selected" : "")"
+                            style="left: @dotPct.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%"
+                            @onclick:stopPropagation="true"
+                            @onclick="() => SelectScreenshot(s)"
+                            aria-label="Screenshot at @FormatTime(s.CapturedAt) — @s.WindowTitle"
+                            data-testid="screenshot-item"
+                            title="@FormatTime(s.CapturedAt) · @s.WindowTitle">
+                    </button>
+                }
+
+                @* Hover indicator *@
+                @if (_hoverTimeLabel is not null)
+                {
+                    <div class="timeline-hover-indicator"
+                         style="left: @_hoverPct.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%"
+                         aria-hidden="true">
+                        <span class="hover-time-label">@_hoverTimeLabel</span>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* Preview area *@
+        <div class="timeline-preview-area">
+            @if (_selected is not null)
             {
-                <div class="screenshot-item @(_selected?.Id == s.Id ? "selected" : "")"
-                     role="listitem"
-                     data-testid="screenshot-item"
-                     tabindex="0"
-                     @onclick="() => SelectScreenshot(s)"
-                     @onkeydown="@(e => HandleScreenshotKeyDown(e, s))">
-                    <div class="screenshot-meta">
-                        <span class="screenshot-time">@FormatTime(s.CapturedAt)</span>
-                        <span class="screenshot-trigger" data-testid="trigger-badge">@FormatTrigger(s.Trigger)</span>
-                    </div>
-                    <div class="screenshot-app">
-                        <span class="screenshot-process">@s.ProcessName</span>
-                        <span class="screenshot-title">@s.WindowTitle</span>
-                    </div>
+                <div class="preview-header">
+                    <span class="preview-time">@FormatTime(_selected.CapturedAt)</span>
+                    <span class="preview-trigger" data-testid="trigger-badge">@FormatTrigger(_selected.Trigger)</span>
+                    <span class="preview-process">@_selected.ProcessName</span>
+                    <span class="preview-title preview-title-text">@_selected.WindowTitle</span>
+                    <button @onclick="ClosePreview" class="preview-close" aria-label="Close preview">✕</button>
+                </div>
+                <img src="@_selectedImageUrl"
+                     alt="Screenshot from @FormatTime(_selected.CapturedAt)"
+                     class="screenshot-img"
+                     @onerror="HandleImageError" />
+            }
+            else if (_hoverNearest is not null)
+            {
+                <div class="preview-header preview-header-hover">
+                    <span class="preview-time">@FormatTime(_hoverNearest.CapturedAt)</span>
+                    <span class="preview-process">@_hoverNearest.ProcessName</span>
+                    <span class="preview-title preview-title-text">@_hoverNearest.WindowTitle</span>
+                </div>
+                <img src="@_hoverImageUrl"
+                     alt="Screenshot from @FormatTime(_hoverNearest.CapturedAt)"
+                     class="screenshot-img screenshot-img-hover" />
+            }
+            else
+            {
+                <div class="preview-placeholder">
+                    <span>Hover over the timeline or click a dot to preview a screenshot</span>
                 </div>
             }
         </div>
-
-        @if (_selected is not null)
-        {
-            <div class="screenshot-preview" role="region" aria-label="Screenshot preview">
-                <img src="@GetImgSrc(_selected.FilePath)"
-                     alt="Screenshot from @FormatTime(_selected.CapturedAt)"
-                     class="screenshot-img" />
-                <button @onclick="ClosePreview" aria-label="Close preview">✕</button>
-            </div>
-        }
     }
 </div>
 
 @code {
     private List<ScreenshotItem> _screenshots = new();
     private ScreenshotItem? _selected;
+    private ScreenshotItem? _hoverNearest;
+    private string _selectedImageUrl = string.Empty;
+    private string _hoverImageUrl = string.Empty;
     private bool _isLoading;
     private string? _errorMessage;
     private DateOnly _dateFilter = DateOnly.FromDateTime(DateTime.Today);
+    private double _hoverPct = 0;
+    private string? _hoverTimeLabel;
 
     protected override async Task OnInitializedAsync()
     {
+        Events.OnScreenshotCaptured += HandleScreenshotCaptured;
         Events.OnError += HandleError;
         await LoadScreenshots();
     }
@@ -89,11 +147,14 @@
     {
         _isLoading = true;
         _selected = null;
+        _selectedImageUrl = string.Empty;
+        _hoverNearest = null;
+        _hoverImageUrl = string.Empty;
         StateHasChanged();
         try
         {
             var from = _dateFilter.ToDateTime(TimeOnly.MinValue).ToUniversalTime().ToString("o");
-            var to   = _dateFilter.ToDateTime(TimeOnly.MaxValue).ToUniversalTime().ToString("o");
+            var to = _dateFilter.ToDateTime(TimeOnly.MaxValue).ToUniversalTime().ToString("o");
             var result = await Tauri.ScreenshotListAsync(from, to);
             _screenshots = (result ?? Array.Empty<ScreenshotItem>()).ToList();
         }
@@ -111,7 +172,7 @@
     {
         try
         {
-            var result = await Tauri.ScreenshotDeleteExpiredAsync();
+            await Tauri.ScreenshotDeleteExpiredAsync();
             _errorMessage = null;
             await LoadScreenshots();
         }
@@ -121,23 +182,127 @@
         }
     }
 
-    private void SelectScreenshot(ScreenshotItem s)
+    private async Task SelectScreenshot(ScreenshotItem s)
     {
-        _selected = _selected?.Id == s.Id ? null : s;
+        if (_selected?.Id == s.Id)
+        {
+            _selected = null;
+            _selectedImageUrl = string.Empty;
+        }
+        else
+        {
+            _selected = s;
+            _selectedImageUrl = await GetImgSrcAsync(s.FilePath);
+        }
     }
 
-    private void HandleScreenshotKeyDown(KeyboardEventArgs e, ScreenshotItem s)
+    private void ClosePreview()
     {
-        if (e.Key is "Enter" or " ") SelectScreenshot(s);
+        _selected = null;
+        _selectedImageUrl = string.Empty;
     }
 
-    private void ClosePreview() => _selected = null;
     private void DismissError() => _errorMessage = null;
+
+    private void HandleScreenshotCaptured(ScreenshotCapturedPayload payload)
+    {
+        // Auto-reload when a new screenshot is captured for today's date
+        if (payload.CapturedAt.StartsWith(_dateFilter.ToString("yyyy-MM-dd"), StringComparison.OrdinalIgnoreCase)
+            || DateOnly.FromDateTime(DateTime.Today) == _dateFilter)
+        {
+            InvokeAsync(LoadScreenshots);
+        }
+    }
 
     private void HandleError(ErrorPayload payload)
     {
         _errorMessage = $"Screenshot error: {payload.Error}";
         InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleImageError()
+    {
+        _errorMessage = "Could not load screenshot image — file may have been moved or deleted.";
+    }
+
+    private async Task HandleBarMouseMove(MouseEventArgs e)
+    {
+        var pct = await GetMousePercentAsync(e.OffsetX);
+        _hoverPct = pct;
+
+        var totalMinutes = pct / 100.0 * 24 * 60;
+        var h = (int)(totalMinutes / 60);
+        var m = (int)(totalMinutes % 60);
+        _hoverTimeLabel = $"{h:D2}:{m:D2}";
+
+        _hoverNearest = FindNearestScreenshot(pct);
+        if (_hoverNearest != null && _hoverNearest.Id != (_selected?.Id ?? ""))
+        {
+            _hoverImageUrl = await GetImgSrcAsync(_hoverNearest.FilePath);
+        }
+    }
+
+    private void HandleBarMouseLeave()
+    {
+        _hoverTimeLabel = null;
+        _hoverNearest = null;
+        _hoverImageUrl = string.Empty;
+        _hoverPct = 0;
+    }
+
+    private async Task HandleBarClick(MouseEventArgs e)
+    {
+        var pct = await GetMousePercentAsync(e.OffsetX);
+        var nearest = FindNearestScreenshot(pct);
+        if (nearest != null)
+            await SelectScreenshot(nearest);
+    }
+
+    private ScreenshotItem? FindNearestScreenshot(double pct)
+    {
+        if (_screenshots.Count == 0) return null;
+        return _screenshots
+            .OrderBy(s => Math.Abs(TimeToPercent(s.CapturedAt) - pct))
+            .FirstOrDefault();
+    }
+
+    private async Task<double> GetMousePercentAsync(double offsetX)
+    {
+        try
+        {
+            var width = await JS.InvokeAsync<double>("eval", "document.querySelector('.timeline-bar-inner')?.clientWidth ?? 800");
+            return Math.Clamp(offsetX / Math.Max(width, 1) * 100.0, 0, 100);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private async Task<string> GetImgSrcAsync(string filePath)
+    {
+        try
+        {
+            return await JS.InvokeAsync<string>("traceyBridge.convertFileSrc", filePath);
+        }
+        catch
+        {
+            // Fallback manual conversion
+            var normalized = filePath.Replace('\\', '/').TrimStart('/');
+            if (normalized.Length > 1 && normalized[1] == ':')
+                normalized = normalized[0] + "%3A" + normalized[2..];
+            return $"https://asset.localhost/{normalized}";
+        }
+    }
+
+    private static double TimeToPercent(string utcIso)
+    {
+        if (DateTime.TryParse(utcIso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+        {
+            var local = dt.ToLocalTime();
+            return (local.Hour * 3600 + local.Minute * 60 + local.Second) / 86400.0 * 100.0;
+        }
+        return 0;
     }
 
     private static string FormatTime(string utcIso)
@@ -155,11 +320,10 @@
         _               => trigger
     };
 
-    private static string GetImgSrc(string filePath) =>
-        $"asset://localhost/{filePath.Replace('\\', '/').TrimStart('/')}";
-
     public void Dispose()
     {
+        Events.OnScreenshotCaptured -= HandleScreenshotCaptured;
         Events.OnError -= HandleError;
     }
 }
+

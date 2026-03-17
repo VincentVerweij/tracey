@@ -23,10 +23,17 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Events.OnTimerTick += HandleTimerTick;
+        Events.OnIdleDetected += HandleIdleDetected;
+        await Events.InitializeAsync();   // start the JS bridge
         if (Timer is TimerStateService ts)
             await ts.InitializeAsync();
+    }
 
-        Events.OnIdleDetected += HandleIdleDetected;
+    private void HandleTimerTick(TimerTickPayload payload)
+    {
+        if (Timer is TimerStateService ts)
+            ts.HandleTimerTick(payload.ElapsedSeconds);
     }
 
     private void HandleIdleDetected(IdleDetectedPayload payload)
@@ -53,6 +60,7 @@
 
     public void Dispose()
     {
+        Events.OnTimerTick -= HandleTimerTick;
         Events.OnIdleDetected -= HandleIdleDetected;
     }
 }

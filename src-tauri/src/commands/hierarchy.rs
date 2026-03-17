@@ -310,7 +310,7 @@ pub fn project_list(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
-    serde_json::to_value(projects).map_err(|e| e.to_string())
+    Ok(serde_json::json!({ "projects": projects }))
 }
 
 #[derive(Deserialize)]
@@ -453,6 +453,26 @@ pub fn project_delete(
 ) -> Result<serde_json::Value, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
+    // Count tasks that will be deleted
+    let deleted_tasks: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    // Count time entries that will become orphaned
+    let orphaned_entries: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM time_entries \
+             WHERE project_id = ?1 \
+                OR task_id IN (SELECT id FROM tasks WHERE project_id = ?1)",
+            params![id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
     // NULL out task_id on entries referencing tasks under this project
     conn.execute(
         "UPDATE time_entries SET task_id = NULL \
@@ -472,7 +492,7 @@ pub fn project_delete(
     conn.execute("DELETE FROM projects WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
 
-    Ok(serde_json::Value::Null)
+    Ok(serde_json::json!({ "deleted_tasks": deleted_tasks, "orphaned_entries": orphaned_entries }))
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -510,7 +530,7 @@ pub fn task_list(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
-    serde_json::to_value(tasks).map_err(|e| e.to_string())
+    Ok(serde_json::json!({ "tasks": tasks }))
 }
 
 #[derive(Deserialize)]

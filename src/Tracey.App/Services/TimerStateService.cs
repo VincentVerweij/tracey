@@ -28,6 +28,8 @@ public class TimerStateService : ITimerStateService
     private string? _currentTaskId;
     private string? _startedAt; // UTC ISO string from Rust
     private long _elapsedSeconds; // updated by timer-tick events
+    private System.Threading.PeriodicTimer? _localTicker;
+    private CancellationTokenSource? _tickerCts;
 
     public bool IsRunning => _isRunning;
     public string? CurrentDescription => _currentDescription;
@@ -47,8 +49,38 @@ public class TimerStateService : ITimerStateService
     /// Called by TauriEventService when tracey://timer-tick fires
     public void HandleTimerTick(long elapsedSeconds)
     {
-        _elapsedSeconds = elapsedSeconds;
+        _elapsedSeconds = elapsedSeconds;  // Rust is ground truth — sync to its value
         OnStateChanged?.Invoke();
+    }
+
+    private void StartLocalTicker()
+    {
+        StopLocalTicker();
+        _tickerCts = new CancellationTokenSource();
+        var cts = _tickerCts;
+        _localTicker = new System.Threading.PeriodicTimer(TimeSpan.FromSeconds(1));
+        var ticker = _localTicker;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (await ticker.WaitForNextTickAsync(cts.Token))
+                {
+                    _elapsedSeconds++;
+                    OnStateChanged?.Invoke();
+                }
+            }
+            catch (OperationCanceledException) { }
+        });
+    }
+
+    private void StopLocalTicker()
+    {
+        _tickerCts?.Cancel();
+        _tickerCts?.Dispose();
+        _tickerCts = null;
+        _localTicker?.Dispose();
+        _localTicker = null;
     }
 
     /// Load active timer from Rust on app startup (restores state across restarts)
@@ -70,6 +102,7 @@ public class TimerStateService : ITimerStateService
                 {
                     _elapsedSeconds = (long)(DateTime.UtcNow - start).TotalSeconds;
                 }
+                if (_isRunning) StartLocalTicker();
                 OnStateChanged?.Invoke();
             }
         }
@@ -95,6 +128,7 @@ public class TimerStateService : ITimerStateService
         _currentTaskId = taskId;
         _startedAt = result.StartedAt;
         _elapsedSeconds = 0;
+        StartLocalTicker();
 
         OnStateChanged?.Invoke();
     }
@@ -102,6 +136,7 @@ public class TimerStateService : ITimerStateService
     public async Task StopAsync()
     {
         if (!_isRunning) return; // no-op per Shaw's test
+        StopLocalTicker();
 
         try
         {

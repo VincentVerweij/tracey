@@ -746,3 +746,81 @@
 **By:** Root (T036)
 **What:** `idle_ended_at` is `DateTime.UtcNow.ToString("o")` captured at `Show()` invocation time — not at button-click time. Passed as parameter to `IdleResolveAsync`.
 **Why:** Avoids drift if user reads the modal slowly. Arrival moment is the semantically correct return-from-idle timestamp.
+
+---
+
+## Bug-Fix Sprint Decisions (2026-03-17)
+
+### Reese — Bug Fixes
+
+#### 2026-03-17: IPC Shape Correction — `project_list` and `task_list` (Bugs 1 & 2)
+**By:** Reese
+**What:** `project_list` now returns `{ "projects": [...] }` (wrapped); `task_list` now returns `{ "tasks": [...] }` (wrapped). Previous Phase 5 entry recording "bare JSON array" was incorrect — C# `ProjectListResponse` / `TaskListResponse` both deserialize a wrapped object.
+**Why:** Deserialization failure caused Projects.razor to throw on every expand. Root-cause was a Phase 5 decision typo. All list commands now return wrapped objects consistently.
+
+#### 2026-03-17: `project_delete` Returns Counts (Bug 1 followup)
+**By:** Reese
+**What:** `project_delete` now counts `deleted_tasks` and `orphaned_entries` before delete and returns `{ "deleted_tasks": N, "orphaned_entries": N }` to match `ProjectDeleteResponse`. Previously returned `Ok(null)`.
+**Why:** C# DTO expects both counts. Returning null caused C# deserialization failure.
+
+#### 2026-03-17: assetProtocol — Config + Cargo Feature Required Together (Bug 6)
+**By:** Reese
+**What:** `tauri.conf.json` must have `assetProtocol { enable: true, scope: ["**"] }` AND `Cargo.toml` tauri features must include `"protocol-asset"`. CSP must include `http://asset.localhost` (WebView2 on Windows uses http scheme in some Tauri 2 versions). Missing either config causes build error or silent permission failure.
+**Why:** Tauri build script validates that `assetProtocol.enable = true` in conf matches `protocol-asset` in Cargo features. Screenshots cannot be displayed without both; `http://asset.localhost` needed in CSP for WebView2.
+
+#### 2026-03-17: `fs:allow-read-file` Required for Asset Protocol (Bug 6)
+**By:** Reese
+**What:** `capabilities/default.json` must include `"fs:allow-read-file"` alongside `"fs:allow-write-file"`. Asset protocol reads files from disk — the read permission is mandatory.
+**Why:** Only write permission was present. Asset protocol serves files via read; without it the file is silently blocked.
+
+---
+
+### Root — Bug Fixes
+
+#### 2026-03-17: Real TauriEventService Bridge via tauri-bridge.js (Bug 3)
+**By:** Root
+**What:** `TauriEventService.Listen<T>` was a no-op stub. Replaced with a `DotNetObjectReference`-based bridge: `wwwroot/js/tauri-bridge.js` IIFE registers `__TAURI_INTERNALS__.listen` for all 7 `tracey://` events; each routes payload via `dotNetRef.invokeMethodAsync('RouteEvent', eventName, jsonPayload)`. `[JSInvokable] RouteEvent` in C# deserializes and dispatches typed events. `convertFileSrc` produces `https://asset.localhost/C%3A/...` URLs.
+**Why:** Without a real bridge, no Tauri event ever reached C#. Timer ticks, idle detection, screenshot capture, and error events were all silently dropped.
+
+#### 2026-03-17: Dashboard Requires `Events.InitializeAsync()` Call (Bug 4)
+**By:** Root
+**What:** `Dashboard.OnInitializedAsync` must call `await Events.InitializeAsync()` to activate the JS bridge and register Tauri event listeners. Without this call `OnTimerTick` and other events never fire — even with the bridge implemented. Also: `Events.OnTimerTick` must be explicitly subscribed → `HandleTimerTick` → `TimerStateService.HandleTimerTick`.
+**Why:** `InitializeAsync` creates the `DotNetObjectReference` and invokes `initializeTauriBridge` in JS. Nothing is registered until this call completes.
+
+#### 2026-03-17: TimerStateService — Local PeriodicTimer Fallback (Bug 4)
+**By:** Root
+**What:** `TimerStateService` now has a local `PeriodicTimer` (1s) that increments `_elapsedSeconds++` each second while the timer is running. `HandleTimerTick(long)` snaps `_elapsedSeconds` to Rust's authoritative value when real events arrive. Ticker started in `StartAsync()` and `InitializeAsync()` (if restoring a running timer); stopped in `StopAsync()`.
+**Why:** Without this, the elapsed display is frozen until the first Rust tick arrives. PeriodicTimer gives smooth UI; Rust ticks provide accuracy.
+
+#### 2026-03-17: TimeEntryList `LoadPage` — `StateHasChanged()` in Finally Block (Bug 5)
+**By:** Root
+**What:** `TimeEntryList.LoadPage` `finally{}` block must call `StateHasChanged()` after setting `_loading = false`. Without it Blazor never triggers a re-render and the list stays on "Loading entries..." indefinitely.
+**Why:** `_loading = false` alone does not trigger re-render in Blazor WASM. `StateHasChanged()` is required to notify the renderer.
+
+#### 2026-03-17: Asset URL Format for Screenshots (Bug 6)
+**By:** Root
+**What:** Screenshot image URLs must use `https://asset.localhost/C%3A/path/to/file.jpg` (colon URL-encoded as `%3A`). `tauri-bridge.js` `convertFileSrc` implements this: uses `__TAURI_INTERNALS__.convertFileSrc` if available, else manually encodes drive colon. Old `asset://localhost/` format does not work in Tauri 2 / WebView2.
+**Why:** Tauri 2 asset protocol uses `https://asset.localhost/` scheme. Drive colon must be percent-encoded. Wrong URL causes broken image icon.
+
+---
+
+### Shaw — Bug-Fix TDD Gate
+
+#### 2026-03-17: TDD Gate OPEN — 6 Tests for Bug-Fix Sprint
+**By:** Shaw
+**What:** 6 new failing regression tests across `tests/e2e/specs/bug-fixes.spec.ts` (4 tests: Bugs 1, 2, 4, 5) and `tests/e2e/specs/timeline-bugs.spec.ts` (2 tests: Bugs 3, 6). All will turn green when bugs are fixed. TypeScript: 0 errors.
+**Why:** TDD gate: tests are the acceptance criteria for the bug-fix sprint. Committed failing as proof of bugs.
+
+---
+
+### UXer — 24h Horizontal Timeline Redesign (Feature 7)
+
+#### 2026-03-17: Timeline CSS — Full Rewrite for Horizontal 24h Bar (Feature 7)
+**By:** UXer
+**What:** `Timeline.razor.css` completely rewritten. Old card-grid classes removed. New design: full-width dark gradient bar (`.timeline-day-bar` / `.timeline-bar-inner`), 80px tall, 24 hour markers (`.timeline-hour-marker`), screenshot dots (`.timeline-screenshot-dot`) at time-proportional positions, hover indicator (`.timeline-hover-indicator` + `.hover-time-label`), preview area (`.timeline-preview-area` + `.screenshot-img`). CSS class contract locked with Root.
+**Why:** Feature 7 spec. Card grid replaced by timeline metaphor for better temporal navigation.
+
+#### 2026-03-17: Timeline CSS Class Contract (Root ↔ UXer)
+**By:** UXer + Root
+**What:** Agreed binding class names: `.timeline-day-bar`, `.timeline-bar-inner`, `.timeline-hour-marker`, `.timeline-screenshot-dot`, `.timeline-dot-selected`, `.timeline-hover-indicator`, `.hover-time-label`, `.timeline-preview-area`, `.preview-header`, `.preview-header-hover`, `.screenshot-img`, `.screenshot-img-hover`, `.preview-placeholder`, `.timeline-controls`, `.timeline-error-banner`, `.empty-state-illustration`, `.timeline-loading`. No class renamed, added, or removed without mutual consent.
+**Why:** Root's C# applies these classes; UXer's CSS styles them. Breaking the contract causes invisible styles.

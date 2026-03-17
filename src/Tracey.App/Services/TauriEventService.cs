@@ -1,24 +1,21 @@
 using Microsoft.JSInterop;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Tracey.App.Services;
 
-/// <summary>
-/// Subscribes to Tauri event emissions from the Rust backend.
-/// Uses window.__TAURI_INTERNALS__.listen (Tauri 2.0).
-///
-/// NOTE: Full callback wiring requires a JS shim that bridges the Tauri JS event
-/// API to a DotNetObjectReference. The Listen&lt;T&gt; stub registers intent but does
-/// not yet route payloads. Wire the JS shim before activating consumers.
-/// Tracked as: decisions/inbox/root-t015-t016-t017.md
-/// </summary>
-public class TauriEventService
+public class TauriEventService : IDisposable
 {
     private readonly IJSRuntime _js;
+    private DotNetObjectReference<TauriEventService>? _dotNetRef;
+
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     public TauriEventService(IJSRuntime js) => _js = js;
 
-    // Events match contract: specs/001-window-activity-tracker/contracts/ipc-commands.md
     public event Action<TimerTickPayload>? OnTimerTick;
     public event Action<IdleDetectedPayload>? OnIdleDetected;
     public event Action<IdleResolvedPayload>? OnIdleResolved;
@@ -29,59 +26,99 @@ public class TauriEventService
 
     public async Task InitializeAsync()
     {
-        await Listen<TimerTickPayload>("tracey://timer-tick", p => OnTimerTick?.Invoke(p));
-        await Listen<IdleDetectedPayload>("tracey://idle-detected", p => OnIdleDetected?.Invoke(p));
-        await Listen<IdleResolvedPayload>("tracey://idle-resolved", p => OnIdleResolved?.Invoke(p));
-        await Listen<ScreenshotCapturedPayload>("tracey://screenshot-captured", p => OnScreenshotCaptured?.Invoke(p));
-        await Listen<SyncStatusPayload>("tracey://sync-status-changed", p => OnSyncStatusChanged?.Invoke(p));
-        await Listen<NotificationSentPayload>("tracey://notification-sent", p => OnNotificationSent?.Invoke(p));
-        await Listen<ErrorPayload>("tracey://error", p => OnError?.Invoke(p));
+        _dotNetRef = DotNetObjectReference.Create(this);
+        try
+        {
+            await _js.InvokeVoidAsync("traceyBridge.initializeTauriBridge", _dotNetRef);
+        }
+        catch (JSException ex) when (ex.Message.Contains("__TAURI_INTERNALS__"))
+        {
+            // Running outside Tauri host (e.g., plain browser during dev) — events won't fire
+            Console.WriteLine("[TauriEventService] Bridge not available (non-Tauri host)");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[TauriEventService] InitializeAsync failed: {ex.Message}");
+        }
     }
 
-    private async Task Listen<T>(string eventName, Action<T> handler)
+    [JSInvokable]
+    public void RouteEvent(string eventName, string jsonPayload)
     {
-        // Tauri 2.0: window.__TAURI_INTERNALS__.listen(event, callback)
-        // Blazor WASM cannot pass a C# delegate directly to JS.
-        // A JS shim must call DotNetObjectReference.invokeMethodAsync with a
-        // serialized payload, which then deserializes to T and invokes handler.
-        // TODO: implement JS shim in Final Phase (see decisions inbox).
-        await Task.CompletedTask;
+        try
+        {
+            switch (eventName)
+            {
+                case "tracey://timer-tick":
+                    var tick = JsonSerializer.Deserialize<TimerTickPayload>(jsonPayload, _jsonOptions);
+                    if (tick != null) OnTimerTick?.Invoke(tick);
+                    break;
+                case "tracey://idle-detected":
+                    var idle = JsonSerializer.Deserialize<IdleDetectedPayload>(jsonPayload, _jsonOptions);
+                    if (idle != null) OnIdleDetected?.Invoke(idle);
+                    break;
+                case "tracey://idle-resolved":
+                    var resolved = JsonSerializer.Deserialize<IdleResolvedPayload>(jsonPayload, _jsonOptions);
+                    if (resolved != null) OnIdleResolved?.Invoke(resolved);
+                    break;
+                case "tracey://screenshot-captured":
+                    var shot = JsonSerializer.Deserialize<ScreenshotCapturedPayload>(jsonPayload, _jsonOptions);
+                    if (shot != null) OnScreenshotCaptured?.Invoke(shot);
+                    break;
+                case "tracey://sync-status-changed":
+                    var sync = JsonSerializer.Deserialize<SyncStatusPayload>(jsonPayload, _jsonOptions);
+                    if (sync != null) OnSyncStatusChanged?.Invoke(sync);
+                    break;
+                case "tracey://notification-sent":
+                    var notif = JsonSerializer.Deserialize<NotificationSentPayload>(jsonPayload, _jsonOptions);
+                    if (notif != null) OnNotificationSent?.Invoke(notif);
+                    break;
+                case "tracey://error":
+                    var err = JsonSerializer.Deserialize<ErrorPayload>(jsonPayload, _jsonOptions);
+                    if (err != null) OnError?.Invoke(err);
+                    break;
+                default:
+                    Console.WriteLine($"[TauriEventService] Unknown event: {eventName}");
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[TauriEventService] RouteEvent failed for {eventName}: {ex.Message}");
+        }
+    }
+
+    public void Dispose()
+    {
+        try { _js.InvokeVoidAsync("traceyBridge.disposeTauriBridge"); } catch { }
+        _dotNetRef?.Dispose();
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Event payload types — shapes match contract Tauri Events table
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Event payload types ───────────────────────────────────────────────────────
 
-/// <summary>tracey://timer-tick — emitted every second while a timer runs.</summary>
 public record TimerTickPayload(
     [property: JsonPropertyName("elapsed_seconds")] long ElapsedSeconds);
 
-/// <summary>tracey://idle-detected — emitted when idle threshold is crossed.</summary>
 public record IdleDetectedPayload(
     [property: JsonPropertyName("idle_since")] string IdleSince,
     [property: JsonPropertyName("had_active_timer")] bool HadActiveTimer);
 
-/// <summary>tracey://idle-resolved — emitted after idle resolution is saved.</summary>
 public record IdleResolvedPayload(
     [property: JsonPropertyName("created_entry_id")] string? CreatedEntryId);
 
-/// <summary>tracey://screenshot-captured — emitted after each screenshot is saved.</summary>
 public record ScreenshotCapturedPayload(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("captured_at")] string CapturedAt);
 
-/// <summary>tracey://sync-status-changed — emitted when sync state changes.</summary>
 public record SyncStatusPayload(
     [property: JsonPropertyName("connected")] bool Connected,
     [property: JsonPropertyName("pending")] long Pending);
 
-/// <summary>tracey://notification-sent — emitted when a notification fires.</summary>
 public record NotificationSentPayload(
     [property: JsonPropertyName("channel_id")] string ChannelId,
     [property: JsonPropertyName("message")] string Message);
 
-/// <summary>tracey://error — emitted on recoverable errors requiring user notice.</summary>
 public record ErrorPayload(
     [property: JsonPropertyName("component")] string Component,
     [property: JsonPropertyName("event")] string Event,
