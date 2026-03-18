@@ -93,5 +93,7 @@
     padding: 2rem;
     background-color: var(--tracey-surface-alt);
     min-width: 0;
+    display: flex;
+    flex-direction: column;
 }
 
