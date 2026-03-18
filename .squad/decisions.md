@@ -864,6 +864,16 @@
 **What:** Pressing Enter in `SlashMode.Description` (client/project/task already chosen) starts the timer with an empty description. The `StartTimer()` null-guard is preserved for the plain (no-slash) flow where a description is the only identifier. The `HandleKeyDown` Enter branch fires `StartTimer` when `_slashMode == SlashMode.Description` regardless of input content.
 **Why:** When the task hierarchy already identifies the work context the description adds no value and blocking the start is friction. Plain-entry flow still requires a description.
 
+### TimeEntryList: Empty-Description Entries Show "(no description)" Placeholder
+**By:** Vincent Verweij
+**What:** When a time entry's description is empty or null, the entry row renders a muted italic `(no description)` placeholder button. CSS class `entry-description-empty` applies `color: var(--tracey-text-muted); font-style: italic`.
+**Why:** An invisible button is not clickable; users had no way to open the edit form for entries started with a project but no description.
+
+### TimerStateService: Stores Project/Task Display Names for Breadcrumb Restoration
+**By:** Vincent Verweij
+**What:** `StartAsync` extended with optional name params (`projectName`, `clientId`, `clientName`, `taskName`). Stored as additional private fields, exposed as `CurrentProjectName`, `CurrentClientId`, `CurrentClientName`, `CurrentTaskName`. Cleared in `StopAsync`. `QuickEntryBar.OnInitialized` reconstructs `_resolvedProject`, `_resolvedTask`, `_clientHint`, and `_slashMode = Description` when re-mounted.
+**Why:** Blazor destroys and recreates components on page navigation. Without storing names in the scoped service, the breadcrumb ("Acme / Project / Task /") was erased every time the user switched pages. Name restoration works within the same session; app restarts restore IDs only (breadcrumb stays blank until next timer start).
+
 ### timer_start: Empty Description Allowed When project_id Is Set
 **By:** Vincent Verweij (Bug 6b)
 **What:** Rust `timer_start` validation relaxed: `empty_without_context = description.is_empty() && project_id.is_none()`. Returns `"invalid_description"` only when description is empty AND no project is selected. Max-length guard (500 chars) unchanged.
