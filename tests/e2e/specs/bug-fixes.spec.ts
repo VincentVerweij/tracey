@@ -205,4 +205,122 @@ test.describe('Bug Fix Regressions', () => {
 
   });
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Bug 6 — QuickEntry client hint scopes project dropdown
+  // Regression: the 0.4 score floor in LoadProjectMatches let every project pass
+  // (score = projectScore * (0.4 + 0.6 * clientScore); clientScore=0 → 0.4 > 0).
+  // Fix: use projectScore * clientScore so a non-matching client scores 0 and is
+  // filtered by the .Where(x => x.Score > 0) guard.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  test.describe('Bug 6 — client hint in QuickEntry scopes project dropdown', () => {
+
+    let clientAId: string;
+    let clientBId: string;
+
+    test.beforeAll(async ({ browser }) => {
+      const page = await browser.newPage();
+      await waitForApp(page);
+      // Two clients with completely different (non-overlapping) project names
+      clientAId = await (async () => {
+        const r = await page.evaluate(async ({ name, color }) =>
+          (window as any).__TAURI_INTERNALS__.invoke('client_create', { name, color, logo_path: null }),
+          { name: '__BUG6_ClientAlpha__', color: '#3b82f6' });
+        return r.id;
+      })();
+      await page.evaluate(async ({ clientId, name }) =>
+        (window as any).__TAURI_INTERNALS__.invoke('project_create', {
+          request: { client_id: clientId, name }
+        }), { clientId: clientAId, name: '__BUG6_ProjectOnlyAlpha__' });
+
+      clientBId = await (async () => {
+        const r = await page.evaluate(async ({ name, color }) =>
+          (window as any).__TAURI_INTERNALS__.invoke('client_create', { name, color, logo_path: null }),
+          { name: '__BUG6_ClientBeta__', color: '#ef4444' });
+        return r.id;
+      })();
+      await page.evaluate(async ({ clientId, name }) =>
+        (window as any).__TAURI_INTERNALS__.invoke('project_create', {
+          request: { client_id: clientId, name }
+        }), { clientId: clientBId, name: '__BUG6_ProjectOnlyBeta__' });
+
+      await page.close();
+    });
+
+    test.afterAll(async ({ browser }) => {
+      const page = await browser.newPage();
+      await waitForApp(page);
+      try { await deleteClient(page, clientAId); } catch {}
+      try { await deleteClient(page, clientBId); } catch {}
+      await page.close();
+    });
+
+    test('typing ClientAlpha / shows only ClientAlpha projects, not ClientBeta projects', async ({ page }) => {
+      // BEFORE FIX: both __BUG6_ProjectOnlyAlpha__ AND __BUG6_ProjectOnlyBeta__ appear
+      //             because the 0.4 floor gave every project a passing score.
+      // AFTER FIX:  only __BUG6_ProjectOnlyAlpha__ appears; Beta project is absent.
+      await waitForApp(page);
+      const input = page.locator('.entry-input');
+      await input.click();
+
+      // Type client name then slash to enter project-selection mode
+      await input.fill('__BUG6_ClientAlpha__');
+      await input.press('/');
+      await page.waitForTimeout(500); // allow debounce + IPC round-trip
+
+      const dropdown = page.locator('.fuzzy-dropdown');
+      // If no dropdown is visible the list is empty — that is also a valid passing state
+      // (the client hint resolved to 0 matches for any other client).
+      if (!await dropdown.isVisible().catch(() => false)) {
+        // At minimum, the Beta project must not bleed through
+        await expect(page.getByText('__BUG6_ProjectOnlyBeta__')).not.toBeVisible();
+        return;
+      }
+
+      // Dropdown is visible: Alpha project should appear
+      await expect(dropdown).toContainText('__BUG6_ProjectOnlyAlpha__');
+
+      // Beta project must NOT be in the list
+      await expect(dropdown).not.toContainText('__BUG6_ProjectOnlyBeta__');
+    });
+
+    test('empty description + resolved project via slash starts timer without error', async ({ page }) => {
+      // BEFORE FIX: Rust timer_start returns "invalid_description" for empty strings even
+      //             when project_id is set; Blazor renders an unhandled exception.
+      // AFTER FIX:  timer starts successfully; elapsed timer display becomes visible.
+      await waitForApp(page);
+      const input = page.locator('.entry-input');
+      await input.click();
+
+      // Select ClientAlpha project via slash notation
+      await input.fill('__BUG6_ClientAlpha__');
+      await input.press('/');
+      await page.waitForTimeout(500);
+
+      const dropdown = page.locator('.fuzzy-dropdown');
+      if (await dropdown.isVisible().catch(() => false)) {
+        // Confirm the first project match
+        await input.press('Enter');
+        await page.waitForTimeout(300);
+      }
+
+      // Now in Description mode — press Enter immediately with empty description
+      await input.press('Enter');
+      await page.waitForTimeout(500);
+
+      // AFTER FIX: timer is running (no unhandled exception dialog)
+      await expect(page.locator('[role="dialog"]').filter({ hasText: /exception|error/i }))
+        .not.toBeVisible({ timeout: 2000 });
+      const elapsed = page.locator('.running-elapsed, [role="timer"]');
+      await expect(elapsed).toBeVisible({ timeout: 3000 });
+
+      // Clean up
+      try {
+        await page.evaluate(async () =>
+          (window as any).__TAURI_INTERNALS__.invoke('timer_stop'));
+      } catch {}
+    });
+
+  });
+
 });

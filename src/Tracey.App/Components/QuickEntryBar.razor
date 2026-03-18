@@ -432,10 +432,11 @@
                                    Fuzzy.Score(_projectQuery, m.ClientName))
                         : 1.0;
 
-                    // Client hint acts as a weighted filter: matching client boosts score,
-                    // non-matching client is deprioritised but not hidden entirely.
+                    // Client hint acts as a hard filter: projects from clients that don't
+                    // match the hint at all (clientScore == 0) are excluded entirely.
+                    // Non-zero clientScore scales the project score proportionally.
                     double score = hasHint
-                        ? projectScore * (0.4 + 0.6 * clientScore)
+                        ? projectScore * clientScore
                         : projectScore;
 
                     return (Item: m, Score: score);
