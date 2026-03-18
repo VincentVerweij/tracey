@@ -859,6 +859,11 @@
 **What:** The inline edit form for existing time entries now includes explicit Save and Cancel `<button>` elements. The form supports inline fuzzy project/task search with a clear (×) button per segment. `_editProjectId`, `_editProjectName`, `_editTaskId`, `_editTaskName` capture selected values for the `time_entry_update` IPC call.
 **Why:** Previously there was no visible save affordance — the user had no clear way to commit inline edits. The previous auto-save-on-blur stub (T030b) was insufficient for the current interaction model.
 
+### QuickEntryBar: Empty Description Allowed When Task Resolved via Slash
+**By:** Vincent Verweij
+**What:** Pressing Enter in `SlashMode.Description` (client/project/task already chosen) starts the timer with an empty description. The `StartTimer()` null-guard is preserved for the plain (no-slash) flow where a description is the only identifier. The `HandleKeyDown` Enter branch fires `StartTimer` when `_slashMode == SlashMode.Description` regardless of input content.
+**Why:** When the task hierarchy already identifies the work context the description adds no value and blocking the start is friction. Plain-entry flow still requires a description.
+
 ### QuickEntryBar: Breadcrumb Path Replaces Chips
 **By:** Root + UXer (Vincent Verweij session)
 **What:** Segment chips (`.entry-segment` divs) replaced with an inline breadcrumb text prefix (`.entry-breadcrumb`). The `BreadcrumbPrefix` computed property returns a string such as `"Acme Corp / Tracey / Some Task /"` built from `_clientHint`, `_resolvedProject`, and `_resolvedTask`. Backspace on an empty input navigates backwards: Description → TaskActive (restores task name), TaskActive → ProjectActive (restores project name and reopens dropdown), ProjectActive → None (restores client hint as editable text).
