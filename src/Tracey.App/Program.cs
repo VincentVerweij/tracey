@@ -12,9 +12,9 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 builder.Services.AddBlazorBlueprintComponents();
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 builder.Services.AddHttpClient(); // IHttpClientFactory for TelegramNotificationChannel
-builder.Services.AddScoped<TauriIpcService>();
-builder.Services.AddScoped<TauriEventService>();
-builder.Services.AddScoped<ITimerStateService, TimerStateService>();
+builder.Services.AddSingleton<TauriIpcService>();
+builder.Services.AddSingleton<TauriEventService>();
+builder.Services.AddSingleton<ITimerStateService, TimerStateService>();
 builder.Services.AddScoped<FuzzyMatchService>();
 
 // Notification channels (FR-054: add new channels by registering here only)
