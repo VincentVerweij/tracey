@@ -864,6 +864,16 @@
 **What:** Pressing Enter in `SlashMode.Description` (client/project/task already chosen) starts the timer with an empty description. The `StartTimer()` null-guard is preserved for the plain (no-slash) flow where a description is the only identifier. The `HandleKeyDown` Enter branch fires `StartTimer` when `_slashMode == SlashMode.Description` regardless of input content.
 **Why:** When the task hierarchy already identifies the work context the description adds no value and blocking the start is friction. Plain-entry flow still requires a description.
 
+### timer_start: Empty Description Allowed When project_id Is Set
+**By:** Vincent Verweij (Bug 6b)
+**What:** Rust `timer_start` validation relaxed: `empty_without_context = description.is_empty() && project_id.is_none()`. Returns `"invalid_description"` only when description is empty AND no project is selected. Max-length guard (500 chars) unchanged.
+**Why:** When a project is selected via slash notation the project/task context already identifies the work. Requiring a description on top of a resolved project is unnecessary friction and caused an unhandled Blazor exception.
+
+### QuickEntryBar: Client Hint Is a Hard Filter on Project Dropdown (Bug 6a — regression fix)
+**By:** Vincent Verweij (Bug 6a)
+**What:** `LoadProjectMatches` score formula changed from `projectScore * (0.4 + 0.6 * clientScore)` to `projectScore * clientScore`. The old 0.4 floor meant every project scored at least 0.4 regardless of client match, so projects from completely unrelated clients always appeared. With multiplicative scoring a `clientScore == 0` (client name is not even a fuzzy subsequence match) collapses the total score to 0 and the project is excluded by the existing `Where(score > 0)` guard. Regression test added to `bug-fixes.spec.ts` Bug 6 suite.
+**Why:** Users saw projects from wrong clients whenever they typed a client hint. This was a scoring floor bug masquerading as a filter bug.
+
 ### QuickEntryBar: Breadcrumb Path Replaces Chips
 **By:** Root + UXer (Vincent Verweij session)
 **What:** Segment chips (`.entry-segment` divs) replaced with an inline breadcrumb text prefix (`.entry-breadcrumb`). The `BreadcrumbPrefix` computed property returns a string such as `"Acme Corp / Tracey / Some Task /"` built from `_clientHint`, `_resolvedProject`, and `_resolvedTask`. Backspace on an empty input navigates backwards: Description → TaskActive (restores task name), TaskActive → ProjectActive (restores project name and reopens dropdown), ProjectActive → None (restores client hint as editable text).
