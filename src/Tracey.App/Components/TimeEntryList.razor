@@ -1,4 +1,5 @@
 @inject TauriIpcService Tauri
+@inject FuzzyMatchService Fuzzy
 @inject IJSRuntime JS
 
 <div class="time-entry-list" @ref="_listRef">
@@ -34,6 +35,91 @@
                                                aria-label="Entry description"
                                                @onblur="() => AutoSave(entry)" />
                                     </div>
+
+                                    @* Project / Task assignment *@
+                                    <div class="edit-field">
+                                        <label>Project / Task</label>
+                                        <div class="edit-assignment">
+                                            @if (_editProjectId != null)
+                                            {
+                                                <span class="edit-chip edit-chip-project">
+                                                    @_editClientName / @_editProjectName
+                                                    <button type="button" @onclick="ClearEditProject" aria-label="Remove project">✕</button>
+                                                </span>
+                                                @if (_editTaskId != null)
+                                                {
+                                                    <span class="edit-chip edit-chip-task">
+                                                        @_editTaskName
+                                                        <button type="button" @onclick="ClearEditTask" aria-label="Remove task">✕</button>
+                                                    </span>
+                                                }
+                                                else if (!_editTaskSearchActive)
+                                                {
+                                                    <button type="button" class="edit-add-link" @onclick="() => { _editTaskSearchActive = true; StateHasChanged(); }">+ task</button>
+                                                }
+                                            }
+                                            else if (!_editProjectSearchActive)
+                                            {
+                                                <button type="button" class="edit-add-link" @onclick="() => { _editProjectSearchActive = true; StateHasChanged(); }">+ project</button>
+                                            }
+                                        </div>
+
+                                        @if (_editProjectSearchActive && _editProjectId == null)
+                                        {
+                                            <div class="edit-search-wrapper">
+                                                <input type="text"
+                                                       placeholder="Search project…"
+                                                       value="@_editProjectQuery"
+                                                       @oninput="OnEditProjectInput"
+                                                       @onkeydown="HandleEditProjectKey"
+                                                       class="edit-search-input"
+                                                       aria-label="Search project" />
+                                                @if (_editProjectMatches.Count > 0)
+                                                {
+                                                    <ul class="edit-dropdown" role="listbox">
+                                                        @for (int pi = 0; pi < _editProjectMatches.Count; pi++)
+                                                        {
+                                                            var pidx = pi;
+                                                            var pm = _editProjectMatches[pi];
+                                                            <li class="edit-dropdown-item" role="option"
+                                                                @onclick="() => ConfirmEditProject(pidx)">
+                                                                @pm.ProjectName
+                                                                <span class="edit-dropdown-meta">@pm.ClientName</span>
+                                                            </li>
+                                                        }
+                                                    </ul>
+                                                }
+                                            </div>
+                                        }
+
+                                        @if (_editTaskSearchActive && _editProjectId != null && _editTaskId == null)
+                                        {
+                                            <div class="edit-search-wrapper">
+                                                <input type="text"
+                                                       placeholder="Search task…"
+                                                       value="@_editTaskQuery"
+                                                       @oninput="OnEditTaskInput"
+                                                       @onkeydown="HandleEditTaskKey"
+                                                       class="edit-search-input"
+                                                       aria-label="Search task" />
+                                                @if (_editTaskMatches.Count > 0)
+                                                {
+                                                    <ul class="edit-dropdown" role="listbox">
+                                                        @for (int ti = 0; ti < _editTaskMatches.Count; ti++)
+                                                        {
+                                                            var tidx = ti;
+                                                            var tm = _editTaskMatches[ti];
+                                                            <li class="edit-dropdown-item" role="option"
+                                                                @onclick="() => ConfirmEditTask(tidx)">
+                                                                @tm.TaskName
+                                                            </li>
+                                                        }
+                                                    </ul>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+
                                     <div class="edit-times">
                                         <div class="edit-field">
                                             <label for="start-@entry.Id">Start</label>
@@ -77,7 +163,9 @@
                                 </span>
                                 @if (entry.ProjectName != null)
                                 {
-                                    <span class="entry-project">@entry.ClientName / @entry.ProjectName</span>
+                                    <span class="entry-project">
+                                        @entry.ClientName / @entry.ProjectName@(entry.TaskName != null ? $" ‣ {entry.TaskName}" : "")
+                                    </span>
                                 }
                                 <BbButton Variant="ButtonVariant.Outline"
                                           Size="ButtonSize.Small"
@@ -120,6 +208,19 @@
     private DateTime _editEnded;
     private string? _editError;
     private bool _isSaving = false;
+
+    // Project / task edit state
+    private string? _editProjectId;
+    private string? _editProjectName;
+    private string? _editClientName;
+    private string? _editTaskId;
+    private string? _editTaskName;
+    private string _editProjectQuery = string.Empty;
+    private string _editTaskQuery = string.Empty;
+    private List<ProjectMatch> _editProjectMatches = new();
+    private List<TaskMatch> _editTaskMatches = new();
+    private bool _editProjectSearchActive = false;
+    private bool _editTaskSearchActive = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -189,6 +290,17 @@
     {
         _editingId = entry.Id;
         _editDescription = entry.Description;
+        _editProjectId = entry.ProjectId;
+        _editProjectName = entry.ProjectName;
+        _editClientName = entry.ClientName;
+        _editTaskId = entry.TaskId;
+        _editTaskName = entry.TaskName;
+        _editProjectQuery = string.Empty;
+        _editTaskQuery = string.Empty;
+        _editProjectMatches = new();
+        _editTaskMatches = new();
+        _editProjectSearchActive = false;
+        _editTaskSearchActive = false;
         _editStarted = DateTime.TryParse(entry.StartedAt, null,
             System.Globalization.DateTimeStyles.RoundtripKind, out var s)
             ? s.ToLocalTime() : DateTime.Now;
@@ -202,6 +314,8 @@
     {
         _editingId = null;
         _editError = null;
+        _editProjectSearchActive = false;
+        _editTaskSearchActive = false;
     }
 
     private async Task AutoSave(TimeEntryItem entry)
@@ -219,9 +333,9 @@
             await Tauri.TimeEntryUpdateAsync(new TimeEntryUpdateRequest(
                 entry.Id,
                 _editDescription,
-                null,   // project_id — no change
-                null,   // task_id — no change
-                null,   // tag_ids — no change
+                _editProjectId,   // actual desired value: preserves, clears, or changes project
+                _editTaskId,      // actual desired value: preserves, clears, or changes task
+                null,             // tag_ids — absent from JSON = no change (Option<Vec> in Rust)
                 startUtc,
                 endUtc,
                 false   // force = false; if overlap, show error
@@ -245,6 +359,136 @@
         finally
         {
             _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    // ─── Project / task edit helpers ────────────────────────────────────────
+
+    private async Task OnEditProjectInput(ChangeEventArgs e)
+    {
+        _editProjectQuery = e.Value?.ToString() ?? string.Empty;
+        if (_editProjectQuery.Length >= 1)
+        {
+            try
+            {
+                var result = await Tauri.FuzzyMatchProjectsAsync(_editProjectQuery, 20);
+                _editProjectMatches = result.Matches
+                    .Select(m => (Item: m, Score: Math.Max(
+                        Fuzzy.Score(_editProjectQuery, m.ProjectName),
+                        Fuzzy.Score(_editProjectQuery, m.ClientName))))
+                    .Where(x => x.Score > 0)
+                    .OrderByDescending(x => x.Score)
+                    .Take(6)
+                    .Select(x => x.Item)
+                    .ToList();
+            }
+            catch { _editProjectMatches.Clear(); }
+        }
+        else
+        {
+            _editProjectMatches.Clear();
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnEditTaskInput(ChangeEventArgs e)
+    {
+        _editTaskQuery = e.Value?.ToString() ?? string.Empty;
+        if (_editProjectId != null)
+        {
+            try
+            {
+                var result = await Tauri.FuzzyMatchTasksAsync(_editProjectId, _editTaskQuery, 20);
+                _editTaskMatches = result.Matches
+                    .Select(m => (Item: m, Score: string.IsNullOrEmpty(_editTaskQuery)
+                        ? 1.0
+                        : Fuzzy.Score(_editTaskQuery, m.TaskName)))
+                    .Where(x => x.Score > 0)
+                    .OrderByDescending(x => x.Score)
+                    .Take(6)
+                    .Select(x => x.Item)
+                    .ToList();
+            }
+            catch { _editTaskMatches.Clear(); }
+        }
+        StateHasChanged();
+    }
+
+    private void ConfirmEditProject(int idx)
+    {
+        if (idx < 0 || idx >= _editProjectMatches.Count) return;
+        var m = _editProjectMatches[idx];
+        _editProjectId = m.ProjectId;
+        _editProjectName = m.ProjectName;
+        _editClientName = m.ClientName;
+        _editProjectMatches.Clear();
+        _editProjectSearchActive = false;
+        _editProjectQuery = string.Empty;
+        // Clear task when project changes
+        _editTaskId = null;
+        _editTaskName = null;
+        StateHasChanged();
+    }
+
+    private void ConfirmEditTask(int idx)
+    {
+        if (idx < 0 || idx >= _editTaskMatches.Count) return;
+        var t = _editTaskMatches[idx];
+        _editTaskId = t.TaskId;
+        _editTaskName = t.TaskName;
+        _editTaskMatches.Clear();
+        _editTaskSearchActive = false;
+        _editTaskQuery = string.Empty;
+        StateHasChanged();
+    }
+
+    private void ClearEditProject()
+    {
+        _editProjectId = null;
+        _editProjectName = null;
+        _editClientName = null;
+        _editTaskId = null;
+        _editTaskName = null;
+        _editProjectQuery = string.Empty;
+        _editTaskQuery = string.Empty;
+        _editProjectMatches.Clear();
+        _editTaskMatches.Clear();
+        _editProjectSearchActive = false;
+        _editTaskSearchActive = false;
+        StateHasChanged();
+    }
+
+    private void ClearEditTask()
+    {
+        _editTaskId = null;
+        _editTaskName = null;
+        _editTaskQuery = string.Empty;
+        _editTaskMatches.Clear();
+        _editTaskSearchActive = false;
+        StateHasChanged();
+    }
+
+    private void HandleEditProjectKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && _editProjectMatches.Count > 0)
+            ConfirmEditProject(0);
+        else if (e.Key == "Escape")
+        {
+            _editProjectSearchActive = false;
+            _editProjectMatches.Clear();
+            StateHasChanged();
+        }
+    }
+
+    private void HandleEditTaskKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && _editTaskMatches.Count > 0)
+            ConfirmEditTask(0);
+        else if (e.Key == "Escape")
+        {
+            _editTaskSearchActive = false;
+            _editTaskMatches.Clear();
             StateHasChanged();
         }
     }

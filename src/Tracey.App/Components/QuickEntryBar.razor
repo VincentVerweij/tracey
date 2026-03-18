@@ -213,15 +213,15 @@
             case "Enter":
                 if (_disambiguationItems.Count > 1 && _resolvedProject is null)
                 {
-                    ConfirmDisambiguation(_disambigIndex < 0 ? 0 : _disambigIndex);
+                    await ConfirmDisambiguation(_disambigIndex < 0 ? 0 : _disambigIndex);
                 }
                 else if (_slashMode == SlashMode.ProjectActive && _projectMatches.Count > 0)
                 {
-                    ConfirmProject(_dropdownIndex < 0 ? 0 : _dropdownIndex);
+                    await ConfirmProject(_dropdownIndex < 0 ? 0 : _dropdownIndex);
                 }
                 else if (_slashMode == SlashMode.TaskActive && _taskMatches.Count > 0)
                 {
-                    ConfirmTask(_dropdownIndex < 0 ? 0 : _dropdownIndex);
+                    await ConfirmTask(_dropdownIndex < 0 ? 0 : _dropdownIndex);
                 }
                 else if (!string.IsNullOrWhiteSpace(GetDescription()))
                 {
@@ -231,24 +231,25 @@
 
             case "Tab":
                 if (_disambiguationItems.Count > 1 && _resolvedProject is null)
-                    ConfirmDisambiguation(_disambigIndex < 0 ? 0 : _disambigIndex);
+                    await ConfirmDisambiguation(_disambigIndex < 0 ? 0 : _disambigIndex);
                 else if (_slashMode == SlashMode.ProjectActive && _projectMatches.Count > 0)
-                    ConfirmProject(_dropdownIndex < 0 ? 0 : _dropdownIndex);
+                    await ConfirmProject(_dropdownIndex < 0 ? 0 : _dropdownIndex);
                 else if (_slashMode == SlashMode.TaskActive && _taskMatches.Count > 0)
-                    ConfirmTask(_dropdownIndex < 0 ? 0 : _dropdownIndex);
+                    await ConfirmTask(_dropdownIndex < 0 ? 0 : _dropdownIndex);
                 break;
 
             case "/":
-                // Slash key advances segment when transitioning from description-only to slash mode
-                if (_slashMode == SlashMode.None && _inputText.Length > 0)
+                // Transition None→ProjectActive: keep query visible, don't auto-confirm
+                if (_slashMode == SlashMode.None && _inputText.TrimEnd('/').Length > 0)
                 {
                     _projectQuery = _inputText.TrimEnd('/');
-                    _inputText = string.Empty;
+                    _inputText = _projectQuery;  // keep text visible; slash is stripped
                     _slashMode = SlashMode.ProjectActive;
                     _historySuggestions.Clear();
                     await LoadProjectMatches();
                 }
-                // Otherwise just let the char be typed — HandleInputChanged handles the rest
+                // Queue debounce so oninput "/" gets cleaned up after 150 ms
+                TriggerDebounced();
                 break;
 
             case "ArrowDown":
@@ -314,8 +315,8 @@
             var slashIdx = text.IndexOf('/');
             if (slashIdx >= 0 && _resolvedProject is null)
             {
-                _projectQuery = text[..slashIdx];
-                _inputText = text[(slashIdx + 1)..];
+                _projectQuery = text[..slashIdx].Trim();
+                _inputText = _projectQuery;  // show query, don't blank the field
                 _slashMode = SlashMode.ProjectActive;
                 _historySuggestions.Clear();
                 await LoadProjectMatches();
@@ -328,14 +329,14 @@
         }
         else if (_slashMode == SlashMode.ProjectActive && _resolvedProject is null)
         {
+            // Strip any trailing slash — no auto-confirm, user must choose from dropdown
             var slashIdx = text.IndexOf('/');
             if (slashIdx >= 0)
             {
-                _projectQuery = text[..slashIdx];
-                _inputText = text[(slashIdx + 1)..];
+                _projectQuery = text[..slashIdx].Trim();
+                _inputText = _projectQuery;
                 await LoadProjectMatches();
-                if (_projectMatches.Count > 0)
-                    ConfirmProject(0);
+                StateHasChanged();
                 return;
             }
             _projectQuery = text;
@@ -344,15 +345,14 @@
         }
         else if (_slashMode == SlashMode.TaskActive && _resolvedTask is null)
         {
+            // Strip any trailing slash — no auto-confirm, user must choose from dropdown
             var slashIdx = text.IndexOf('/');
             if (slashIdx >= 0)
             {
-                _taskQuery = text[..slashIdx];
-                _inputText = text[(slashIdx + 1)..];
+                _taskQuery = text[..slashIdx].Trim();
+                _inputText = _taskQuery;
                 await LoadTaskMatches();
-                if (_taskMatches.Count > 0)
-                    ConfirmTask(0);
-                _slashMode = SlashMode.Description;
+                StateHasChanged();
                 return;
             }
             _taskQuery = text;
@@ -372,9 +372,19 @@
         try
         {
             var result = await Tauri.FuzzyMatchProjectsAsync(_projectQuery, 20);
-            var scored = Fuzzy.RankMatches(_projectQuery,
-                result.Matches, m => m.ProjectName, maxResults: 8).ToList();
-            _projectMatches = scored.Select(x => x.Item).ToList();
+            // Score against both project name and client name — typing a client name should surface
+            // its projects even when the project name itself doesn't match the query.
+            _projectMatches = result.Matches
+                .Select(m => (
+                    Item: m,
+                    Score: Math.Max(
+                        Fuzzy.Score(_projectQuery, m.ProjectName),
+                        Fuzzy.Score(_projectQuery, m.ClientName))))
+                .Where(x => x.Score > 0)
+                .OrderByDescending(x => x.Score)
+                .Take(8)
+                .Select(x => x.Item)
+                .ToList();
             CheckDisambiguation();
         }
         catch { _projectMatches.Clear(); }
@@ -430,7 +440,7 @@
 
     // ─── Segment confirmation ─────────────────────────────────────────────
 
-    private void ConfirmProject(int idx)
+    private async Task ConfirmProject(int idx)
     {
         if (idx < 0 || idx >= _projectMatches.Count) return;
         _resolvedProject = _projectMatches[idx];
@@ -440,10 +450,12 @@
         _inputText = string.Empty;
         _taskQuery = string.Empty;
         _slashMode = SlashMode.TaskActive;
-        InvokeAsync(async () => { await LoadTaskMatches(); StateHasChanged(); });
+        await LoadTaskMatches();
+        StateHasChanged();
+        try { await _inputRef.FocusAsync(); } catch { }
     }
 
-    private void ConfirmDisambiguation(int idx)
+    private async Task ConfirmDisambiguation(int idx)
     {
         if (idx < 0 || idx >= _disambiguationItems.Count) return;
         var choice = _disambiguationItems[idx];
@@ -454,10 +466,12 @@
         _inputText = string.Empty;
         _taskQuery = string.Empty;
         _slashMode = SlashMode.TaskActive;
-        InvokeAsync(async () => { await LoadTaskMatches(); StateHasChanged(); });
+        await LoadTaskMatches();
+        StateHasChanged();
+        try { await _inputRef.FocusAsync(); } catch { }
     }
 
-    private void ConfirmTask(int idx)
+    private async Task ConfirmTask(int idx)
     {
         if (idx < 0 || idx >= _taskMatches.Count) return;
         _resolvedTask = _taskMatches[idx];
@@ -466,6 +480,7 @@
         _inputText = string.Empty;
         _slashMode = SlashMode.Description;
         StateHasChanged();
+        try { await _inputRef.FocusAsync(); } catch { }
     }
 
     private void ClearProject()
