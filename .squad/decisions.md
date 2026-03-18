@@ -187,6 +187,11 @@
 
 **D5 — Color swatch selector contract**: Located via `[class*="swatch"], [class*="color"], [style*="background"]` OR `aria-label="{name} color swatch"`. Root must provide at least one. Recommended: `aria-label="{name} color swatch"` for accessibility and test robustness.
 
+## 2026-03-18: Phase 9 Build Fix — Missing NuGet Packages + Razor Syntax
+**By:** Root
+**What:** After Phase 9 was committed (notification orchestration service + Settings.razor), `dotnet build` failed. Two fixes applied: (1) Added `Microsoft.Extensions.Hosting.Abstractions 10.0.4` and `Microsoft.Extensions.Http 10.0.4` to `Tracey.App.csproj` — BlazorWebAssembly SDK does not include these transitively in .NET 10. (2) Fixed 8 `@bind` attributes in Settings.razor that used backslash-escaped inner quotes (`\"`) inside double-quoted HTML attributes, which the Razor parser rejects (CS1056). Switched to single-quoted outer wrappers with plain inner quotes.
+**Why:** Build was broken after Phase 9 commit. Both fixes are minimal and targeted; no application logic changed. Build now: 0 errors, 1 pre-existing harmless warning (RZ10012 BbPortalHost TFM mismatch).
+
 ## 2026-03-15: TDD Gate Spec Ambiguities (T018/T019)
 **By:** Shaw (QA/Test)
 **What:** Five ambiguities flagged while writing T018 Playwright tests and T019 xUnit tests for US1 timer:

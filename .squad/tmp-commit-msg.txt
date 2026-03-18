@@ -1,6 +1,0 @@
-fix: add missing NuGet packages for Phase 9 notifications
-
-- Add Microsoft.Extensions.Hosting.Abstractions 10.0.4 (BackgroundService)
-- Add Microsoft.Extensions.Http 10.0.4 (IHttpClientFactory)
-- Fix @bind Razor syntax in Settings.razor notification section
-- Build now passes with 0 errors
