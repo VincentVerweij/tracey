@@ -1,0 +1,102 @@
+@inject TauriIpcService Tauri
+
+<div class="tag-picker" aria-label="Tag picker">
+    <div class="tag-picker-chips">
+        @foreach (var tagId in SelectedIds)
+        {
+            var tag = _allTags.FirstOrDefault(t => t.Id == tagId);
+            if (tag != null)
+            {
+                <span class="tag-chip tag-chip-selected">
+                    @tag.Name
+                    <button type="button"
+                            class="tag-chip-remove"
+                            aria-label="@($"Remove tag {tag.Name}")"
+                            @onclick="() => RemoveTag(tagId)">
+                        ✕
+                    </button>
+                </span>
+            }
+        }
+        @if (_unselectedTags.Any())
+        {
+            <button type="button"
+                    class="tag-picker-add-btn"
+                    aria-label="Add tag"
+                    aria-expanded="@_isOpen.ToString().ToLower()"
+                    @onclick="ToggleDropdown">
+                + tag
+            </button>
+        }
+    </div>
+
+    @if (_isOpen && _unselectedTags.Any())
+    {
+        <ul class="tag-picker-dropdown" role="listbox" aria-label="Available tags">
+            @foreach (var tag in _unselectedTags)
+            {
+                var t = tag;
+                <li role="option"
+                    class="tag-picker-option"
+                    aria-selected="false"
+                    @onclick="() => AddTag(t.Id)">
+                    @t.Name
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter] public List<string> SelectedIds { get; set; } = new();
+    [Parameter] public EventCallback<List<string>> SelectedIdsChanged { get; set; }
+
+    private List<TagItem> _allTags = new();
+    private bool _isOpen;
+
+    private IEnumerable<TagItem> _unselectedTags =>
+        _allTags.Where(t => !SelectedIds.Contains(t.Id));
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var response = await Tauri.TagListAsync();
+            _allTags = response.Tags.ToList();
+        }
+        catch
+        {
+            // Non-critical: tag picker is an enhancement. swallow errors gracefully.
+        }
+    }
+
+    private void ToggleDropdown() => _isOpen = !_isOpen;
+
+    private async Task AddTag(string tagId)
+    {
+        if (!SelectedIds.Contains(tagId))
+        {
+            var updated = SelectedIds.Append(tagId).ToList();
+            await SelectedIdsChanged.InvokeAsync(updated);
+        }
+        _isOpen = false;
+    }
+
+    private async Task RemoveTag(string tagId)
+    {
+        var updated = SelectedIds.Where(id => id != tagId).ToList();
+        await SelectedIdsChanged.InvokeAsync(updated);
+    }
+
+    /// Reload tag list (called externally when tags are created/deleted on the Tags page).
+    public async Task RefreshAsync()
+    {
+        try
+        {
+            var response = await Tauri.TagListAsync();
+            _allTags = response.Tags.ToList();
+            StateHasChanged();
+        }
+        catch { }
+    }
+}

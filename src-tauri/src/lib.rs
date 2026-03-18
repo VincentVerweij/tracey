@@ -64,6 +64,9 @@ pub fn run() {
             commands::hierarchy::fuzzy_match_tasks,
             commands::screenshot::screenshot_list,
             commands::screenshot::screenshot_delete_expired,
+            commands::activity::tag_list,
+            commands::activity::tag_create,
+            commands::activity::tag_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

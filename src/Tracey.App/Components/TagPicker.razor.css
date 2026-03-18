@@ -1,0 +1,99 @@
+.tag-picker {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.tag-picker-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    align-items: center;
+    min-height: 28px;
+}
+
+.tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    background: var(--color-accent-subtle, #eff6ff);
+    color: var(--color-accent, #2563eb);
+    border: 1px solid var(--color-accent-muted, #bfdbfe);
+    white-space: nowrap;
+}
+
+.tag-chip-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 10px;
+    opacity: 0.6;
+    border-radius: 50%;
+    transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.tag-chip-remove:hover {
+    opacity: 1;
+    background: var(--color-accent-muted, #bfdbfe);
+}
+
+.tag-picker-add-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    color: var(--tracey-text-muted, #6b7280);
+    background: transparent;
+    border: 1px dashed var(--tracey-border, #e5e7eb);
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+    white-space: nowrap;
+}
+
+.tag-picker-add-btn:hover {
+    color: var(--color-accent, #2563eb);
+    border-color: var(--color-accent-muted, #bfdbfe);
+}
+
+.tag-picker-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 200;
+    min-width: 160px;
+    max-width: 280px;
+    max-height: 200px;
+    overflow-y: auto;
+    background: var(--tracey-surface, #ffffff);
+    border: 1px solid var(--tracey-border, #e5e7eb);
+    border-radius: var(--radius-md);
+    box-shadow: var(--tracey-shadow, 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06));
+    list-style: none;
+    margin: 0;
+    padding: var(--space-1) 0;
+}
+
+.tag-picker-option {
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.tag-picker-option:hover {
+    background: var(--color-surface-hover, #f3f4f6);
+}

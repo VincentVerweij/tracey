@@ -120,6 +120,13 @@
                                         }
                                     </div>
 
+                                    @* Tag assignment *@
+                                    <div class="edit-field">
+                                        <label>Tags</label>
+                                        <TagPicker SelectedIds="_editTagIds"
+                                                   SelectedIdsChanged="ids => { _editTagIds = ids; StateHasChanged(); }" />
+                                    </div>
+
                                     <div class="edit-times">
                                         <div class="edit-field">
                                             <label for="start-@entry.Id">Start</label>
@@ -246,6 +253,9 @@
     private string? _editError;
     private bool _isSaving = false;
 
+    // Tag edit state
+    private List<string> _editTagIds = new();
+
     // Project / task edit state
     private string? _editProjectId;
     private string? _editProjectName;
@@ -355,6 +365,7 @@
         _editClientName = entry.ClientName;
         _editTaskId = entry.TaskId;
         _editTaskName = entry.TaskName;
+        _editTagIds = entry.TagIds.ToList();
         _editProjectQuery = string.Empty;
         _editTaskQuery = string.Empty;
         _editProjectMatches = new();
@@ -374,6 +385,7 @@
     {
         _editingId = null;
         _editError = null;
+        _editTagIds = new();
         _editProjectSearchActive = false;
         _editTaskSearchActive = false;
     }
@@ -395,7 +407,7 @@
                 _editDescription,
                 _editProjectId,   // actual desired value: preserves, clears, or changes project
                 _editTaskId,      // actual desired value: preserves, clears, or changes task
-                null,             // tag_ids — absent from JSON = no change (Option<Vec> in Rust)
+                _editTagIds.ToArray(),  // pass updated tag selection
                 startUtc,
                 endUtc,
                 false   // force = false; if overlap, show error

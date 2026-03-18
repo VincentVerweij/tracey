@@ -123,6 +123,11 @@
             }
         </ul>
     }
+
+    <div class="quick-entry-tags">
+        <TagPicker SelectedIds="_selectedTagIds"
+                   SelectedIdsChanged="HandleTagsChanged" />
+    </div>
 </div>
 
 @code {
@@ -162,6 +167,10 @@
     // ─── History autocomplete ─────────────────────────────────────────────
 
     private List<AutocompleteSuggestion> _historySuggestions = new();
+
+    // ─── Tag selection ────────────────────────────────────────────────────
+
+    private List<string> _selectedTagIds = new();
 
     // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -226,6 +235,10 @@
 
             _slashMode = SlashMode.Description;
         }
+
+        // Restore tag selection from running entry
+        if (Timer.IsRunning && _selectedTagIds.Count == 0 && Timer.CurrentTagIds.Length > 0)
+            _selectedTagIds = Timer.CurrentTagIds.ToList();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -632,7 +645,8 @@
             _resolvedProject?.ProjectName,
             _resolvedProject?.ClientId,
             _resolvedProject?.ClientName,
-            _resolvedTask?.TaskName);
+            _resolvedTask?.TaskName,
+            _selectedTagIds.ToArray());
 
         await OnTimerStarted.InvokeAsync();
     }
@@ -642,6 +656,19 @@
         await Timer.StopAsync();
         ResetAll();
         await OnTimerStopped.InvokeAsync();
+    }
+
+    private async Task HandleTagsChanged(List<string> newTagIds)
+    {
+        _selectedTagIds = newTagIds;
+        StateHasChanged();
+
+        // If a timer is running, persist the tag change immediately to the running entry
+        if (Timer.IsRunning && Timer.CurrentEntryId != null)
+        {
+            try { await Tauri.TimeEntryUpdateTagsAsync(Timer.CurrentEntryId, newTagIds.ToArray()); }
+            catch { /* best-effort: tag update failure is non-fatal */ }
+        }
     }
 
     private async Task ToggleTimer()
@@ -660,6 +687,7 @@
         _resolvedTask    = null;
         _projectQuery = string.Empty;
         _taskQuery    = string.Empty;
+        _selectedTagIds = new();
         ClearDropdowns();
     }
 

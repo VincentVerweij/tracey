@@ -124,6 +124,11 @@ public class TauriIpcService
     public Task<AffectedEntriesResponse> TagDeleteAsync(string id) =>
         Invoke<AffectedEntriesResponse>("tag_delete", new { id });
 
+    /// Partial update — sends only id + tag_ids; all other fields preserved by Rust.
+    /// Safe to call on a running entry (ended_at = NULL is preserved).
+    public Task<ModifiedAtResponse> TimeEntryUpdateTagsAsync(string entryId, string[] tagIds) =>
+        Invoke<ModifiedAtResponse>("time_entry_update", new { request = new { id = entryId, tag_ids = tagIds } });
+
     // ── Fuzzy Match ───────────────────────────────────────────────────────
 
     public Task<FuzzyMatchProjectsResponse> FuzzyMatchProjectsAsync(string query, int limit = 8) =>
@@ -421,7 +426,8 @@ public record TagListResponse(
 public record TagItem(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("name")] string Name,
-    [property: JsonPropertyName("created_at")] string CreatedAt);
+    [property: JsonPropertyName("created_at")] string CreatedAt,
+    [property: JsonPropertyName("entry_count")] long EntryCount);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fuzzy Match

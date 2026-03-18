@@ -1,7 +1,7 @@
 # What Tracey's team is focused on now
 
-**Phase:** Phase 5.5 COMPLETE — Phase 6 is next
-**Current focus:** Phase 6 prep
+**Phase:** Phase 8 COMPLETE — Phase 9 is next
+**Current focus:** Phase 9 prep (US7 Long-Running Timer Notification)
 
 ## Team
 
@@ -14,27 +14,30 @@
 | UXer | Frontend Designer |
 | Scribe | Memory / Documentation |
 
-## Phase 5 — ALL TASKS COMPLETE ✅
-- T037: 14 failing E2E tests for US3 (Shaw) ✅ — TDD gate open
-- T038: client commands in hierarchy.rs (Reese) ✅
-- T039: project commands (Reese) ✅
-- T040: task commands (Reese) ✅
-- T041: Projects.razor full UI (Root) ✅ — lazy load, archive toggle, delete confirm
+## Phase 6 — ALL TASKS COMPLETE ✅ (US4 Screenshot Timeline)
+- T042: Playwright E2E tests for screenshot timeline ✅
+- T043: GDI test double (--features test) ✅
+- T044: GDI screenshot capture pipeline ✅
+- T045: storage path canonicalization ✅
+- T046: interval + window-change screenshot loop + tracey://screenshot-captured event ✅
+- T047: screenshot_list / screenshot_delete_expired Tauri commands ✅
+- T048: retention cleanup background job ✅
+- T049: Timeline.razor screenshot viewer ✅
 
-## Phase 5.5 — UXer Design Pass COMPLETE ✅
-- MainLayout.razor.css: flex row layout fix (sidebar side-by-side with content)
-- app.css: design tokens (:root vars), Inter font, utility classes
-- index.html: Inter font + BlazorBlueprint CSS linked
-- _Imports.razor: @using BlazorBlueprint.Components + Primitives
-- Program.cs: AddBlazorBlueprintComponents() + BbPortalHost/BbDialogProvider
-- QuickEntryBar: spotlight card style, live elapsed display, BbButton stop
-- TimeEntryList: date group headers, hover rows, BbButton continue/cancel
-- IdleReturnModal: BbDialog, 2x2 option card grid, BbButton actions
-- Projects.razor: BbCard per client, BbButton all actions, BbAlert errors
-- Dashboard.razor: page header with current date, max-width container
-- Tags/Timeline/Settings: proper headings + empty-state illustrations
-- dotnet build: 0 errors ✅
+## Phase 7 — ALL TASKS COMPLETE ✅ (US5 Keyboard-First Quick Entry / Fuzzy Matching)
+- T050: xUnit tests for FuzzyMatchService ✅
+- T051: Playwright E2E tests for slash notation + fuzzy flow ✅
+- T052: FuzzyMatchService.cs (weighted scorer) ✅
+- T053: fuzzy_match_projects / fuzzy_match_tasks Tauri commands ✅
+- T054/T055/T056: QuickEntryBar slash-parser, live fuzzy dropdown, disambiguation ✅
 
-## Next: Phase 6 — US4 Screenshot Timeline (Priority: P2)
-Shaw writes failing tests first (T042), then Reese implements screenshot pipeline (T043-T048), Root builds Timeline.razor (T049).
-Trigger: "Phase 6, go"
+## Phase 8 — ALL TASKS COMPLETE ✅ (US6 Tag Management & Assignment)
+- T057: Playwright E2E tests for tags (tags.spec.ts) ✅
+- T058: tag_list / tag_create / tag_delete Rust commands (activity.rs) ✅
+- T059: Tags.razor full UI (create, list with usage count, delete-warning modal) ✅
+- T060: TagPicker.razor reusable multi-select component + CSS ✅
+- T061: TagPicker wired into QuickEntryBar + TimeEntryList inline edit ✅
+- dotnet build: 0 errors ✅ | cargo build: Finished ✅
+
+## Next: Phase 9 — US7 Long-Running Timer Notification
+Trigger: "Phase 9, go"

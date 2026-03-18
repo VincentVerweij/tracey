@@ -17,10 +17,11 @@ public interface ITimerStateService
     string? CurrentClientId { get; }
     string? CurrentClientName { get; }
     string? CurrentTaskName { get; }
+    string[] CurrentTagIds { get; }
 
     Task StartAsync(string description, string? projectId = null, string? taskId = null,
         string? projectName = null, string? clientId = null, string? clientName = null,
-        string? taskName = null);
+        string? taskName = null, string[]? tagIds = null);
     Task StopAsync();
     event Action? OnStateChanged;
 }
@@ -37,6 +38,7 @@ public class TimerStateService : ITimerStateService
     private string? _currentClientId;
     private string? _currentClientName;
     private string? _currentTaskName;
+    private string[] _currentTagIds = [];
     private string? _startedAt; // UTC ISO string from Rust
     private long _elapsedSeconds; // updated by timer-tick events
     private System.Threading.PeriodicTimer? _localTicker;
@@ -51,6 +53,7 @@ public class TimerStateService : ITimerStateService
     public string? CurrentClientId => _currentClientId;
     public string? CurrentClientName => _currentClientName;
     public string? CurrentTaskName => _currentTaskName;
+    public string[] CurrentTagIds => _currentTagIds;
 
     public TimeSpan Elapsed => TimeSpan.FromSeconds(_elapsedSeconds);
 
@@ -116,6 +119,7 @@ public class TimerStateService : ITimerStateService
                 _currentClientId    = active.ClientId;
                 _currentClientName  = active.ClientName;
                 _currentTaskName    = active.TaskName;
+                _currentTagIds      = active.TagIds;
                 _startedAt = active.StartedAt;
                 if (DateTimeOffset.TryParse(active.StartedAt, out var startOffset))
                 {
@@ -133,13 +137,13 @@ public class TimerStateService : ITimerStateService
 
     public async Task StartAsync(string description, string? projectId = null, string? taskId = null,
         string? projectName = null, string? clientId = null, string? clientName = null,
-        string? taskName = null)
+        string? taskName = null, string[]? tagIds = null)
     {
         var result = await _tauri.TimerStartAsync(new TimerStartRequest(
             description,
             projectId,
             taskId,
-            []
+            tagIds ?? []
         ));
 
         _isRunning = true;
@@ -151,6 +155,7 @@ public class TimerStateService : ITimerStateService
         _currentClientId = clientId;
         _currentClientName = clientName;
         _currentTaskName = taskName;
+        _currentTagIds = tagIds ?? [];
         _startedAt = result.StartedAt;
         _elapsedSeconds = 0;
         StartLocalTicker();
@@ -181,6 +186,7 @@ public class TimerStateService : ITimerStateService
         _currentClientId = null;
         _currentClientName = null;
         _currentTaskName = null;
+        _currentTagIds = [];
         _startedAt = null;
         _elapsedSeconds = 0;
 

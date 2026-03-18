@@ -243,3 +243,10 @@
 .disambiguation-client-name {
     font-weight: 500;
 }
+
+/* ─── Tag row (below input, running + idle states) ────────── */
+.quick-entry-tags {
+    padding: 0 0 0.5rem 0;
+    border-top: 1px solid var(--tracey-border, #e5e7eb);
+    padding-top: 0.375rem;
+}

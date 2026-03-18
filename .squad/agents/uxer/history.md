@@ -9,6 +9,10 @@
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
+## Token namespace (2026-03-18)
+
+The app exclusively uses `--tracey-*` CSS custom properties defined in `app.css`. Any component CSS that references `--color-*` namespace tokens (e.g. `--color-surface`, `--color-border`, `--color-muted`) will resolve to `undefined`, producing transparent backgrounds and invisible borders. Always use: `--tracey-surface`, `--tracey-border`, `--tracey-shadow`, `--tracey-text-muted`, `--tracey-accent`, `--tracey-surface-alt`. Add a concrete hex fallback (e.g. `var(--tracey-surface, #ffffff)`) whenever the property would be visually broken if the token ever failed to resolve.
+
 ## Phase 5.5 — UI Design Pass (2026-03-16)
 
 **What was fixed:**

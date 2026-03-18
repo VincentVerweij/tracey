@@ -115,6 +115,21 @@
 
 **Timeline.razor**: 24h horizontal bar replacing card grid (Feature 7). Hour markers, screenshot dots at `TimeToPercent()` positions, hover indicator + nearest preview, selected dot with close. Auto-refresh on `OnScreenshotCaptured`. `GetImgSrcAsync` calls `traceyBridge.convertFileSrc`.
 
+### 2026-03-18: Running-timer tag fixes — always-visible TagPicker, CurrentTagIds restore, tag-only partial update (dotnet build PASS)
+
+**Build result:** 0 errors, 1 pre-existing RZ10012 warning on MainLayout.razor (unchanged)
+
+**TagPicker always-visible (Issue 2):** Removed `@if (!Timer.IsRunning)` guard (and its comment) from `QuickEntryBar.razor` template. `<div class="quick-entry-tags">` wrapper kept as-is.
+
+**Tag restore on running entry (Issue 3):** Two-part fix. (A) Added `string[] CurrentTagIds { get; }` to `ITimerStateService`, backed by `_currentTagIds = []`. Populated in `InitializeAsync` (`active.TagIds`), `StartAsync` (`tagIds ?? []`), and reset to `[]` in `StopAsync`. (B) Added tag-restore line at end of `RestoreFromTimer()`: `if (Timer.IsRunning && _selectedTagIds.Count == 0 && Timer.CurrentTagIds.Length > 0) _selectedTagIds = Timer.CurrentTagIds.ToList();`. Guard on `Count == 0` prevents clobbering user changes.
+
+**Live tag persistence on running entry (Issue 4):** Added `TimeEntryUpdateTagsAsync(string entryId, string[] tagIds)` to `TauriIpcService` — sends only `id + tag_ids` via `time_entry_update`; Rust preserves all other fields including `ended_at = NULL`, so the running timer is never stopped. Replaced inline `SelectedIdsChanged` lambda with named `HandleTagsChanged(List<string>)` method that updates `_selectedTagIds`, calls `StateHasChanged()`, then fire-and-forgets the partial update if `Timer.IsRunning`.
+
+**Key patterns:**
+- Partial `time_entry_update`: only `id` + the fields to change; unset `Option<T>` fields are preserved by Rust — safe to call mid-run
+- Tag restore guard: `_selectedTagIds.Count == 0` prevents overwriting user mid-session edits during tick-driven `RestoreFromTimer` calls
+- `HandleTagsChanged` catches all exceptions silently — tag update failure is non-fatal; core timer state is unaffected
+
 ---
 
 ## Archived Sessions (condensed)
