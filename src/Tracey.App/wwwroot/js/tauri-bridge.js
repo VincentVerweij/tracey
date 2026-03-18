@@ -20,13 +20,28 @@
 
         for (const eventName of events) {
             try {
-                const unlisten = await window.__TAURI_INTERNALS__.listen(eventName, (event) => {
+                // Tauri v2: listen is not on __TAURI_INTERNALS__ directly.
+                // Use transformCallback (creates a persistent window-level handler)
+                // then invoke the plugin:event|listen command.
+                const handlerId = window.__TAURI_INTERNALS__.transformCallback((event) => {
                     if (_dotNetRef) {
-                        _dotNetRef.invokeMethodAsync('RouteEvent', eventName, JSON.stringify(event.payload || event))
+                        _dotNetRef.invokeMethodAsync('RouteEvent', eventName, JSON.stringify(event.payload ?? event))
                             .catch((err) => console.error('[tracey-bridge] RouteEvent failed:', err));
                     }
+                }, false); // false = keepAlive (not a one-shot callback)
+
+                const eventId = await window.__TAURI_INTERNALS__.invoke('plugin:event|listen', {
+                    event: eventName,
+                    target: { kind: 'Any' },
+                    handler: handlerId
                 });
-                _unlisten.push(unlisten);
+
+                _unlisten.push(() => {
+                    window.__TAURI_INTERNALS__.invoke('plugin:event|unlisten', {
+                        event: eventName,
+                        eventId: eventId
+                    }).catch(() => {});
+                });
             } catch (e) {
                 console.warn('[tracey-bridge] Failed to register listener for', eventName, e);
             }
