@@ -20,6 +20,8 @@ builder.Services.AddScoped<FuzzyMatchService>();
 // Notification channels (FR-054: add new channels by registering here only)
 builder.Services.AddSingleton<INotificationChannel, EmailNotificationChannel>();
 builder.Services.AddSingleton<INotificationChannel, TelegramNotificationChannel>();
-builder.Services.AddHostedService<NotificationOrchestrationService>();
+// Not IHostedService — Blazor WASM doesn't reliably start hosted services before render.
+// Initialized explicitly from App.razor (same pattern as TauriEventService).
+builder.Services.AddSingleton<NotificationOrchestrationService>();
 
 await builder.Build().RunAsync();

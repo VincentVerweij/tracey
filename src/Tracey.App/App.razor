@@ -1,5 +1,6 @@
 ﻿@inject TauriEventService Events
 @inject ITimerStateService TimerService
+@inject NotificationOrchestrationService Notifications
 
 <Router AppAssembly="@typeof(App).Assembly">
     <Found Context="routeData">
@@ -21,5 +22,7 @@
         // Wire timer-tick payloads to TimerStateService
         if (TimerService is TimerStateService ts)
             Events.OnTimerTick += p => ts.HandleTimerTick(p.ElapsedSeconds);
+        // Start notification polling loop (Blazor WASM explicit-init pattern)
+        Notifications.Initialize();
     }
 }

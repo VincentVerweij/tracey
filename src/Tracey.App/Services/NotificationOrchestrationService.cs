@@ -1,21 +1,23 @@
 using System.Text.Json;
-using Microsoft.Extensions.Hosting;
 using Tracey.App.Services.Notifications;
 
 namespace Tracey.App.Services;
 
 /// <summary>
-/// Background service that monitors the running timer and sends notifications
+/// Singleton service that monitors the running timer and sends notifications
 /// through all enabled <see cref="INotificationChannel"/> implementations when
 /// the elapsed time exceeds the configured threshold (default: 8 hours).
 ///
 /// Satisfies: FR-052 (threshold monitoring), FR-054 (channel abstraction),
 /// FR-055/FR-056 (email + telegram channels), FR-057 (all channels notified).
 ///
-/// Runs as a hosted service in Blazor WASM (.NET 10+).
-/// Registration: builder.Services.AddHostedService&lt;NotificationOrchestrationService&gt;()
+/// Blazor WASM does not reliably start IHostedService before the component tree
+/// renders. This service uses the project-standard explicit InitializeAsync()
+/// pattern — started from App.razor OnAfterRenderAsync (firstRender), exactly
+/// like TauriEventService and TimerStateService.
+/// Registration: builder.Services.AddSingleton&lt;NotificationOrchestrationService&gt;()
 /// </summary>
-public class NotificationOrchestrationService : BackgroundService
+public class NotificationOrchestrationService
 {
     private const double DefaultThresholdHours = 8.0;
     private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(60);
@@ -27,6 +29,7 @@ public class NotificationOrchestrationService : BackgroundService
 
     // Track which timer entry we've already notified for, so we don't repeat every minute
     private string? _notifiedForEntryId;
+    private bool _started;
 
     public NotificationOrchestrationService(
         IEnumerable<INotificationChannel> channels,
@@ -40,16 +43,28 @@ public class NotificationOrchestrationService : BackgroundService
         _events     = events;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    /// <summary>
+    /// Starts the background polling loop. Call once from App.razor OnAfterRenderAsync
+    /// (firstRender). Safe to call multiple times — subsequent calls are no-ops.
+    /// </summary>
+    public void Initialize()
     {
-        Console.WriteLine($"[Notifications] ✅ BackgroundService started at {DateTimeOffset.UtcNow:HH:mm:ss}. " +
+        if (_started) return;
+        _started = true;
+        _ = RunLoopAsync();
+    }
+
+    private async Task RunLoopAsync()
+    {
+        Console.WriteLine($"[Notifications] ✅ Service started at {DateTimeOffset.UtcNow:HH:mm:ss}. " +
                           $"Poll interval: {CheckInterval.TotalSeconds}s.");
+        using var cts = new CancellationTokenSource();
         using var timer = new System.Threading.PeriodicTimer(CheckInterval);
         try
         {
-            while (await timer.WaitForNextTickAsync(stoppingToken))
+            while (await timer.WaitForNextTickAsync(cts.Token))
             {
-                await CheckAndNotifyAsync(stoppingToken);
+                await CheckAndNotifyAsync(cts.Token);
             }
         }
         catch (OperationCanceledException)
@@ -59,7 +74,7 @@ public class NotificationOrchestrationService : BackgroundService
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"[Notifications] ❌ Unhandled error in background loop: {ex.Message}");
+                $"[Notifications] ❌ Unhandled error in poll loop: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
