@@ -192,29 +192,40 @@
 
     protected override void OnInitialized()
     {
-        if (Timer.IsRunning)
-        {
+        RestoreFromTimer();
+        Timer.OnStateChanged += HandleTimerStateChanged;
+    }
+
+    // Fires on every timer-tick AND on InitializeAsync completion.
+    // Re-syncs local fields in case OnInitialized ran before InitializeAsync finished (cold-boot race).
+    private void HandleTimerStateChanged()
+    {
+        RestoreFromTimer();
+        StateHasChanged();
+    }
+
+    private void RestoreFromTimer()
+    {
+        if (!Timer.IsRunning) return;
+
+        if (string.IsNullOrEmpty(_inputText))
             _inputText = Timer.CurrentDescription ?? string.Empty;
-            // Restore breadcrumb from running timer's stored names (set during StartAsync).
-            // Only possible after a StartAsync call in the same session; app-restart leaves names null.
-            if (Timer.CurrentProjectId != null && Timer.CurrentProjectName != null &&
-                Timer.CurrentClientId != null && Timer.CurrentClientName != null)
-            {
-                _resolvedProject = new ProjectMatch(
-                    Timer.CurrentProjectId,
-                    Timer.CurrentProjectName,
-                    Timer.CurrentClientId,
-                    Timer.CurrentClientName,
-                    1.0);
-                _clientHint = Timer.CurrentClientName;
 
-                if (Timer.CurrentTaskId != null && Timer.CurrentTaskName != null)
-                    _resolvedTask = new TaskMatch(Timer.CurrentTaskId, Timer.CurrentTaskName, 1.0);
+        if (_resolvedProject is null && Timer.CurrentProjectId != null && Timer.CurrentProjectName != null)
+        {
+            _resolvedProject = new ProjectMatch(
+                Timer.CurrentProjectId,
+                Timer.CurrentProjectName,
+                Timer.CurrentClientId ?? string.Empty,
+                Timer.CurrentClientName ?? string.Empty,
+                1.0);
+            _clientHint = Timer.CurrentClientName ?? string.Empty;
 
-                _slashMode = SlashMode.Description;
-            }
+            if (Timer.CurrentTaskId != null && Timer.CurrentTaskName != null)
+                _resolvedTask = new TaskMatch(Timer.CurrentTaskId, Timer.CurrentTaskName, 1.0);
+
+            _slashMode = SlashMode.Description;
         }
-        Timer.OnStateChanged += StateHasChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -735,7 +746,7 @@
 
     public void Dispose()
     {
-        Timer.OnStateChanged -= StateHasChanged;
+        Timer.OnStateChanged -= HandleTimerStateChanged;
         _debounceTimer?.Dispose();
     }
 }
