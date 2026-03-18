@@ -115,3 +115,9 @@ Full client/project/task lazy-expand CRUD. Inline add forms, inline delete confi
 
 ### 2026-03-17–18: IPC camelCase + DateTimeOffset + Timeline zoom + FuzzyMatchService + QuickEntryBar slash-notation
 Tauri 2.0 bridge: top-level params must be camelCase. `DateTimeOffset.TryParse` for all Rust timestamps. Timeline zoom state (`_zoomHours`, `_viewStartHours`). `FuzzyMatchService`: subsequence scorer + `MatchMask` + `RankMatches`. QuickEntryBar slash-notation state machine, fuzzy/disambiguation dropdowns, breadcrumb prefix replacing chips, backward-navigation via Backspace.
+
+### 2026-03-18: Phase 9 build fix — missing packages + Razor backslash-escape bug
+
+**Root cause (packages):** `Microsoft.NET.Sdk.BlazorWebAssembly` in .NET 10 does not transitively expose `Microsoft.Extensions.Hosting.Abstractions` (needed by `BackgroundService`) or `Microsoft.Extensions.Http` (needed by `IHttpClientFactory`). Fixed by adding both as explicit `PackageReference` at version `10.0.4` in `Tracey.App.csproj`.
+
+**Root cause (Razor):** `Settings.razor` dictionary bindings used `@bind="_dict[\"key\"]"` — backslash escapes are illegal inside double-quoted Razor HTML attributes and cause CS1056/CS1003 syntax errors. Fixed by switching to single-quoted outer attributes: `@bind='_dict["key"]'`. This is consistent with the existing pattern already used for `@onclick` lambdas.

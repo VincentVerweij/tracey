@@ -65,32 +65,32 @@
                 <div class="settings-field">
                     <label class="settings-label">SMTP host</label>
                     <input type="text" class="settings-input" placeholder="smtp.example.com"
-                           @bind="_emailConfig[\"smtp_host\"]" @bind:after="SaveChannelConfigsAsync" />
+                           @bind='_emailConfig["smtp_host"]' @bind:after="SaveChannelConfigsAsync" />
                 </div>
                 <div class="settings-field">
                     <label class="settings-label">SMTP port</label>
                     <input type="number" class="settings-input" placeholder="587"
-                           @bind="_emailConfig[\"smtp_port\"]" @bind:after="SaveChannelConfigsAsync" />
+                           @bind='_emailConfig["smtp_port"]' @bind:after="SaveChannelConfigsAsync" />
                 </div>
                 <div class="settings-field">
                     <label class="settings-label">Username</label>
                     <input type="text" class="settings-input" autocomplete="username"
-                           @bind="_emailConfig[\"smtp_user\"]" @bind:after="SaveChannelConfigsAsync" />
+                           @bind='_emailConfig["smtp_user"]' @bind:after="SaveChannelConfigsAsync" />
                 </div>
                 <div class="settings-field">
                     <label class="settings-label">Password</label>
                     <input type="password" class="settings-input" autocomplete="current-password"
-                           @bind="_emailConfig[\"smtp_pass\"]" @bind:after="SaveChannelConfigsAsync" />
+                           @bind='_emailConfig["smtp_pass"]' @bind:after="SaveChannelConfigsAsync" />
                 </div>
                 <div class="settings-field">
                     <label class="settings-label">From address</label>
                     <input type="email" class="settings-input"
-                           @bind="_emailConfig[\"smtp_from\"]" @bind:after="SaveChannelConfigsAsync" />
+                           @bind='_emailConfig["smtp_from"]' @bind:after="SaveChannelConfigsAsync" />
                 </div>
                 <div class="settings-field">
                     <label class="settings-label">To address</label>
                     <input type="email" class="settings-input"
-                           @bind="_emailConfig[\"smtp_to\"]" @bind:after="SaveChannelConfigsAsync" />
+                           @bind='_emailConfig["smtp_to"]' @bind:after="SaveChannelConfigsAsync" />
                 </div>
             </div>
 
@@ -111,14 +111,14 @@
                     <input type="password" class="settings-input"
                            placeholder="123456:ABCdef…"
                            autocomplete="off"
-                           @bind="_telegramConfig[\"bot_token\"]" @bind:after="SaveChannelConfigsAsync" />
+                           @bind='_telegramConfig["bot_token"]' @bind:after="SaveChannelConfigsAsync" />
                     <span class="settings-hint">Obtain from @@BotFather on Telegram.</span>
                 </div>
                 <div class="settings-field">
                     <label class="settings-label">Chat ID</label>
                     <input type="text" class="settings-input"
                            placeholder="-1001234567890"
-                           @bind="_telegramConfig[\"chat_id\"]" @bind:after="SaveChannelConfigsAsync" />
+                           @bind='_telegramConfig["chat_id"]' @bind:after="SaveChannelConfigsAsync" />
                     <span class="settings-hint">
                         Your personal chat ID or a group/channel ID (negative for groups).
                     </span>
