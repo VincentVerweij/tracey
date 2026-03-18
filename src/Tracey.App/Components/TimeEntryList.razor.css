@@ -332,3 +332,26 @@
     font-size: 0.7rem;
     color: var(--tracey-text-muted);
 }
+
+/* ---- Inline delete confirmation ---- */
+.entry-inline-confirm {
+    background: #fef9c3;
+    border: 1px solid #fbbf24;
+    border-radius: var(--tracey-radius);
+    padding: 0.75rem 1rem;
+    margin: 0.25rem 0.75rem 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.entry-inline-confirm p {
+    margin: 0;
+    font-size: 0.875rem;
+    color: #78350f;
+}
+
+.entry-inline-confirm-actions {
+    display: flex;
+    gap: 0.5rem;
+}

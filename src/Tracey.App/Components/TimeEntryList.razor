@@ -183,10 +183,32 @@
                                 </BbButton>
                                 <BbButton Variant="ButtonVariant.Ghost"
                                           Size="ButtonSize.Small"
-                                          AriaLabel="@($"Delete entry")"
-                                          OnClick="() => DeleteEntry(entry.Id)">
+                                          AriaLabel="Delete entry"
+                                          OnClick="() => { _pendingDeleteId = entry.Id; StateHasChanged(); }">
                                     ✕
                                 </BbButton>
+                            }
+                            @if (_pendingDeleteId == entry.Id)
+                            {
+                                <div role="dialog"
+                                     aria-label="Confirm delete time entry"
+                                     class="entry-inline-confirm">
+                                    <p>Are you sure that you want to delete this time entry?</p>
+                                    <div class="entry-inline-confirm-actions">
+                                        <BbButton Variant="ButtonVariant.Destructive"
+                                                  Size="ButtonSize.Small"
+                                                  AriaLabel="Confirm delete"
+                                                  OnClick="() => ConfirmDeleteEntry(entry.Id)">
+                                            Delete
+                                        </BbButton>
+                                        <BbButton Variant="ButtonVariant.Ghost"
+                                                  Size="ButtonSize.Small"
+                                                  AriaLabel="Cancel delete"
+                                                  OnClick="() => { _pendingDeleteId = null; StateHasChanged(); }">
+                                            Cancel
+                                        </BbButton>
+                                    </div>
+                                </div>
                             }
                         </li>
                     }
@@ -214,6 +236,7 @@
     private bool _hasMore = false;
     private int _currentPage = 1;
     private string? _editingId;
+    private string? _pendingDeleteId;
     private ElementReference _listRef;
 
     // Inline edit fields
@@ -298,6 +321,12 @@
         {
             Console.Error.WriteLine($"[TimeEntryList] Continue failed: {ex.Message}");
         }
+    }
+
+    private async Task ConfirmDeleteEntry(string entryId)
+    {
+        _pendingDeleteId = null;
+        await DeleteEntry(entryId);
     }
 
     private async Task DeleteEntry(string entryId)
