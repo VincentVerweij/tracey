@@ -42,6 +42,8 @@ public class NotificationOrchestrationService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        Console.WriteLine($"[Notifications] ✅ BackgroundService started at {DateTimeOffset.UtcNow:HH:mm:ss}. " +
+                          $"Poll interval: {CheckInterval.TotalSeconds}s.");
         using var timer = new System.Threading.PeriodicTimer(CheckInterval);
         try
         {
@@ -57,26 +59,40 @@ public class NotificationOrchestrationService : BackgroundService
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"[NotificationOrchestrationService] Unhandled error in background loop: {ex.Message}");
+                $"[Notifications] ❌ Unhandled error in background loop: {ex.Message}");
         }
     }
 
     private async Task CheckAndNotifyAsync(CancellationToken ct)
     {
+        var now = DateTimeOffset.UtcNow;
+        Console.WriteLine($"[Notifications] 🔍 Poll at {now:HH:mm:ss} — " +
+                          $"IsRunning={_timerState.IsRunning}, " +
+                          $"EntryId={_timerState.CurrentEntryId ?? "null"}, " +
+                          $"Elapsed={_timerState.Elapsed.TotalMinutes:F1}min");
         try
         {
             if (!_timerState.IsRunning)
             {
                 // Timer stopped — reset so next start is fresh
                 _notifiedForEntryId = null;
+                Console.WriteLine("[Notifications] ⏸ Timer not running — skipping.");
                 return;
             }
 
             var entryId = _timerState.CurrentEntryId;
-            if (entryId == null) return;
+            if (entryId == null)
+            {
+                Console.WriteLine("[Notifications] ⚠ IsRunning=true but CurrentEntryId is null — skipping.");
+                return;
+            }
 
             // Already notified for this specific timer run
-            if (_notifiedForEntryId == entryId) return;
+            if (_notifiedForEntryId == entryId)
+            {
+                Console.WriteLine($"[Notifications] 🔕 Already notified for entry {entryId} — skipping.");
+                return;
+            }
 
             // Load preferences to get threshold and channel configs
             UserPreferences prefs;
@@ -87,7 +103,7 @@ public class NotificationOrchestrationService : BackgroundService
             catch (Exception ex)
             {
                 Console.Error.WriteLine(
-                    $"[NotificationOrchestrationService] Failed to load preferences: {ex.Message}");
+                    $"[Notifications] ❌ Failed to load preferences: {ex.Message}");
                 return;
             }
 
@@ -96,7 +112,17 @@ public class NotificationOrchestrationService : BackgroundService
                 : DefaultThresholdHours;
 
             var elapsed = _timerState.Elapsed;
-            if (elapsed.TotalHours < thresholdHours) return;
+            Console.WriteLine($"[Notifications] ⏱ Elapsed={elapsed.TotalMinutes:F1}min, " +
+                              $"Threshold={thresholdHours * 60:F1}min ({thresholdHours}h), " +
+                              $"ChannelsJson={(string.IsNullOrWhiteSpace(prefs.NotificationChannelsJson) ? "null/empty" : prefs.NotificationChannelsJson)}");
+
+            if (elapsed.TotalHours < thresholdHours)
+            {
+                Console.WriteLine($"[Notifications] ⏳ Threshold not yet reached — {(thresholdHours - elapsed.TotalHours) * 60:F1}min remaining.");
+                return;
+            }
+
+            Console.WriteLine($"[Notifications] 🚀 Threshold exceeded! Sending via all enabled channels...");
 
             // Threshold exceeded — build channel settings map from preferences JSON
             var channelSettingsMap = BuildChannelSettingsMap(prefs.NotificationChannelsJson);
@@ -121,13 +147,21 @@ public class NotificationOrchestrationService : BackgroundService
                     ? s
                     : channel.DefaultSettings;
 
-                if (!settings.Enabled) continue;
+                Console.WriteLine($"[Notifications] 📡 Channel '{channel.ChannelId}': " +
+                                  $"Enabled={settings.Enabled}, " +
+                                  $"ConfigKeys=[{string.Join(", ", settings.Config.Keys)}], " +
+                                  $"HasToken={!string.IsNullOrWhiteSpace(settings.Get("bot_token"))}");
+
+                if (!settings.Enabled)
+                {
+                    Console.WriteLine($"[Notifications] ⏭ Channel '{channel.ChannelId}' is disabled — skipping.");
+                    continue;
+                }
 
                 try
                 {
                     await channel.SendAsync(message, settings, ct);
-                    Console.WriteLine(
-                        $"[NotificationOrchestrationService] Sent via channel '{channel.ChannelId}'");
+                    Console.WriteLine($"[Notifications] ✅ Sent via '{channel.ChannelId}'.");
 
                     // Raise the in-app event so UI can show a toast or indicator
                     _events.RaiseNotificationSent(new NotificationSentPayload(
@@ -137,23 +171,21 @@ public class NotificationOrchestrationService : BackgroundService
                 catch (NotSupportedException nse)
                 {
                     // Expected for email in WASM — log and continue
-                    Console.WriteLine(
-                        $"[NotificationOrchestrationService] Channel '{channel.ChannelId}' not supported: {nse.Message}");
+                    Console.WriteLine($"[Notifications] ℹ Channel '{channel.ChannelId}' not supported: {nse.Message}");
                 }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine(
-                        $"[NotificationOrchestrationService] Channel '{channel.ChannelId}' failed: {ex.Message}");
+                    Console.Error.WriteLine($"[Notifications] ❌ Channel '{channel.ChannelId}' FAILED: {ex.GetType().Name}: {ex.Message}");
                 }
             }
 
             // Mark as notified so we don't re-send every minute for the same timer run
             _notifiedForEntryId = entryId;
+            Console.WriteLine($"[Notifications] 🏁 Done. Will not re-notify for entry {entryId}.");
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine(
-                $"[NotificationOrchestrationService] CheckAndNotifyAsync error: {ex.Message}");
+            Console.Error.WriteLine($"[Notifications] ❌ CheckAndNotifyAsync error: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
