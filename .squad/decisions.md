@@ -917,3 +917,22 @@
 **By:** UXer + Root (Vincent Verweij session)
 **What:** `.main-content` changed to `flex-direction: column` (previously `overflow-y: auto` only). `.timeline-page` sets `flex: 1; min-height: 0` to consume all remaining vertical space below the nav bar. `.timeline-preview-area` sets `flex: 1; min-height: 0`. `img.screenshot-img` removes the `max-height: 500px` cap and uses `flex: 1; min-height: 0` so it expands to fill the preview panel.
 **Why:** A large blank area appeared below screenshots because the image was capped at 500px while the preview panel stretched to fill remaining height. The flex cascade now ensures the image always fills the available panel, with no empty space below.
+
+---
+
+## Session 2026-03-18 — Bug Fixes & UX Improvements
+
+### 2026-03-18: Breadcrumb Persistence Across Navigation and Cold Boot
+**By:** Vincent Verweij
+**What:** TimerStateService now stores CurrentProjectName, CurrentClientId, CurrentClientName, and CurrentTaskName. StartAsync accepts these display names. InitializeAsync (cold boot) restores them from an enriched 	imer_get_active response. The 	imer_get_active SQL was extended with LEFT JOINs on projects, clients, and 	asks to return human-readable display names. ActiveTimerResponse was extended with matching fields.
+**Why:** Timer breadcrumb (project/client/task trail in the header) was lost on every page navigation and on app restart. Names must round-trip through the service layer and survive a cold boot.
+
+### 2026-03-18: Time Entry Delete Command
+**By:** Vincent Verweij
+**What:** Added 	ime_entry_delete(entry_id: String) Rust command. Cascade-deletes 	ime_entry_tags first, then deletes from 	ime_entries. Refuses to delete a currently-running entry (returns cannot_delete_running). Registered in lib.rs. Exposed as TimeEntryDeleteAsync via C# IPC. TimeEntryList.razor gained a ✕ Ghost button per row; DeleteEntry method removes the entry from both _entries and _groupedEntries and calls StateHasChanged.
+**Why:** No way to remove accidentally-created or incorrect time entries. Required UX.
+
+### 2026-03-18: Inline Confirmation Before Deleting a Time Entry
+**By:** Vincent Verweij
+**What:** Clicking ✕ on a time entry no longer deletes immediately. It sets _pendingDeleteId and renders an inline yellow confirmation banner (ntry-inline-confirm) with the message "Are you sure that you want to delete this time entry?" and Delete / Cancel buttons. DeleteEntry logic split into RequestDeleteEntry (shows prompt) and ConfirmDeleteEntry (clears prompt, then executes delete). CSS added to TimeEntryList.razor.css matching the inline-confirm pattern from Projects.razor.
+**Why:** Destructive action requires confirmation. Accidental ✕ clicks must be recoverable.
