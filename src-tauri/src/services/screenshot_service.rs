@@ -278,7 +278,7 @@ async fn cleanup_expired(app: &AppHandle) {
 pub fn start_screenshot_loop(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut last_window_key: Option<String> = None;
-        let mut last_capture = tokio::time::Instant::now();
+        let mut last_interval_capture = tokio::time::Instant::now();
         let mut debounce_until: Option<tokio::time::Instant> = None;
         let mut cleanup_tick: u64 = 0;
 
@@ -335,7 +335,7 @@ pub fn start_screenshot_loop(app: AppHandle) {
 
             let now = tokio::time::Instant::now();
             let interval_elapsed =
-                now.duration_since(last_capture).as_secs() >= interval_secs;
+                now.duration_since(last_interval_capture).as_secs() >= interval_secs;
             let debounce_fired = debounce_until.map(|d| now >= d).unwrap_or(false);
 
             if interval_elapsed || debounce_fired {
@@ -343,7 +343,7 @@ pub fn start_screenshot_loop(app: AppHandle) {
                 if debounce_fired {
                     debounce_until = None;
                 }
-                last_capture = now;
+                if interval_elapsed { last_interval_capture = now; }
 
                 if let Err(e) = capture_and_save(&app, trigger, window_info).await {
                     let _ = app.emit(

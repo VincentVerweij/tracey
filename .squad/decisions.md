@@ -824,3 +824,56 @@
 **By:** UXer + Root
 **What:** Agreed binding class names: `.timeline-day-bar`, `.timeline-bar-inner`, `.timeline-hour-marker`, `.timeline-screenshot-dot`, `.timeline-dot-selected`, `.timeline-hover-indicator`, `.hover-time-label`, `.timeline-preview-area`, `.preview-header`, `.preview-header-hover`, `.screenshot-img`, `.screenshot-img-hover`, `.preview-placeholder`, `.timeline-controls`, `.timeline-error-banner`, `.empty-state-illustration`, `.timeline-loading`. No class renamed, added, or removed without mutual consent.
 **Why:** Root's C# applies these classes; UXer's CSS styles them. Breaking the contract causes invisible styles.
+
+---
+
+## 2026-03-18: Phase 7+ Bug Fixes — QuickEntryBar & TimeEntryList
+
+### Duplicate Running Timer Row Removed
+**By:** Root (Vincent Verweij session)
+**What:** The `running-timer-row` block was removed from `TimeEntryList.razor`. QuickEntryBar already renders the active timer with live elapsed time and a Stop button.
+**Why:** Both components rendered simultaneously, producing a duplicate "running" entry visible to the user on the Dashboard. Single canonical display lives in QuickEntryBar.
+
+### QuickEntryBar: Slash Handling Race Condition Fixed
+**By:** Root (Vincent Verweij session)
+**What:** On `/` keypress, the pre-slash text is stored as `_clientHint` (string field), the input is cleared, and the mode transitions to `SlashMode.ProjectActive`. The client hint is preserved for fuzzy-match seeding but removed from the editable field.
+**Why:** Previous behaviour confirmed the entry immediately with whatever was typed at the moment of `/`, creating a race condition where partially-typed text was submitted unintentionally.
+
+### QuickEntryBar: Project Matching Uses Combined Client+Project Score
+**By:** Root (Vincent Verweij session)
+**What:** `LoadProjectMatches` computes `score = max(projectNameScore, clientNameScore)` so that typing a client name surfaces all of that client's projects. When the post-slash input is empty, `_clientHint` (the text before `/`) is passed as the query seed.
+**Why:** Previously only project names were scored, so typing "Acme" would not surface any project belonging to the "Acme Corp" client. Combined scoring makes client-first entry natural.
+
+### QuickEntryBar: Keyboard Focus Restored After Project/Task Selection
+**By:** Root (Vincent Verweij session)
+**What:** `ConfirmProject`, `ConfirmDisambiguation`, and `ConfirmTask` are all `async Task` methods that call `await _inputRef.FocusAsync()` after the state transition and `StateHasChanged()`.
+**Why:** Focus was lost whenever the user clicked a project or task in the dropdown, requiring a manual click back into the input to continue typing.
+
+### TimeEntryList: Task Name Shown on Entry Rows
+**By:** Root (Vincent Verweij session)
+**What:** Entry rows now render `ClientName / ProjectName › TaskName` when a task is set on the entry.
+**Why:** Task was silently omitted from the display; only the project name was shown, meaning assigned tasks were invisible to the user in the list view.
+
+### TimeEntryList: Inline Edit Has Explicit Save/Cancel Buttons
+**By:** Root (Vincent Verweij session)
+**What:** The inline edit form for existing time entries now includes explicit Save and Cancel `<button>` elements. The form supports inline fuzzy project/task search with a clear (×) button per segment. `_editProjectId`, `_editProjectName`, `_editTaskId`, `_editTaskName` capture selected values for the `time_entry_update` IPC call.
+**Why:** Previously there was no visible save affordance — the user had no clear way to commit inline edits. The previous auto-save-on-blur stub (T030b) was insufficient for the current interaction model.
+
+### QuickEntryBar: Breadcrumb Path Replaces Chips
+**By:** Root + UXer (Vincent Verweij session)
+**What:** Segment chips (`.entry-segment` divs) replaced with an inline breadcrumb text prefix (`.entry-breadcrumb`). The `BreadcrumbPrefix` computed property returns a string such as `"Acme Corp / Tracey / Some Task /"` built from `_clientHint`, `_resolvedProject`, and `_resolvedTask`. Backspace on an empty input navigates backwards: Description → TaskActive (restores task name), TaskActive → ProjectActive (restores project name and reopens dropdown), ProjectActive → None (restores client hint as editable text).
+**Why:** Chips were visually heavy and broke the single-line input layout. Breadcrumb text is compact, scannable, and matches familiar file-path UX. The backward-navigation behaviour preserves all previously entered text so the user never loses work.
+
+---
+
+## 2026-03-18: Layout — Full-Width Pages & Full-Height Timeline
+
+### Layout: max-width Removed from All Pages
+**By:** UXer (Vincent Verweij session)
+**What:** All `max-width` constraints removed from `.main-content` and individual page containers across `Dashboard.razor.css`, `Projects.razor.css`, `Timeline.razor.css`, and `MainLayout.razor.css`. Pages now use the full available viewport width.
+**Why:** Previous constraints (800px–1100px) left large empty whitespace on wide monitors, wasting screen real estate that entries, project cards, and the timeline can use productively.
+
+### Timeline: Full-Height Screenshot Preview Area
+**By:** UXer + Root (Vincent Verweij session)
+**What:** `.main-content` changed to `flex-direction: column` (previously `overflow-y: auto` only). `.timeline-page` sets `flex: 1; min-height: 0` to consume all remaining vertical space below the nav bar. `.timeline-preview-area` sets `flex: 1; min-height: 0`. `img.screenshot-img` removes the `max-height: 500px` cap and uses `flex: 1; min-height: 0` so it expands to fill the preview panel.
+**Why:** A large blank area appeared below screenshots because the image was capped at 500px while the preview panel stretched to fill remaining height. The flex cascade now ensures the image always fills the available panel, with no empty space below.

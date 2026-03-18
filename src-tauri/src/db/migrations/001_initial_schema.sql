@@ -151,7 +151,7 @@ CREATE TABLE user_preferences (
     id                                 INTEGER PRIMARY KEY DEFAULT 1,
     local_timezone                     TEXT    NOT NULL DEFAULT 'UTC',
     inactivity_timeout_seconds         INTEGER NOT NULL DEFAULT 300,
-    screenshot_interval_seconds        INTEGER NOT NULL DEFAULT 60,
+    screenshot_interval_seconds        INTEGER NOT NULL DEFAULT 300,
     screenshot_retention_days          INTEGER NOT NULL DEFAULT 30,
     screenshot_storage_path            TEXT,                           -- nullable; defaults to {exe_dir}/screenshots/ at runtime
     timer_notification_threshold_hours REAL    NOT NULL DEFAULT 8.0,

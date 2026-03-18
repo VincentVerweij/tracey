@@ -113,7 +113,7 @@ fn seed_first_launch(conn: &Connection, db_path: &PathBuf) -> SqlResult<()> {
         rusqlite::params![
             1i64,           // id = 1 (singleton enforced by CHECK (id = 1))
             300i64,         // inactivity_timeout_seconds: 5 minutes
-            900i64,         // screenshot_interval_seconds: 15 minutes
+            300i64,         // screenshot_interval_seconds: 5 minutes
             30i64,          // screenshot_retention_days: 30 days
             None::<String>, // screenshot_storage_path: NULL → runtime default {exe_dir}/screenshots/
             "UTC",          // local_timezone

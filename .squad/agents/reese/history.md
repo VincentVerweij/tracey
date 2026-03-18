@@ -121,3 +121,16 @@ IPC wrapper pattern confirmed: `new { request = new { ... } }`. `ErrorPayload` c
 
 **cargo check: PASS** — pre-existing dead_code warnings only, 0 errors.
 
+### 2026-03-18: Screenshot interval timer bug fix + default alignment (cargo check PASS)
+
+**Files updated:**
+- `services/screenshot_service.rs`: Renamed `last_capture` → `last_interval_capture`; changed `last_capture = now` to `if interval_elapsed { last_interval_capture = now; }` — window-change shots no longer reset the interval timer.
+- `db/mod.rs`: Seed insert `screenshot_interval_seconds` changed from `900i64` → `300i64` (5 minutes).
+- `db/migrations/001_initial_schema.sql`: `screenshot_interval_seconds DEFAULT 60` → `DEFAULT 300` (aligns with seed).
+
+**Root cause:** The single `last_capture` variable was shared by both the interval check and the debounce check. Any window-change shot wrote `last_capture = now`, which pushed out the interval deadline. On a busy desktop the interval timer could starve indefinitely.
+
+**Fix pattern:** Separate the two concerns: `last_interval_capture` tracks only interval-triggered captures; window-change shots leave it untouched. The `if interval_elapsed { ... }` guard ensures the variable only advances when the interval actually fires.
+
+**cargo check: PASS** — 16 dead_code warnings (all pre-existing), 0 errors.
+
