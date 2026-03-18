@@ -181,6 +181,12 @@
                                           OnClick="() => ContinueEntry(entry.Id)">
                                     Continue
                                 </BbButton>
+                                <BbButton Variant="ButtonVariant.Ghost"
+                                          Size="ButtonSize.Small"
+                                          AriaLabel="@($"Delete entry")"
+                                          OnClick="() => DeleteEntry(entry.Id)">
+                                    ✕
+                                </BbButton>
                             }
                         </li>
                     }
@@ -291,6 +297,23 @@
         catch (Exception ex)
         {
             Console.Error.WriteLine($"[TimeEntryList] Continue failed: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteEntry(string entryId)
+    {
+        try
+        {
+            await Tauri.TimeEntryDeleteAsync(entryId);
+            // Remove from local list immediately for responsiveness
+            foreach (var group in _groupedEntries)
+                group.Value.RemoveAll(e => e.Id == entryId);
+            _entries.RemoveAll(e => e.Id == entryId);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[TimeEntryList] Delete failed: {ex.Message}");
         }
     }
 

@@ -53,6 +53,9 @@ public class TauriIpcService
     public Task<ModifiedAtResponse> TimeEntryUpdateAsync(TimeEntryUpdateRequest request) =>
         Invoke<ModifiedAtResponse>("time_entry_update", new { request });
 
+    public Task TimeEntryDeleteAsync(string id) =>
+        Invoke<object>("time_entry_delete", new { id });
+
     public Task<TimeEntryAutocompleteResponse> TimeEntryAutocompleteAsync(TimeEntryAutocompleteRequest request) =>
         Invoke<TimeEntryAutocompleteResponse>("time_entry_autocomplete", new { request });
 
@@ -259,7 +262,11 @@ public record ActiveTimerResponse(
     [property: JsonPropertyName("description")] string Description,
     [property: JsonPropertyName("started_at")] string StartedAt,
     [property: JsonPropertyName("project_id")] string? ProjectId,
+    [property: JsonPropertyName("project_name")] string? ProjectName,
+    [property: JsonPropertyName("client_id")] string? ClientId,
+    [property: JsonPropertyName("client_name")] string? ClientName,
     [property: JsonPropertyName("task_id")] string? TaskId,
+    [property: JsonPropertyName("task_name")] string? TaskName,
     [property: JsonPropertyName("tag_ids")] string[] TagIds);
 
 // ─────────────────────────────────────────────────────────────────────────────

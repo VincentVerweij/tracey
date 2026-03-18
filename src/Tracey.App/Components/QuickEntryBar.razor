@@ -606,6 +606,7 @@
 
     private async Task StartTimer()
     {
+        if (Timer.IsRunning) return; // guard against repeated Enter presses
         var description = GetDescription();
         // Allow empty description when project/task already resolved via slash notation
         if (string.IsNullOrWhiteSpace(description) && _slashMode != SlashMode.Description) return;

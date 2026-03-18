@@ -197,7 +197,11 @@ pub struct ActiveTimerResponse {
     pub description: String,
     pub started_at: String,
     pub project_id: Option<String>,
+    pub project_name: Option<String>,
+    pub client_id: Option<String>,
+    pub client_name: Option<String>,
     pub task_id: Option<String>,
+    pub task_name: Option<String>,
     pub tag_ids: Vec<String>,
 }
 
@@ -206,8 +210,14 @@ pub fn timer_get_active(state: State<'_, AppState>) -> Result<ActiveTimerRespons
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
     let result = conn.query_row(
-        "SELECT id, description, started_at, project_id, task_id
-         FROM time_entries WHERE ended_at IS NULL LIMIT 1",
+        "SELECT te.id, te.description, te.started_at, te.project_id, te.task_id,
+                p.name AS project_name, c.id AS client_id, c.name AS client_name,
+                t.name AS task_name
+         FROM time_entries te
+         LEFT JOIN projects p ON p.id = te.project_id
+         LEFT JOIN clients  c ON c.id = p.client_id
+         LEFT JOIN tasks    t ON t.id = te.task_id
+         WHERE te.ended_at IS NULL LIMIT 1",
         [],
         |r| {
             Ok((
@@ -216,12 +226,17 @@ pub fn timer_get_active(state: State<'_, AppState>) -> Result<ActiveTimerRespons
                 r.get::<_, String>(2)?,
                 r.get::<_, Option<String>>(3)?,
                 r.get::<_, Option<String>>(4)?,
+                r.get::<_, Option<String>>(5)?,
+                r.get::<_, Option<String>>(6)?,
+                r.get::<_, Option<String>>(7)?,
+                r.get::<_, Option<String>>(8)?,
             ))
         },
     );
 
     match result {
-        Ok((id, description, started_at, project_id, task_id)) => {
+        Ok((id, description, started_at, project_id, task_id,
+            project_name, client_id, client_name, task_name)) => {
             let mut stmt = conn
                 .prepare("SELECT tag_id FROM time_entry_tags WHERE time_entry_id = ?1")
                 .map_err(|e| e.to_string())?;
@@ -236,7 +251,11 @@ pub fn timer_get_active(state: State<'_, AppState>) -> Result<ActiveTimerRespons
                 description,
                 started_at,
                 project_id,
+                project_name,
+                client_id,
+                client_name,
                 task_id,
+                task_name,
                 tag_ids,
             })
         }
@@ -245,7 +264,11 @@ pub fn timer_get_active(state: State<'_, AppState>) -> Result<ActiveTimerRespons
             description: String::new(),
             started_at: String::new(),
             project_id: None,
+            project_name: None,
+            client_id: None,
+            client_name: None,
             task_id: None,
+            task_name: None,
             tag_ids: vec![],
         }),
         Err(e) => Err(e.to_string()),
@@ -744,4 +767,43 @@ pub fn time_entry_update(
     }
 
     Ok(TimeEntryUpdateResponse { id: request.id, modified_at: now })
+}
+
+// ─────────────────────────────────────────────────────────────
+// time_entry_delete
+// ─────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn time_entry_delete(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+
+    // Refuse to delete a running entry
+    let ended_at: Option<String> = conn
+        .query_row(
+            "SELECT ended_at FROM time_entries WHERE id = ?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .map_err(|_| "entry_not_found".to_string())?;
+
+    if ended_at.is_none() {
+        return Err("cannot_delete_running".to_string());
+    }
+
+    conn.execute(
+        "DELETE FROM time_entry_tags WHERE time_entry_id = ?1",
+        params![id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "DELETE FROM time_entries WHERE id = ?1",
+        params![id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
