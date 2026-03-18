@@ -136,3 +136,16 @@ Tauri 2.0 bridge: top-level params must be camelCase. `DateTimeOffset.TryParse` 
 - Load pattern: `prefs.InactivityTimeoutSeconds / 60.0` with fallback to `5.0` if zero.
 
 **Task 4 — IdleReturnModal.razor.css:** File pre-existed with design-token-based styles. Always check before overwriting CSS scoped files.
+
+### 2026-03-19: Phase 4 Final — IdleReturnModal Plain Overlay + Parse Error Fix
+
+**BbDialog portal failure (net10):** `BbDialog` cannot be used in this project. `BbPortalHost` silently fails to register with `PortalService` on net10.0. RZ10012 is NOT harmless. The fix: replace with `@if (_isVisible)` conditional `<div class="idle-modal-backdrop">` overlay at `position: fixed; inset: 0; z-index: 9999`. This pattern is now standard for all modals in this project.
+
+**Escaped quotes in Razor lambdas cause parse errors:** Never use `\"` inside a `@code` lambda or Razor inline expression. Razor's parser fails with RZ1027/CS1039/CS1073 on escaped quotes inside `@($"...")` string interpolations within lambdas. Hoist the expression to a local variable first. Example: `var label = $"Was: \"{value}\"";` then reference `label` inside the lambda.
+
+**IdleReturnModal final state:**
+- Plain HTML overlay (`@if (_isVisible)` + `<div class="idle-modal-backdrop">`)
+- `@ref` + `FocusAsync()` for programmatic focus (autofocus does not work for dynamically-shown elements in WebView2)
+- `_specifyError` field + `<p role="alert">` for empty-field validation
+- `@onkeydown` handler submits Specify form on Enter
+- Modal title shows duration string (e.g. "You were away for 7 minutes"), not static "You're back"

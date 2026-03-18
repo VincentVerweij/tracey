@@ -6,6 +6,7 @@
     const _unlisten = [];
 
     async function initializeTauriBridge(dotNetRef) {
+        console.log('[tracey-bridge] initializeTauriBridge called');
         _dotNetRef = dotNetRef;
 
         const events = [
@@ -24,9 +25,12 @@
                 // Use transformCallback (creates a persistent window-level handler)
                 // then invoke the plugin:event|listen command.
                 const handlerId = window.__TAURI_INTERNALS__.transformCallback((event) => {
+                    console.log('[tracey-bridge] EVENT RECEIVED:', eventName, event.payload ?? event);
                     if (_dotNetRef) {
                         _dotNetRef.invokeMethodAsync('RouteEvent', eventName, JSON.stringify(event.payload ?? event))
-                            .catch((err) => console.error('[tracey-bridge] RouteEvent failed:', err));
+                            .catch((err) => console.error('[tracey-bridge] RouteEvent failed for', eventName, err));
+                    } else {
+                        console.warn('[tracey-bridge] EVENT RECEIVED but _dotNetRef is null — bridge disposed?', eventName);
                     }
                 }, false); // false = keepAlive (not a one-shot callback)
 
@@ -36,6 +40,7 @@
                     handler: handlerId
                 });
 
+                console.log('[tracey-bridge] Registered listener for', eventName, '→ eventId', eventId);
                 _unlisten.push(() => {
                     window.__TAURI_INTERNALS__.invoke('plugin:event|unlisten', {
                         event: eventName,
@@ -43,9 +48,11 @@
                     }).catch(() => {});
                 });
             } catch (e) {
-                console.warn('[tracey-bridge] Failed to register listener for', eventName, e);
+                console.error('[tracey-bridge] FAILED to register listener for', eventName, e);
             }
         }
+
+        console.log('[tracey-bridge] Bridge initialised — subscribed to', events.length, 'events');
     }
 
     function disposeTauriBridge() {

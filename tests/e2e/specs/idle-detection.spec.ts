@@ -259,4 +259,106 @@ test.describe('US2 — Idle Detection and On-Return Prompt', () => {
     await expect(modal).not.toBeVisible();
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Specify sub-flow — Enter key submits and closes modal
+  // ─────────────────────────────────────────────────────────────────────────
+
+  test('"Specify" Enter key submits the description and closes the modal', async ({ page }) => {
+    await waitForApp(page);
+    await stopAnyTimer(page);
+    await setInactivityTimeout(page, IDLE_THRESHOLD_SECONDS);
+    await startTimer(page, 'Work before specify-enter test');
+
+    await page.waitForTimeout(WAIT_FOR_IDLE_MS);
+
+    const modal = page.getByRole('dialog', { name: /idle|away|back/i });
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+
+    await modal.getByRole('button', { name: /specify/i }).click();
+
+    const specifyInput = page.getByRole('textbox', { name: /what were you doing/i });
+    await expect(specifyInput).toBeVisible({ timeout: 2_000 });
+
+    await specifyInput.fill('Design review via keyboard');
+    await specifyInput.press('Enter');
+
+    await expect(modal).not.toBeVisible({ timeout: 3_000 });
+
+    // Entry must appear in the list with the typed description
+    const list = await page.evaluate(async () => {
+      return await (window as any).__TAURI_INTERNALS__.invoke('time_entry_list', {
+        request: { page: 1, page_size: 20 },
+      });
+    });
+    const entry = list.entries.find(
+      (e: any) => e.description === 'Design review via keyboard',
+    );
+    expect(entry).toBeDefined();
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Specify sub-flow — empty input shows validation error, modal stays open
+  // ─────────────────────────────────────────────────────────────────────────
+
+  test('"Specify" Save without text shows error and keeps modal open', async ({ page }) => {
+    await waitForApp(page);
+    await stopAnyTimer(page);
+    await setInactivityTimeout(page, IDLE_THRESHOLD_SECONDS);
+    await startTimer(page, 'Work before empty-specify test');
+
+    await page.waitForTimeout(WAIT_FOR_IDLE_MS);
+
+    const modal = page.getByRole('dialog', { name: /idle|away|back/i });
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+
+    await modal.getByRole('button', { name: /specify/i }).click();
+
+    const specifyInput = page.getByRole('textbox', { name: /what were you doing/i });
+    await expect(specifyInput).toBeVisible({ timeout: 2_000 });
+
+    // Submit with empty input
+    await modal.getByRole('button', { name: /save/i }).click();
+
+    // Validation error must appear
+    const errorMsg = modal.getByRole('alert');
+    await expect(errorMsg).toBeVisible({ timeout: 2_000 });
+    await expect(errorMsg).toHaveText(/please describe what you were doing/i);
+
+    // Modal must still be visible — not dismissed
+    await expect(modal).toBeVisible();
+    await expect(specifyInput).toBeVisible();
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Specify sub-flow — Back button returns to the four-option view
+  // ─────────────────────────────────────────────────────────────────────────
+
+  test('"Specify" Back button returns to the four-option view', async ({ page }) => {
+    await waitForApp(page);
+    await stopAnyTimer(page);
+    await setInactivityTimeout(page, IDLE_THRESHOLD_SECONDS);
+    await startTimer(page, 'Work before back-button test');
+
+    await page.waitForTimeout(WAIT_FOR_IDLE_MS);
+
+    const modal = page.getByRole('dialog', { name: /idle|away|back/i });
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+
+    await modal.getByRole('button', { name: /specify/i }).click();
+
+    // Specify input view is now shown
+    const specifyInput = page.getByRole('textbox', { name: /what were you doing/i });
+    await expect(specifyInput).toBeVisible({ timeout: 2_000 });
+
+    // Click Back
+    await modal.getByRole('button', { name: /back/i }).click();
+
+    // Input view is gone; four option buttons reappear
+    await expect(specifyInput).not.toBeVisible({ timeout: 2_000 });
+    await expect(modal.getByRole('button', { name: /break/i })).toBeVisible();
+    await expect(modal.getByRole('button', { name: /meeting/i })).toBeVisible();
+    await expect(modal.getByRole('button', { name: /specify/i })).toBeVisible();
+    await expect(modal.getByRole('button', { name: /keep/i })).toBeVisible();
+  });
+
 });

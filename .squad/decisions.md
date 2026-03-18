@@ -1261,3 +1261,16 @@ The `tauri-bridge.js` registers `tracey://idle-detected` listeners via Tauri's n
 **Consequence:** Option A (real 5s timeout via `preferences_update { inactivity_timeout_seconds: 5 }`) is the only viable approach for triggering idle detection in E2E tests.
 
 **Rule:** Idle test suite must remain serial (`test.describe.configure({ mode: 'serial' })`). The 5s threshold means suite run time is ~60s. Do not parallelize.
+
+---
+
+## 2026-03-19: Escaped Quotes Forbidden in Razor Lambda String Interpolations
+**By:** Root (Phase 4 final)
+**What:** Never use `\"` inside a Razor `@code` lambda or inline expression. Razor's parser misinterprets escaped double-quotes inside `@($"...")` interpolations within C# lambdas, producing RZ1027/CS1039/CS1073 parse errors. Hoist any complex string expressions (especially those containing quotes) to local variables before the lambda.
+**Why:** Razor parse errors RZ1027/CS1039/CS1073 blocked build during Phase 4 final fixes. The pattern `@onchange='@(e => Foo($"bar: \"{e.Value}\""))'` is illegal. Use `var msg = $"bar: \"{e.Value}\""; @onchange="@(_ => Foo(msg))"` instead.
+**Applies to:** All future `@code` lambdas with string interpolation containing quotes.
+
+## 2026-03-19: Diagnostics Pattern for Event Pipeline Debugging
+**By:** Finch (Phase 4)
+**What:** When debugging a Tauri→JS→C# event pipeline issue, add diagnostics at 4 layers: (1) Rust `eprintln!` in the emitting service (e.g. `idle_service.rs` heartbeat + emit result), (2) `console.log` in `tauri-bridge.js` on receive (bridge init, per-event, registration confirm), (3) `Console.WriteLine` in `TauriEventService.RouteEvent` + per-event handler, (4) `Console.WriteLine` in the Blazor component handler. Remove all diagnostics once the pipeline is confirmed working.
+**Why:** Phase 4 debugging confirmed the full pipeline was operational — the sole failure was UI rendering (BbDialog portal). Diagnostics at all 4 layers proved this conclusively and avoided misattributing the bug to event delivery.

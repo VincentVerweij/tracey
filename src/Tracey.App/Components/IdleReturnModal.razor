@@ -1,53 +1,61 @@
 @inject TauriIpcService Tauri
-@implements IDisposable
 
-<BbDialog Open="@_isVisible">
-    <BbDialogContent CloseOnOverlayClick="false" CloseOnEscape="false" ShowClose="false">
-        <BbDialogHeader>
-            <BbDialogTitle>You're back</BbDialogTitle>
-            <BbDialogDescription>@_durationText</BbDialogDescription>
-        </BbDialogHeader>
+@if (_isVisible)
+{
+    <div class="idle-modal-backdrop"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="idle-modal-title"
+         aria-describedby="idle-modal-desc">
+        <div class="idle-modal">
+            <div class="idle-modal-header">
+                <h2 id="idle-modal-title" class="idle-modal-title">@_durationText</h2>
+                <p id="idle-modal-desc" class="idle-modal-description">What should we do with that time?</p>
+            </div>
 
-        @if (_showSpecifyInput)
-        {
-            <div class="specify-form">
-                <label for="specify-desc">What were you doing?</label>
-                <input id="specify-desc"
-                       type="text"
-                       @bind="_specifyDescription"
-                       aria-label="What were you doing?"
-                       placeholder="e.g. Reviewing architecture docs"
-                       autofocus />
-                <div class="specify-actions">
-                    <BbButton OnClick="SubmitSpecify">Save</BbButton>
-                    <BbButton Variant="ButtonVariant.Outline"
-                              OnClick="@(() => { _showSpecifyInput = false; })">Back</BbButton>
+            @if (_showSpecifyInput)
+            {
+                <div class="specify-form">
+                    <label for="specify-desc">What were you doing?</label>
+                    <input id="specify-desc"
+                           type="text"
+                           @bind="_specifyDescription"
+                           @ref="_specifyInputRef"
+                           aria-label="What were you doing?"
+                           placeholder="e.g. Reviewing architecture docs"
+                           @onkeydown="@(async (e) => { if (e.Key == "Enter") await SubmitSpecify(); })" />
+                    @if (!string.IsNullOrEmpty(_specifyError)) { <p class="specify-error" role="alert">@_specifyError</p> }
+                    <div class="specify-actions">
+                        <BbButton OnClick="SubmitSpecify">Save</BbButton>
+                        <BbButton Variant="ButtonVariant.Outline"
+                                  OnClick="@(() => { _showSpecifyInput = false; })">Back</BbButton>
+                    </div>
                 </div>
-            </div>
-        }
-        else
-        {
-            <div class="idle-options" role="group" aria-label="What happened while you were away?">
-                <button type="button" class="idle-option-btn" @onclick='() => Resolve("break")'>
-                    <span class="option-label">Break</span>
-                    <span class="option-hint">Stop timer here, add a break</span>
-                </button>
-                <button type="button" class="idle-option-btn" @onclick='() => Resolve("meeting")'>
-                    <span class="option-label">Meeting</span>
-                    <span class="option-hint">Log as a meeting</span>
-                </button>
-                <button type="button" class="idle-option-btn" @onclick='() => { _showSpecifyInput = true; }'>
-                    <span class="option-label">Specify</span>
-                    <span class="option-hint">I'll tell you what I was doing</span>
-                </button>
-                <button type="button" class="idle-option-btn" @onclick='() => Resolve("keep")'>
-                    <span class="option-label">Keep</span>
-                    <span class="option-hint">Pretend I was still working</span>
-                </button>
-            </div>
-        }
-    </BbDialogContent>
-</BbDialog>
+            }
+            else
+            {
+                <div class="idle-options" role="group" aria-label="What happened while you were away?">
+                    <button type="button" class="idle-option-btn" @onclick='() => Resolve("break")'>
+                        <span class="option-label">Break</span>
+                        <span class="option-hint">Stop timer here, add a break</span>
+                    </button>
+                    <button type="button" class="idle-option-btn" @onclick='() => Resolve("meeting")'>
+                        <span class="option-label">Meeting</span>
+                        <span class="option-hint">Log as a meeting</span>
+                    </button>
+                    <button type="button" class="idle-option-btn" @onclick="ShowSpecifyInput">
+                        <span class="option-label">Specify</span>
+                        <span class="option-hint">Describe what you were doing</span>
+                    </button>
+                    <button type="button" class="idle-option-btn" @onclick='() => Resolve("keep")'>
+                        <span class="option-label">Keep running</span>
+                        <span class="option-hint">Continue the current timer</span>
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+}
 
 @code {
     [Parameter] public EventCallback OnResolved { get; set; }
@@ -55,6 +63,8 @@
     private bool _isVisible = false;
     private bool _showSpecifyInput = false;
     private string _specifyDescription = string.Empty;
+    private string _specifyError = string.Empty;
+    private ElementReference _specifyInputRef;
     private string _idleStartedAt = string.Empty;
     private string _idleEndedAt = string.Empty;
     private string _durationText = string.Empty;
@@ -62,6 +72,7 @@
     /// Called by Dashboard when tracey://idle-detected fires.
     public void Show(string idleSince)
     {
+        Console.WriteLine($"[IdleReturnModal] Show() EXECUTING: idleSince={idleSince} _isVisible was {_isVisible}");
         _idleStartedAt = idleSince;
         _idleEndedAt = DateTime.UtcNow.ToString("o");
         _isVisible = true;
@@ -81,6 +92,7 @@
             _durationText = "You were away for a while";
         }
 
+        Console.WriteLine($"[IdleReturnModal] Show() complete: _isVisible={_isVisible}, calling StateHasChanged()");
         StateHasChanged();
     }
 
@@ -106,9 +118,22 @@
         }
     }
 
+    private async Task ShowSpecifyInput()
+    {
+        _specifyError = string.Empty;
+        _showSpecifyInput = true;
+        await InvokeAsync(StateHasChanged);
+        await _specifyInputRef.FocusAsync();
+    }
+
     private async Task SubmitSpecify()
     {
-        if (string.IsNullOrWhiteSpace(_specifyDescription)) return;
+        _specifyError = string.Empty;
+        if (string.IsNullOrWhiteSpace(_specifyDescription))
+        {
+            _specifyError = "Please describe what you were doing.";
+            return;
+        }
 
         try
         {
@@ -131,5 +156,4 @@
         }
     }
 
-    public void Dispose() { }
 }

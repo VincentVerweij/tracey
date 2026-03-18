@@ -33,10 +33,12 @@ public class TauriEventService : IDisposable
 
     public async Task InitializeAsync()
     {
+        Console.WriteLine("[TauriEventService] InitializeAsync — registering JS bridge...");
         _dotNetRef = DotNetObjectReference.Create(this);
         try
         {
             await _js.InvokeVoidAsync("traceyBridge.initializeTauriBridge", _dotNetRef);
+            Console.WriteLine("[TauriEventService] InitializeAsync — JS bridge ready");
         }
         catch (JSException ex) when (ex.Message.Contains("__TAURI_INTERNALS__"))
         {
@@ -45,13 +47,14 @@ public class TauriEventService : IDisposable
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[TauriEventService] InitializeAsync failed: {ex.Message}");
+            Console.Error.WriteLine($"[TauriEventService] InitializeAsync FAILED: {ex.Message}");
         }
     }
 
     [JSInvokable]
     public void RouteEvent(string eventName, string jsonPayload)
     {
+        Console.WriteLine($"[TauriEventService] RouteEvent ← {eventName}");
         try
         {
             switch (eventName)
@@ -61,8 +64,17 @@ public class TauriEventService : IDisposable
                     if (tick != null) OnTimerTick?.Invoke(tick);
                     break;
                 case "tracey://idle-detected":
+                    Console.WriteLine($"[TauriEventService] idle-detected payload: {jsonPayload}");
                     var idle = JsonSerializer.Deserialize<IdleDetectedPayload>(jsonPayload, _jsonOptions);
-                    if (idle != null) OnIdleDetected?.Invoke(idle);
+                    if (idle != null)
+                    {
+                        Console.WriteLine($"[TauriEventService] Firing OnIdleDetected: IdleSince={idle.IdleSince} HadActiveTimer={idle.HadActiveTimer} | subscribers={(OnIdleDetected?.GetInvocationList().Length ?? 0)}");
+                        OnIdleDetected?.Invoke(idle);
+                    }
+                    else
+                    {
+                        Console.Error.WriteLine("[TauriEventService] Failed to deserialise idle-detected payload");
+                    }
                     break;
                 case "tracey://idle-resolved":
                     var resolved = JsonSerializer.Deserialize<IdleResolvedPayload>(jsonPayload, _jsonOptions);

@@ -77,3 +77,13 @@
 - `BackgroundService` singleton in WASM injecting scoped `ITimerStateService` is fine in WASM (single root scope) but would be incorrect in server-side Blazor. Document this assumption if stack ever changes.
 
 **Constitution gate**: all 7 principles pass for Phase 9.
+
+### 2026-03-19: Phase 4 Final — BbDialog Portal Failure + Pipeline Confirmation
+
+**BbDialog unusable (net10 TFM mismatch):** `BbDialog` (BlazorBlueprint 3.5.2, built for net8.0) relies on `BbPortalHost` registering with `PortalService`. On net10.0, `BbPortalHost` silently fails to register. The RZ10012 warning (previously classified harmless) is NOT harmless — at runtime every `BbDialog.Open()` throws "No <PortalHost /> detected". **Rule:** Never use `BbDialog` or any BlazorBlueprint portal-based overlay in this project. Use plain `@if (_isVisible)` HTML overlay with `position: fixed; inset: 0; z-index: 9999` instead.
+
+**Escaped quotes forbidden in Razor lambda string interpolations:** Using `\"` inside a Razor `@code` lambda or inline `@($"...")` expression causes build errors RZ1027/CS1039/CS1073. Hoist any quoted string expressions to local variables before the lambda. This is distinct from the existing `@bind="..."` backslash-escape issue (Phase 9 build fix) — it applies to `@code` lambdas specifically.
+
+**IdleReturnModal pattern:** Now uses plain HTML overlay with `@if (_isVisible)` guard and `<div class="idle-modal-backdrop">`. All four resolutions (break, meeting, specify, keep) confirmed working end-to-end.
+
+**Diagnostics pattern confirmed:** 4-layer diagnostics (Rust `eprintln!`, JS `console.log`, C# `Console.WriteLine` at RouteEvent, C# at component handler) are the canonical approach for debugging Tauri→JS→C# event pipeline issues. In Phase 4, all 4 layers passed — the sole failure was BbDialog rendering.

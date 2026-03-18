@@ -10,7 +10,7 @@
 - **Spec:** `specs/001-window-activity-tracker/spec.md` — 9 user stories, all acceptance scenarios map to my tests
 - **TDD rule:** Failing tests MUST be committed before implementation begins. No exceptions.
 - **Created:** 2026-03-15
-- Tests written: timer.spec.ts (27), idle-detection.spec.ts (7), projects.spec.ts (14), screenshot-timeline.spec.ts (10), bug-fixes.spec.ts (4), timeline-bugs.spec.ts (2), issue-regressions.spec.ts (6), quick-entry.spec.ts (9), notifications.spec.ts (Phase 9), FuzzyMatchTests.cs (20 xUnit), NotificationChannelTests.cs (xUnit Phase 9)
+- Tests written: timer.spec.ts (27), idle-detection.spec.ts (10), projects.spec.ts (14), screenshot-timeline.spec.ts (10), bug-fixes.spec.ts (4), timeline-bugs.spec.ts (2), issue-regressions.spec.ts (6), quick-entry.spec.ts (9), notifications.spec.ts (Phase 9), FuzzyMatchTests.cs (20 xUnit), NotificationChannelTests.cs (xUnit Phase 9)
 
 ### Test Strategy
 - GDI screenshot capture stubbed via `#[cfg(feature="test")]` — Playwright runs use `--features test` build
@@ -43,7 +43,20 @@
 
 ## Learnings
 
-### 2026-03-18: T031 Phase 4 — idle-detection.spec.ts Rewrite
+### 2026-03-19: Phase 4 Idle Detection — 3 Specify Sub-flow Tests Added
+
+Added 3 tests to `idle-detection.spec.ts` (7 → 10 total). All three require genuine idle wait (Option A) — DOM dispatchEvent is not viable per prior notes.
+
+- **Specify + Enter key**: fills input, presses Enter, asserts modal closes and entry appears in `time_entry_list`.
+- **Specify + empty validation**: clicks Save without typing, asserts `role="alert"` contains "Please describe what you were doing.", asserts modal remains open.
+- **Specify + Back button**: clicks Specify, then Back, asserts input is hidden and all four option buttons reappear.
+
+**Infrastructure gaps found:**
+- No `data-testid` attributes on any idle modal elements — all selectors rely on ARIA roles and accessible names. Resilient but any text copy change to option button labels would break `/break|meeting|specify|keep/i` regexes.
+- Modal title is dynamic (`_durationText`) — `role="dialog" name=/away/i` matches "You were away for..." which is fine, but "You were away for a while" is the fallback when `idle_since` doesn't parse. Both match `/away/i`.
+- `BbButton` components must render as native `<button>` for `getByRole('button', { name: /save|back/i })` to work. If BlazorBlueprint renders a `<div>` or `<a>`, these selectors will fail.
+- `<p role="alert">` is hidden (not rendered) when `_specifyError` is empty string — Playwright alert selector only finds it after validation fires. This is correct behaviour.
+
 
 **What changed from Phase 3 draft:**
 - Replaced `page.goto('/')` with `page.goto(APP_URL)` (`http://localhost:5000`) — no baseURL in playwright.config.ts so naked `/` fails.
