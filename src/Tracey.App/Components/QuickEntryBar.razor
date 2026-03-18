@@ -192,8 +192,28 @@
 
     protected override void OnInitialized()
     {
-        if (Timer.IsRunning && Timer.CurrentDescription != null)
-            _inputText = Timer.CurrentDescription;
+        if (Timer.IsRunning)
+        {
+            _inputText = Timer.CurrentDescription ?? string.Empty;
+            // Restore breadcrumb from running timer's stored names (set during StartAsync).
+            // Only possible after a StartAsync call in the same session; app-restart leaves names null.
+            if (Timer.CurrentProjectId != null && Timer.CurrentProjectName != null &&
+                Timer.CurrentClientId != null && Timer.CurrentClientName != null)
+            {
+                _resolvedProject = new ProjectMatch(
+                    Timer.CurrentProjectId,
+                    Timer.CurrentProjectName,
+                    Timer.CurrentClientId,
+                    Timer.CurrentClientName,
+                    1.0);
+                _clientHint = Timer.CurrentClientName;
+
+                if (Timer.CurrentTaskId != null && Timer.CurrentTaskName != null)
+                    _resolvedTask = new TaskMatch(Timer.CurrentTaskId, Timer.CurrentTaskName, 1.0);
+
+                _slashMode = SlashMode.Description;
+            }
+        }
         Timer.OnStateChanged += StateHasChanged;
     }
 
@@ -596,7 +616,11 @@
         await Timer.StartAsync(
             description,
             _resolvedProject?.ProjectId,
-            _resolvedTask?.TaskId);
+            _resolvedTask?.TaskId,
+            _resolvedProject?.ProjectName,
+            _resolvedProject?.ClientId,
+            _resolvedProject?.ClientName,
+            _resolvedTask?.TaskName);
 
         await OnTimerStarted.InvokeAsync();
     }

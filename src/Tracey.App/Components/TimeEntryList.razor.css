@@ -121,6 +121,16 @@
     color: var(--tracey-accent);
 }
 
+.entry-description-empty {
+    color: var(--tracey-text-muted);
+    font-style: italic;
+}
+
+.entry-description-empty:hover {
+    color: var(--tracey-accent);
+    font-style: italic;
+}
+
 .entry-times {
     font-size: 0.78rem;
     color: var(--tracey-text-muted);

@@ -12,8 +12,15 @@ public interface ITimerStateService
     string? CurrentEntryId { get; }
     string? CurrentProjectId { get; }
     string? CurrentTaskId { get; }
+    // Display names for restoring breadcrumb after page navigation
+    string? CurrentProjectName { get; }
+    string? CurrentClientId { get; }
+    string? CurrentClientName { get; }
+    string? CurrentTaskName { get; }
 
-    Task StartAsync(string description, string? projectId = null, string? taskId = null);
+    Task StartAsync(string description, string? projectId = null, string? taskId = null,
+        string? projectName = null, string? clientId = null, string? clientName = null,
+        string? taskName = null);
     Task StopAsync();
     event Action? OnStateChanged;
 }
@@ -26,6 +33,10 @@ public class TimerStateService : ITimerStateService
     private string? _currentEntryId;
     private string? _currentProjectId;
     private string? _currentTaskId;
+    private string? _currentProjectName;
+    private string? _currentClientId;
+    private string? _currentClientName;
+    private string? _currentTaskName;
     private string? _startedAt; // UTC ISO string from Rust
     private long _elapsedSeconds; // updated by timer-tick events
     private System.Threading.PeriodicTimer? _localTicker;
@@ -36,6 +47,10 @@ public class TimerStateService : ITimerStateService
     public string? CurrentEntryId => _currentEntryId;
     public string? CurrentProjectId => _currentProjectId;
     public string? CurrentTaskId => _currentTaskId;
+    public string? CurrentProjectName => _currentProjectName;
+    public string? CurrentClientId => _currentClientId;
+    public string? CurrentClientName => _currentClientName;
+    public string? CurrentTaskName => _currentTaskName;
 
     public TimeSpan Elapsed => TimeSpan.FromSeconds(_elapsedSeconds);
 
@@ -111,7 +126,9 @@ public class TimerStateService : ITimerStateService
         }
     }
 
-    public async Task StartAsync(string description, string? projectId = null, string? taskId = null)
+    public async Task StartAsync(string description, string? projectId = null, string? taskId = null,
+        string? projectName = null, string? clientId = null, string? clientName = null,
+        string? taskName = null)
     {
         var result = await _tauri.TimerStartAsync(new TimerStartRequest(
             description,
@@ -125,6 +142,10 @@ public class TimerStateService : ITimerStateService
         _currentDescription = description;
         _currentProjectId = projectId;
         _currentTaskId = taskId;
+        _currentProjectName = projectName;
+        _currentClientId = clientId;
+        _currentClientName = clientName;
+        _currentTaskName = taskName;
         _startedAt = result.StartedAt;
         _elapsedSeconds = 0;
         StartLocalTicker();
@@ -151,6 +172,10 @@ public class TimerStateService : ITimerStateService
         _currentDescription = null;
         _currentProjectId = null;
         _currentTaskId = null;
+        _currentProjectName = null;
+        _currentClientId = null;
+        _currentClientName = null;
+        _currentTaskName = null;
         _startedAt = null;
         _elapsedSeconds = 0;
 

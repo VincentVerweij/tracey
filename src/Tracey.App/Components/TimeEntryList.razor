@@ -161,10 +161,10 @@
                             else
                             {
                                 <button type="button"
-                                        class="entry-description-btn"
+                                        class="entry-description-btn @(string.IsNullOrEmpty(entry.Description) ? "entry-description-empty" : "")"
                                         @onclick="() => StartInlineEdit(entry)"
-                                        aria-label="@entry.Description (click to edit)">
-                                    @entry.Description
+                                        aria-label="@(string.IsNullOrEmpty(entry.Description) ? "Add description (click to edit)" : $"{entry.Description} (click to edit)")">
+                                    @(string.IsNullOrEmpty(entry.Description) ? "(no description)" : entry.Description)
                                 </button>
                                 <span class="entry-times">
                                     @FormatTime(entry.StartedAt) – @FormatTime(entry.EndedAt)
