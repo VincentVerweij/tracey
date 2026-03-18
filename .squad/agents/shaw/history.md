@@ -43,6 +43,24 @@
 
 ## Learnings
 
+### 2026-03-18: T031 Phase 4 — idle-detection.spec.ts Rewrite
+
+**What changed from Phase 3 draft:**
+- Replaced `page.goto('/')` with `page.goto(APP_URL)` (`http://localhost:5000`) — no baseURL in playwright.config.ts so naked `/` fails.
+- Replaced `window.__TAURI_INTERNALS__` + `@ts-ignore` with `(window as any).__TAURI_INTERNALS__` (consistent with all other spec files).
+- Replaced UI quick-entry form interactions with direct `timer_start` IPC calls (`{ request: { description, project_id: null, task_id: null, tag_ids: [] } }`) — faster and deterministic.
+- Break/Meeting/Keep resolution outcomes now verified via `timer_get_active` IPC + `time_entry_list` IPC (`{ request: { page: 1, page_size: 20 } }`), not by navigating to Timeline and relying on text search.
+- Added `test.afterEach` to restore 300 s timeout and stop any running timer between tests.
+- Collapsed `IDLE_THRESHOLD_SECONDS = 5` / `WAIT_FOR_IDLE_MS = 10_000` into named constants so threshold can be adjusted in one place.
+- Confirmed Option B (DOM `dispatchEvent`) is NOT viable: the JS bridge registers listeners via `plugin:event|listen` (Tauri native event system), not `window.addEventListener`.
+- 7 tests total: no-timer guard, modal+4-buttons (AS1), Keep (AS2), Break (AS3), Meeting (AS4), Specify inline (AS5), threshold-not-exceeded (AS6).
+
+**IPC shape reminders confirmed:**
+- `timer_start`: `{ request: { description, project_id, task_id, tag_ids } }` — request-wrapped, snake_case.
+- `time_entry_list`: `{ request: { page, page_size } }` — request-wrapped, snake_case.
+- `timer_get_active`: no params, returns null when idle.
+- `preferences_update`: `{ update: { inactivity_timeout_seconds } }` — update-wrapped, snake_case.
+
 ### 2026-03-18: T050 + T051 + T054a — Phase 7 US5 Fuzzy Quick-Entry Tests
 
 **FuzzyMatchTests.cs** (xUnit, 20 tests): `Score` basics (empty query → 1.0, exact match, case-insensitive, empty candidate → 0.0, non-subsequence → 0.0), ordering (prefix > spread, consecutive > disjoint), `Theory` rows, `MatchMask`, `RankMatches`. Build: 0 errors. Fix: `Assert.DoesNotContain` lambda form (no `Comparer` named param in xUnit).

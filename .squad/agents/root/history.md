@@ -121,3 +121,18 @@ Tauri 2.0 bridge: top-level params must be camelCase. `DateTimeOffset.TryParse` 
 **Root cause (packages):** `Microsoft.NET.Sdk.BlazorWebAssembly` in .NET 10 does not transitively expose `Microsoft.Extensions.Hosting.Abstractions` (needed by `BackgroundService`) or `Microsoft.Extensions.Http` (needed by `IHttpClientFactory`). Fixed by adding both as explicit `PackageReference` at version `10.0.4` in `Tracey.App.csproj`.
 
 **Root cause (Razor):** `Settings.razor` dictionary bindings used `@bind="_dict[\"key\"]"` — backslash escapes are illegal inside double-quoted Razor HTML attributes and cause CS1056/CS1003 syntax errors. Fixed by switching to single-quoted outer attributes: `@bind='_dict["key"]'`. This is consistent with the existing pattern already used for `@onclick` lambdas.
+
+### 2026-03-18: Phase 4 idle detection — double-init fix + inactivity timeout in Settings
+
+**Bug 1 — Dashboard.razor double-init:**
+- `App.razor` owns `Events.InitializeAsync()` (runs once on first render). `Dashboard.razor` must NOT call it. The former comment "Dashboard.OnInitializedAsync must call await Events.InitializeAsync()" in history is now superseded.
+- Dashboard's `HandleTimerTick` and its subscribe/unsubscribe also removed — `App.razor` already wires `OnTimerTick → ts.HandleTimerTick`. Duplicate wiring caused double state updates.
+- Pattern: `App.razor` = event bridge owner; components = consumers for their own events only.
+
+**Bug 2 — TauriIpcService idle types:** All already present (`IdleStatusResponse`, `IdleResolveRequest`, `IdleEntryDetails`, `IdleResolveResponse`, `IdleDetectedPayload`). No changes needed; verify before adding to avoid duplicates.
+
+**Task 3 — Settings inactivity timeout:**
+- `SaveInactivityAsync` is isolated (does not reuse `SaveAsync`/`SaveChannelConfigsAsync`) because it only updates one field. Avoids accidentally overwriting notification channels JSON with stale state.
+- Load pattern: `prefs.InactivityTimeoutSeconds / 60.0` with fallback to `5.0` if zero.
+
+**Task 4 — IdleReturnModal.razor.css:** File pre-existed with design-token-based styles. Always check before overwriting CSS scoped files.

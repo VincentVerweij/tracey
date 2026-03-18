@@ -1,181 +1,262 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
-// Utility: set inactivity timeout (requires Tauri IPC, only works in live app)
+/**
+ * US2 — Idle Detection and On-Return Prompt
+ * T031 Phase 4: Full acceptance scenario coverage
+ *
+ * Tests drive the full Tauri + Blazor WASM stack via Chromium at the Blazor dev URL.
+ * Idle detection is triggered by genuinely waiting > inactivity_timeout_seconds.
+ * Threshold is set to 5 s via IPC to keep test duration manageable (Option A).
+ *
+ * Event bridge uses Tauri plugin:event|listen — DOM dispatchEvent does NOT reach
+ * the C# RouteEvent handler, so direct event injection (Option B) is not viable.
+ *
+ * IPC commands exercised:
+ *   preferences_update, timer_start, timer_stop, timer_get_active, time_entry_list
+ */
+
+const APP_URL = 'http://localhost:5000';
+
+/** Navigate to the app root and wait for Blazor WASM to hydrate. */
+async function waitForApp(page: Page): Promise<void> {
+  await page.goto(APP_URL);
+  await page.waitForLoadState('networkidle');
+}
+
+/** Set inactivity_timeout_seconds via preferences_update IPC. */
 async function setInactivityTimeout(page: Page, seconds: number): Promise<void> {
   await page.evaluate(async (s) => {
-    // @ts-ignore
-    await window.__TAURI_INTERNALS__.invoke('preferences_update', { 
-      update: { inactivity_timeout_seconds: s } 
+    await (window as any).__TAURI_INTERNALS__.invoke('preferences_update', {
+      update: { inactivity_timeout_seconds: s },
     });
   }, seconds);
 }
+
+/** Start a timer via IPC. Returns the new entry id. */
+async function startTimer(page: Page, description: string): Promise<string> {
+  const result = await page.evaluate(async (desc) => {
+    return await (window as any).__TAURI_INTERNALS__.invoke('timer_start', {
+      request: { description: desc, project_id: null, task_id: null, tag_ids: [] },
+    });
+  }, description);
+  return result.id;
+}
+
+/** Stop any running timer, silently ignoring "no_active_timer" errors. */
+async function stopAnyTimer(page: Page): Promise<void> {
+  try {
+    await page.evaluate(async () => {
+      await (window as any).__TAURI_INTERNALS__.invoke('timer_stop');
+    });
+  } catch { /* no active timer — expected */ }
+}
+
+/** Wait long enough for idle to be detected (threshold + poll interval). */
+const IDLE_THRESHOLD_SECONDS = 5;
+const WAIT_FOR_IDLE_MS = (IDLE_THRESHOLD_SECONDS + 5) * 1_000; // 10 s
 
 test.describe('US2 — Idle Detection and On-Return Prompt', () => {
 
   test.describe.configure({ mode: 'serial' });
 
+  test.afterEach(async ({ page }) => {
+    // Restore a safe timeout and clean up any running timer between tests.
+    await setInactivityTimeout(page, 300).catch(() => {});
+    await stopAnyTimer(page).catch(() => {});
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // No-timer guard (Decision 2026-03-15: no modal when no active timer)
+  // ─────────────────────────────────────────────────────────────────────────
+
   test('idle modal does NOT appear when no timer is running', async ({ page }) => {
-    await page.goto('/');
-    
-    // Ensure no timer running — stop any active
-    try {
-      await page.evaluate(async () => {
-        // @ts-ignore
-        await window.__TAURI_INTERNALS__.invoke('timer_stop');
+    await waitForApp(page);
+    await stopAnyTimer(page);
+    await setInactivityTimeout(page, IDLE_THRESHOLD_SECONDS);
+
+    // Wait longer than the detection period
+    await page.waitForTimeout(WAIT_FOR_IDLE_MS);
+
+    const modal = page.getByRole('dialog', { name: /idle|away|back/i });
+    await expect(modal).not.toBeVisible();
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // AS1 — Modal appears with all four option buttons
+  // ─────────────────────────────────────────────────────────────────────────
+
+  test('idle modal appears after inactivity with all four option buttons (AS1)', async ({ page }) => {
+    await waitForApp(page);
+    await stopAnyTimer(page);
+    await setInactivityTimeout(page, IDLE_THRESHOLD_SECONDS);
+    await startTimer(page, 'Test coding session');
+
+    await page.waitForTimeout(WAIT_FOR_IDLE_MS);
+
+    const modal = page.getByRole('dialog', { name: /idle|away|back/i });
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+    await expect(modal.getByText("You're back")).toBeVisible();
+
+    // All four option buttons present
+    await expect(modal.getByRole('button', { name: /break/i })).toBeVisible();
+    await expect(modal.getByRole('button', { name: /meeting/i })).toBeVisible();
+    await expect(modal.getByRole('button', { name: /specify/i })).toBeVisible();
+    await expect(modal.getByRole('button', { name: /keep/i })).toBeVisible();
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // AS2 — "Keep": modal closed, original timer still running, no new entry
+  // ─────────────────────────────────────────────────────────────────────────
+
+  test('"Keep" dismisses modal and leaves the original timer running (AS2)', async ({ page }) => {
+    await waitForApp(page);
+    await stopAnyTimer(page);
+    await setInactivityTimeout(page, IDLE_THRESHOLD_SECONDS);
+    await startTimer(page, 'Keep running task');
+
+    await page.waitForTimeout(WAIT_FOR_IDLE_MS);
+
+    const modal = page.getByRole('dialog', { name: /idle|away|back/i });
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+
+    await modal.getByRole('button', { name: /keep/i }).click();
+
+    await expect(modal).not.toBeVisible({ timeout: 3_000 });
+
+    // Timer must still be active
+    const active = await page.evaluate(async () => {
+      return await (window as any).__TAURI_INTERNALS__.invoke('timer_get_active');
+    });
+    expect(active).not.toBeNull();
+    expect(active.description).toBe('Keep running task');
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // AS3 — "Break": stops timer at idle start, creates a Break entry
+  // ─────────────────────────────────────────────────────────────────────────
+
+  test('"Break" stops timer and creates a Break time entry (AS3)', async ({ page }) => {
+    await waitForApp(page);
+    await stopAnyTimer(page);
+    await setInactivityTimeout(page, IDLE_THRESHOLD_SECONDS);
+    await startTimer(page, 'Deep work before break');
+
+    await page.waitForTimeout(WAIT_FOR_IDLE_MS);
+
+    const modal = page.getByRole('dialog', { name: /idle|away|back/i });
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+
+    await modal.getByRole('button', { name: /break/i }).click();
+
+    await expect(modal).not.toBeVisible({ timeout: 3_000 });
+
+    // No active timer after break resolution
+    const active = await page.evaluate(async () => {
+      return await (window as any).__TAURI_INTERNALS__.invoke('timer_get_active');
+    });
+    expect(active).toBeNull();
+
+    // A "Break" entry must appear in the entry list (is_break: true)
+    const list = await page.evaluate(async () => {
+      return await (window as any).__TAURI_INTERNALS__.invoke('time_entry_list', {
+        request: { page: 1, page_size: 20 },
       });
-    } catch { /* no active timer — fine */ }
-    
-    // Set very short timeout
-    await setInactivityTimeout(page, 5);
-    
-    // Wait longer than the timeout
-    await page.waitForTimeout(7000);
-    
-    // Modal should NOT be visible when no timer was running
-    const modal = page.getByRole('dialog', { name: /idle|away|back/i });
-    await expect(modal).not.toBeVisible();
+    });
+    const breakEntry = list.entries.find((e: any) => e.description === 'Break');
+    expect(breakEntry).toBeDefined();
+    expect(breakEntry.is_break).toBe(true);
   });
 
-  test('idle modal appears after inactivity threshold when timer is running', async ({ page }) => {
-    await page.goto('/');
-    
-    await setInactivityTimeout(page, 5);
-    
-    // Start a timer
-    const quickEntry = page.getByRole('textbox', { name: /what are you working on/i });
-    await quickEntry.fill('Coding session');
-    await quickEntry.press('Enter');
-    
-    // Confirm timer started
-    await expect(page.getByRole('timer')).toBeVisible({ timeout: 2000 });
-    
-    // Wait for idle threshold + poll interval (idle detected within ~3s after threshold)
-    await page.waitForTimeout(10000);
-    
-    // Modal should appear
+  // ─────────────────────────────────────────────────────────────────────────
+  // AS4 — "Meeting": stops timer at idle start, creates a Meeting entry
+  // ─────────────────────────────────────────────────────────────────────────
+
+  test('"Meeting" stops timer and creates a Meeting time entry (AS4)', async ({ page }) => {
+    await waitForApp(page);
+    await stopAnyTimer(page);
+    await setInactivityTimeout(page, IDLE_THRESHOLD_SECONDS);
+    await startTimer(page, 'Pre-meeting work');
+
+    await page.waitForTimeout(WAIT_FOR_IDLE_MS);
+
     const modal = page.getByRole('dialog', { name: /idle|away|back/i });
-    await expect(modal).toBeVisible({ timeout: 5000 });
-    
-    // All 4 options must be present
-    await expect(page.getByRole('button', { name: /break/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /meeting/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /specify/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /keep/i })).toBeVisible();
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+
+    await modal.getByRole('button', { name: /meeting/i }).click();
+
+    await expect(modal).not.toBeVisible({ timeout: 3_000 });
+
+    // No active timer
+    const active = await page.evaluate(async () => {
+      return await (window as any).__TAURI_INTERNALS__.invoke('timer_get_active');
+    });
+    expect(active).toBeNull();
+
+    // A "Meeting" entry must appear (is_break: false)
+    const list = await page.evaluate(async () => {
+      return await (window as any).__TAURI_INTERNALS__.invoke('time_entry_list', {
+        request: { page: 1, page_size: 20 },
+      });
+    });
+    const meetingEntry = list.entries.find((e: any) => e.description === 'Meeting');
+    expect(meetingEntry).toBeDefined();
+    expect(meetingEntry.is_break).toBe(false);
   });
 
-  test('"Keep" option closes modal without creating new entry', async ({ page }) => {
-    await page.goto('/');
-    await setInactivityTimeout(page, 5);
-    
-    // Start timer
-    const quickEntry = page.getByRole('textbox', { name: /what are you working on/i });
-    await quickEntry.fill('Still working');
-    await quickEntry.press('Enter');
-    
-    // Wait for idle modal
-    const modal = page.getByRole('dialog', { name: /idle|away|back/i });
-    await expect(modal).toBeVisible({ timeout: 15000 });
-    
-    // Click Keep
-    await page.getByRole('button', { name: /keep/i }).click();
-    
-    // Modal dismisses
-    await expect(modal).not.toBeVisible({ timeout: 2000 });
-    
-    // Timer is still running (no new entry created for idle period)
-    await expect(page.getByRole('timer')).toBeVisible();
-  });
+  // ─────────────────────────────────────────────────────────────────────────
+  // AS5 — "Specify": inline input appears, saves custom-description entry
+  // ─────────────────────────────────────────────────────────────────────────
 
-  test('"Break" option stops timer at idle start and creates break entry', async ({ page }) => {
-    await page.goto('/');
-    await setInactivityTimeout(page, 5);
-    
-    const quickEntry = page.getByRole('textbox', { name: /what are you working on/i });
-    await quickEntry.fill('Deep work session');
-    await quickEntry.press('Enter');
-    
-    const modal = page.getByRole('dialog', { name: /idle|away|back/i });
-    await expect(modal).toBeVisible({ timeout: 15000 });
-    
-    await page.getByRole('button', { name: /break/i }).click();
-    
-    // Modal closes
-    await expect(modal).not.toBeVisible({ timeout: 2000 });
-    
-    // Navigate to Timeline to see the entries
-    await page.getByRole('link', { name: /timeline/i }).click();
-    await expect(page.getByText('Deep work session')).toBeVisible({ timeout: 3000 });
-    await expect(page.getByText(/break/i)).toBeVisible({ timeout: 3000 });
-  });
+  test('"Specify" shows inline input and saves a custom-description entry (AS5)', async ({ page }) => {
+    await waitForApp(page);
+    await stopAnyTimer(page);
+    await setInactivityTimeout(page, IDLE_THRESHOLD_SECONDS);
+    await startTimer(page, 'Work before specifying');
 
-  test('"Meeting" option creates a meeting entry for the idle period', async ({ page }) => {
-    await page.goto('/');
-    await setInactivityTimeout(page, 5);
-    
-    const quickEntry = page.getByRole('textbox', { name: /what are you working on/i });
-    await quickEntry.fill('Pre-meeting work');
-    await quickEntry.press('Enter');
-    
-    const modal = page.getByRole('dialog', { name: /idle|away|back/i });
-    await expect(modal).toBeVisible({ timeout: 15000 });
-    
-    await page.getByRole('button', { name: /meeting/i }).click();
-    
-    await expect(modal).not.toBeVisible({ timeout: 2000 });
-    
-    // A meeting entry should appear in the list
-    await page.getByRole('link', { name: /timeline/i }).click();
-    await expect(page.getByText(/meeting/i)).toBeVisible({ timeout: 3000 });
-  });
+    await page.waitForTimeout(WAIT_FOR_IDLE_MS);
 
-  test('"Specify" option shows description input and creates entry', async ({ page }) => {
-    await page.goto('/');
-    await setInactivityTimeout(page, 5);
-    
-    const quickEntry = page.getByRole('textbox', { name: /what are you working on/i });
-    await quickEntry.fill('Before specify test');
-    await quickEntry.press('Enter');
-    
     const modal = page.getByRole('dialog', { name: /idle|away|back/i });
-    await expect(modal).toBeVisible({ timeout: 15000 });
-    
-    await page.getByRole('button', { name: /specify/i }).click();
-    
-    // A description input should appear within the modal
-    const specifyInput = modal.getByRole('textbox', { name: /description|what were you doing/i });
-    await expect(specifyInput).toBeVisible({ timeout: 2000 });
-    
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+
+    // Clicking "Specify" shows inline input — does NOT immediately resolve
+    await modal.getByRole('button', { name: /specify/i }).click();
+
+    const specifyInput = page.getByRole('textbox', { name: /what were you doing/i });
+    await expect(specifyInput).toBeVisible({ timeout: 2_000 });
+
     await specifyInput.fill('Reviewing architecture docs');
-    await page.getByRole('button', { name: /save|confirm/i }).click();
-    
-    await expect(modal).not.toBeVisible({ timeout: 2000 });
-    
-    // Entry appears in list
-    await page.getByRole('link', { name: /timeline/i }).click();
-    await expect(page.getByText('Reviewing architecture docs')).toBeVisible({ timeout: 3000 });
+    await page.getByRole('button', { name: 'Save' }).click();
+
+    await expect(modal).not.toBeVisible({ timeout: 3_000 });
+
+    // Custom entry must appear in the entry list with exact description
+    const list = await page.evaluate(async () => {
+      return await (window as any).__TAURI_INTERNALS__.invoke('time_entry_list', {
+        request: { page: 1, page_size: 20 },
+      });
+    });
+    const customEntry = list.entries.find(
+      (e: any) => e.description === 'Reviewing architecture docs',
+    );
+    expect(customEntry).toBeDefined();
   });
 
-  test('idle threshold uses value from preferences (set via IPC)', async ({ page }) => {
-    await page.goto('/');
-    
-    // Set long timeout — modal should NOT appear quickly
-    await setInactivityTimeout(page, 300); // 5 minutes
-    
-    const quickEntry = page.getByRole('textbox', { name: /what are you working on/i });
-    await quickEntry.fill('Short task');
-    await quickEntry.press('Enter');
-    
-    await page.waitForTimeout(3000);
-    
-    // With 300s threshold, modal must not have appeared in 3 seconds
+  // ─────────────────────────────────────────────────────────────────────────
+  // AS6 — Threshold respected: modal does NOT appear before threshold elapses
+  // ─────────────────────────────────────────────────────────────────────────
+
+  test('modal does not appear before the configured threshold elapses', async ({ page }) => {
+    await waitForApp(page);
+    await stopAnyTimer(page);
+
+    // Five-minute threshold — modal must not appear in a 3-second wait
+    await setInactivityTimeout(page, 300);
+    await startTimer(page, 'Long-threshold task');
+
+    await page.waitForTimeout(3_000);
+
     const modal = page.getByRole('dialog', { name: /idle|away|back/i });
     await expect(modal).not.toBeVisible();
-    
-    // Restore reasonable threshold
-    await setInactivityTimeout(page, 300);
-    
-    // Stop the timer
-    await page.keyboard.press('Control+Space');
   });
 
 });

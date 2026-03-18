@@ -1,0 +1,21 @@
+feat: fix idle detection and complete Phase 4 (US2)
+
+Bug fixes:
+- Remove duplicate Events.InitializeAsync() call from Dashboard.razor
+  (App.razor is the single owner — duplicate caused orphaned DotNetRef
+  and double-registered JS event listeners, silently breaking all events)
+- Remove duplicate OnTimerTick subscription from Dashboard.razor
+  (App.razor already wires timer-tick to TimerStateService)
+
+New feature:
+- Add Inactivity Detection section to Settings.razor
+  (number input 0.5–60 min, saves via preferences_update IPC)
+  Users can now set a short threshold to test idle detection
+
+Tests:
+- Add tests/e2e/specs/idle-detection.spec.ts (T031)
+  7 tests: no-timer guard, 6 resolution scenarios (AS1-AS6)
+  Uses real 5s timeout for modal trigger, IPC calls for outcome assertions
+
+Squad:
+- Write decisions inbox entries for Phase 9 confirmation and Phase 4 fixes
