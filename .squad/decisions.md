@@ -298,6 +298,24 @@
 **What:** `TauriEventService.Listen<T>` is a stub. Full JS shim (`wwwroot/tauri-events.js` with `DotNetObjectReference`) deferred to Final Phase. Events are wired as C# events but payloads are not delivered until shim exists.
 **Why:** Complexity and scope beyond Phase 2. Components depending on events (e.g. T027 TimerStateService) must be aware.
 
+---
+
+## 2026-03-19: BbDialog Replaced with Plain HTML Overlay in IdleReturnModal
+**By:** Finch (Lead)
+**What:** For all modal/overlay UI in this project, DO NOT use `BbDialog` or any BlazorBlueprint portal-based overlay component. Use a plain `@if (_isVisible)` conditional `<div>` overlay with `position: fixed; inset: 0; z-index: 9999` CSS instead.
+**Why:** `BbDialog` (BlazorBlueprint 3.5.2, built for net8.0) relies on `BbPortalHost` registering with `PortalService`. On net10.0, `BbPortalHost` silently fails to register (RZ10012 warning, previously treated as harmless). At runtime every `BbDialog.Open()` throws: "No <PortalHost /> detected." Plain HTML overlay avoids the portal service entirely and is reliable in WebView2/Tauri contexts.
+**Applies to:** `IdleReturnModal.razor` and all future modal/overlay components.
+
+## 2026-03-19: Phase 4 (Idle Detection) Full Pipeline Confirmed Working
+**By:** Finch (Lead)
+**What:** Phase 4 is complete. Idle detection pipeline: Rust loop (`idle_service.rs`) → `tracey://idle-detected` Tauri event → `tauri-bridge.js` → `TauriEventService.RouteEvent` → `Dashboard.HandleIdleDetected` → `IdleReturnModal.Show()`. Modal renders via plain HTML overlay.
+**Why:** All pipeline stages were correctly implemented. The sole failure was `BbDialog` portal rendering (see decision above). With that replaced, Phase 4 is fully operational.
+
+## 2026-03-19: Explicit Initialization Pattern Confirmed for Blazor WASM Services
+**By:** Finch (Lead)
+**What:** All background services use Singleton registration + explicit `Initialize()` method called from `App.razor OnAfterRenderAsync(firstRender)`. Do not use `AddHostedService` in Blazor WASM.
+**Why:** `AddHostedService` / `BackgroundService` do not reliably start in Blazor WASM. `WebAssemblyHost` does not guarantee `IHostedService.StartAsync` runs before the component tree renders. Confirmed during Phase 4 debugging.
+
 #### 2026-03-15: `screenshot_list` — Raw Array Response Assumed
 **By:** Root (T015)
 **What:** `Invoke<ScreenshotItem[]>` used; assumes Rust returns a raw JSON array. If Rust wraps it in `{ "screenshots": [...] }`, deserialization fails. Reese/Finch to confirm `screenshot_list` response shape.
@@ -1169,3 +1187,77 @@
 **By:** Root (T068)
 **What:** `Settings.razor` previously showed only "coming soon" placeholder for all content. T068 implements only the Notifications section scope. Other categories (idle, sync, appearance) remain as future work.
 **Why:** T068 task scope was the Notifications section only. Implementing all settings categories was out of scope for Phase 9.
+
+---
+
+## 2026-03-18: Telegram Notifications Confirmed Working (Phase 9 Post-Implementation)
+
+**By:** Vincent Verweij (via Finch)
+**What:**
+- Notifications via Telegram Bot API are working end-to-end
+- Fix 1: `window.__TAURI_INTERNALS__.listen` (Tauri v1 API) replaced with `transformCallback` + `invoke('plugin:event|listen')` pattern (Tauri v2 correct API). All Rust→Blazor events were silently dropped before this fix.
+- Fix 2: CSP `connect-src` updated to allow `https://api.telegram.org`. WebView2 was blocking all outbound fetch to the Telegram Bot API without this directive.
+- Fix 3: `NotificationOrchestrationService` switched from `BackgroundService`/`AddHostedService` to explicit `Initialize()` pattern called from `App.razor OnAfterRenderAsync`. `BackgroundService.ExecuteAsync` is never called by the Blazor WASM host before render.
+- Fix 4: `UserPreferences.Id` type corrected from `string` to `long` (Rust `i64` serializes as JSON integer). Removed phantom `modified_at` field that does not exist in the Rust struct.
+- Fix 5: Changed `TauriIpcService`, `TauriEventService`, `ITimerStateService` from `AddScoped` to `AddSingleton` to satisfy DI validation when injected into a Singleton hosted service.
+**Why:** All fixes confirmed by user. Telegram notifications fire correctly at configured threshold.
+
+---
+
+## 2026-03-18: Phase 4 Idle Detection Bug Fixes
+
+**By:** Root (Blazor/C# Frontend)
+
+### Decision 1: App.razor Is the Single Owner of TauriEventService Initialization
+
+`App.razor` calls `Events.InitializeAsync()` once in `OnAfterRenderAsync(firstRender)`. No other component may call it. `Dashboard.razor`'s duplicate call created a second `DotNetObjectReference`, orphaned the first, and double-registered all JS event listeners.
+
+**Rule:** Component pages subscribe to events from `TauriEventService` but never initialize the bridge. They subscribe only to the events they personally need.
+
+### Decision 2: Timer-Tick Wiring Belongs to App.razor, Not Dashboard
+
+`App.razor` wires `Events.OnTimerTick → TimerStateService.HandleTimerTick(p.ElapsedSeconds)`. Dashboard must NOT re-subscribe. Component-level timer-tick handlers cause double state mutations and stale UI.
+
+**Rule:** `TimerStateService` is the shared state owner for timer clock data. Only the app-level bootstrap touches `OnTimerTick`.
+
+### Decision 3: SaveInactivityAsync Is Independent, Not Reused Via SaveAsync
+
+The inactivity timeout save path only updates one field (`InactivityTimeoutSeconds`). Routing it through `SaveAsync()` would serialize the full notification channels JSON from potentially stale in-memory state. Dedicated method prevents cross-field corruption.
+
+### Decision 4: TauriIpcService Idle DTOs Exist — Do Not Duplicate
+
+All idle types (`IdleStatusResponse`, `IdleResolveRequest`, `IdleEntryDetails`, `IdleResolveResponse`) are in `TauriIpcService.cs`; `IdleDetectedPayload` is in `TauriEventService.cs`. Verified before acting. Do not add these types again.
+
+---
+
+## 2026-03-18: idle-detection.spec.ts Phase 4 Rewrite — T031
+
+**By:** Shaw  
+**Task:** T031 Phase 4 — Playwright E2E Tests for US2 Idle Detection  
+**File:** `tests/e2e/specs/idle-detection.spec.ts`
+
+### Summary
+
+The Phase 3 draft of `idle-detection.spec.ts` (7 tests written 2026-03-16) contained three correctness gaps that would cause all tests to fail even against a running app. The Phase 4 rewrite fixes all three and strengthens outcome assertions.
+
+### Fix 1: Missing APP_URL (`page.goto('/')` → `page.goto(APP_URL)`)
+
+**Problem:** `playwright.config.ts` does not set `baseURL`. A bare `page.goto('/')` resolves to `about:blank` and all tests fail immediately with `net::ERR_ADDRESS_INVALID`.  
+**Fix:** Added `const APP_URL = 'http://localhost:5000'` (consistent with `timer.spec.ts`, `projects.spec.ts`, etc.) and a `waitForApp()` helper that also calls `waitForLoadState('networkidle')`.
+
+### Fix 2: TypeScript `@ts-ignore` Replaced with `(window as any)`
+
+**Problem:** `window.__TAURI_INTERNALS__` with `// @ts-ignore` is inconsistent with all other spec files and fails strict TypeScript checks.  
+**Fix:** Replaced with `(window as any).__TAURI_INTERNALS__` throughout (no `@ts-ignore` needed).
+
+### Fix 3: IPC-Based Timer Start + Strengthened Outcome Assertions
+
+**Problem:** Starting timers via the quick-entry UI text box is fragile and depends on the QuickEntryBar being implemented with specific accessible name text. It also conflates US1 and US2 concerns.  
+**Fix:** Added `startTimer(page, description)` helper calling `timer_start` IPC directly (`{ request: { description, project_id: null, task_id: null, tag_ids: [] } }`). Outcome assertions now call `timer_get_active` (must return `null` for break/meeting) and `time_entry_list` (find entry by exact description).
+
+### Architectural Decision: Option B (DOM event injection) Not Viable
+
+The `tauri-bridge.js` registers `tracey://idle-detected` listeners via Tauri's native event pipeline (`plugin:event|listen`). It does NOT go through `window.addEventListener`. Firing `window.dispatchEvent(new CustomEvent('tracey://idle-detected', ...))` from `page.evaluate()` will not reach the Blazor `RouteEvent` handler.  
+**Consequence:** Option A (real 5s timeout via `preferences_update { inactivity_timeout_seconds: 5 }`) is the only viable approach for triggering idle detection in E2E tests.
+
+**Rule:** Idle test suite must remain serial (`test.describe.configure({ mode: 'serial' })`). The 5s threshold means suite run time is ~60s. Do not parallelize.
