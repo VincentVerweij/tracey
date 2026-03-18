@@ -1,7 +1,5 @@
 @inject TauriIpcService Tauri
-@inject ITimerStateService Timer
 @inject IJSRuntime JS
-@implements IDisposable
 
 <div class="time-entry-list" @ref="_listRef">
     @if (_loading)
@@ -14,17 +12,6 @@
     }
     else
     {
-        @* Running timer row (live) *@
-        @if (Timer.IsRunning && Timer.CurrentEntryId != null)
-        {
-            <div class="running-timer-row" aria-live="polite">
-                <span class="entry-description">@Timer.CurrentDescription</span>
-                <time role="timer" aria-live="off" aria-atomic="true" datetime="@Timer.Elapsed.ToString("c")">
-                    @FormatElapsed(Timer.Elapsed)
-                </time>
-            </div>
-        }
-
         @* Completed entries grouped by date *@
         @foreach (var group in _groupedEntries)
         {
@@ -136,7 +123,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        Timer.OnStateChanged += OnTimerStateChanged;
         await LoadPage(1);
     }
 
@@ -263,12 +249,6 @@
         }
     }
 
-    private async void OnTimerStateChanged()
-    {
-        await InvokeAsync(StateHasChanged);
-        await SaveScrollPosition();
-    }
-
     private async Task SaveScrollPosition()
     {
         try
@@ -289,11 +269,6 @@
         catch { }
     }
 
-    private static string FormatElapsed(TimeSpan t) =>
-        t.TotalHours >= 1
-            ? $"{(int)t.TotalHours}:{t.Minutes:D2}:{t.Seconds:D2}"
-            : $"{t.Minutes}:{t.Seconds:D2}";
-
     private static string FormatDate(string isoDate) =>
         DateOnly.TryParse(isoDate, out var d)
             ? d.ToString("dddd, MMMM d")
@@ -307,5 +282,4 @@
         return isoUtc;
     }
 
-    public void Dispose() => Timer.OnStateChanged -= OnTimerStateChanged;
 }
