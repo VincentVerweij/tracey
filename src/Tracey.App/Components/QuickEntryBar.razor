@@ -6,27 +6,6 @@
 <div class="quick-entry-bar @(_slashMode != SlashMode.None ? "slash-active" : "")"
      role="search">
 
-    @* Confirmed segment chips *@
-    @if (_resolvedProject is not null || (_slashMode != SlashMode.None && _projectQuery.Length > 0 && _resolvedProject is null))
-    {
-        <div class="entry-segments" aria-label="Entry segments">
-            @if (_resolvedProject is not null)
-            {
-                <span class="entry-segment entry-segment-project" title="@_resolvedProject.ClientName">
-                    <span class="segment-text">@_resolvedProject.ClientName / @_resolvedProject.ProjectName</span>
-                    <button class="segment-remove" @onclick="ClearProject" aria-label="Remove project">✕</button>
-                </span>
-                @if (_resolvedTask is not null)
-                {
-                    <span class="entry-segment entry-segment-task">
-                        <span class="segment-text">@_resolvedTask.TaskName</span>
-                        <button class="segment-remove" @onclick="ClearTask" aria-label="Remove task">✕</button>
-                    </span>
-                }
-            }
-        </div>
-    }
-
     <div class="entry-input-wrapper">
         @if (Timer.IsRunning)
         {
@@ -34,9 +13,9 @@
                 @Timer.Elapsed.ToString(@"hh\:mm\:ss")
             </span>
         }
-        @if (_slashMode == SlashMode.ProjectActive && _clientHint.Length > 0)
+        @if (BreadcrumbPrefix.Length > 0)
         {
-            <span class="client-hint-prefix" aria-label="Client context: @_clientHint">@_clientHint /</span>
+            <span class="entry-breadcrumb" aria-hidden="true">@BreadcrumbPrefix</span>
         }
         <input type="text"
                @ref="_inputRef"
@@ -188,6 +167,19 @@
 
     private record DisambiguationItem(string ClientId, string ClientName, string ProjectId, string ProjectName);
 
+    private string BreadcrumbPrefix => _slashMode switch
+    {
+        SlashMode.ProjectActive when _clientHint.Length > 0
+            => $"{_clientHint} /",
+        SlashMode.TaskActive when _resolvedProject is not null
+            => $"{_resolvedProject.ClientName} / {_resolvedProject.ProjectName} /",
+        SlashMode.Description when _resolvedProject is not null && _resolvedTask is not null
+            => $"{_resolvedProject.ClientName} / {_resolvedProject.ProjectName} / {_resolvedTask.TaskName} /",
+        SlashMode.Description when _resolvedProject is not null
+            => $"{_resolvedProject.ClientName} / {_resolvedProject.ProjectName} /",
+        _ => string.Empty
+    };
+
     private string InputPlaceholder => _slashMode switch
     {
         SlashMode.ProjectActive => "Type project name…",
@@ -265,6 +257,42 @@
                 }
                 // Queue debounce so residual oninput gets reconciled
                 TriggerDebounced();
+                break;
+
+            case "Backspace" when _inputText.Length == 0:
+                // Navigate backwards through the slash segments
+                if (_slashMode == SlashMode.ProjectActive)
+                {
+                    // Back to None: restore client hint text as editable input
+                    _inputText    = _clientHint;
+                    _clientHint   = string.Empty;
+                    _projectQuery = string.Empty;
+                    _projectMatches.Clear();
+                    _disambiguationItems.Clear();
+                    _slashMode    = SlashMode.None;
+                    await LoadHistorySuggestions(_inputText);
+                    StateHasChanged();
+                }
+                else if (_slashMode == SlashMode.TaskActive)
+                {
+                    // Back to ProjectActive: restore project name as editable input
+                    _clientHint      = _resolvedProject!.ClientName;
+                    _inputText       = _resolvedProject!.ProjectName;
+                    _projectQuery    = _resolvedProject!.ProjectName;
+                    _resolvedProject = null;
+                    _taskMatches.Clear();
+                    _slashMode       = SlashMode.ProjectActive;
+                    await LoadProjectMatches();
+                }
+                else if (_slashMode == SlashMode.Description)
+                {
+                    // Back to TaskActive: restore task name (or empty) as editable input
+                    _inputText    = _resolvedTask?.TaskName ?? string.Empty;
+                    _taskQuery    = _inputText;
+                    _resolvedTask = null;
+                    _slashMode    = SlashMode.TaskActive;
+                    await LoadTaskMatches();
+                }
                 break;
 
             case "ArrowDown":

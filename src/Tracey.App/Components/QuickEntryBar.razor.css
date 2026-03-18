@@ -114,76 +114,22 @@
 
 /* ─── Slash-mode active state ─────────────────────────────── */
 .quick-entry-bar.slash-active {
-    /* Subtle left accent to distinguish slash mode from description mode */
     border-left: 3px solid var(--tracey-accent, #6366f1);
 }
 
-/* Client hint breadcrumb shown inside input row while typing project name */
-.client-hint-prefix {
+/*
+  Inline breadcrumb — shown to the left of the input as a read-only
+  path prefix, e.g. "Acme / Tracey /" or "Acme / Tracey / Sprint 4 /".
+  Pressing Backspace on an empty input steps back into the previous segment.
+*/
+.entry-breadcrumb {
     font-size: 0.9rem;
     color: var(--tracey-accent, #6366f1);
     white-space: nowrap;
     flex-shrink: 0;
-    opacity: 0.75;
-    font-style: italic;
+    opacity: 0.7;
     user-select: none;
-}
-
-/* ─── Confirmed segment chips ─────────────────────────────── */
-.entry-segments {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem;
-    padding: 0.375rem 1.25rem 0;
-}
-
-.entry-segment {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.125rem 0.375rem 0.125rem 0.625rem;
-    border-radius: 999px;
-    font-size: 0.8rem;
-    font-weight: 500;
-    line-height: 1.4;
-    white-space: nowrap;
-    max-width: 260px;
-}
-
-.entry-segment-project {
-    background: color-mix(in srgb, var(--tracey-accent, #6366f1) 15%, transparent);
-    color: var(--tracey-accent, #6366f1);
-    border: 1px solid color-mix(in srgb, var(--tracey-accent, #6366f1) 25%, transparent);
-}
-
-.entry-segment-task {
-    background: color-mix(in srgb, #10b981 12%, transparent);
-    color: #059669;
-    border: 1px solid color-mix(in srgb, #10b981 20%, transparent);
-}
-
-.segment-text {
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.segment-remove {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: inherit;
-    opacity: 0.6;
-    font-size: 0.75rem;
-    line-height: 1;
-    padding: 0 0.125rem;
-    flex-shrink: 0;
-    border-radius: 50%;
-    transition: opacity 0.1s ease, background 0.1s ease;
-}
-
-.segment-remove:hover {
-    opacity: 1;
-    background: rgba(0, 0, 0, 0.1);
+    pointer-events: none;
 }
 
 /* ─── Fuzzy dropdown (projects & tasks) ───────────────────── */
