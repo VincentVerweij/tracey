@@ -216,7 +216,7 @@ public record HealthResponse(
 // ─────────────────────────────────────────────────────────────────────────────
 
 public record UserPreferences(
-    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("id")] long Id,
     [property: JsonPropertyName("inactivity_timeout_seconds")] long InactivityTimeoutSeconds,
     [property: JsonPropertyName("screenshot_interval_seconds")] long ScreenshotIntervalSeconds,
     [property: JsonPropertyName("screenshot_retention_days")] long ScreenshotRetentionDays,
@@ -226,8 +226,7 @@ public record UserPreferences(
     [property: JsonPropertyName("process_deny_list_json")] string ProcessDenyListJson,
     [property: JsonPropertyName("external_db_enabled")] bool ExternalDbEnabled,
     [property: JsonPropertyName("timer_notification_threshold_hours")] double TimerNotificationThresholdHours,
-    [property: JsonPropertyName("notification_channels_json")] string? NotificationChannelsJson,
-    [property: JsonPropertyName("modified_at")] string ModifiedAt);
+    [property: JsonPropertyName("notification_channels_json")] string? NotificationChannelsJson);
 
 public record PreferencesUpdateRequest(
     [property: JsonPropertyName("inactivity_timeout_seconds")] long? InactivityTimeoutSeconds = null,
