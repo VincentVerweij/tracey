@@ -86,7 +86,20 @@
 
 **Timeline.razor (Fix C - Scroll Zoom):** Added `_zoomHours` (default 24) + `_viewStartHours` (default 0) state fields. `HandleBarWheel(WheelEventArgs)` zooms ±1.5× anchored on mouse position; clamped 0.5–24h; clamps view start to [0, 24−zoom]. `ResetZoom()` on double-click. `FormatZoomLevel()` formats badge text. `TimeToPercent()` de-staticed; now maps hours into zoom window: `(hours − viewStart) / zoomHours × 100`. Hour markers skip those outside ±2% of visible range. `@onwheel:preventDefault` stops page scroll. Zoom indicator badge (`.timeline-zoom-indicator`) shown when `_zoomHours < 23.9` with reset button.
 
-### 2026-03-17: Bug Fixes — Tauri bridge, timer tick, Timeline redesign (dotnet build PASS)
+### 2026-03-18: Phase 7 US5 — FuzzyMatchService + QuickEntryBar slash-notation rewrite (dotnet build PASS)
+
+**Build result:** 0 errors, 1 pre-existing RZ10012 warning on MainLayout.razor (unchanged)
+
+**FuzzyMatchService.cs (T052):** New `Services/FuzzyMatchService.cs`. Pure C# VS Code Ctrl+P-style fuzzy scorer. `Score(query, candidate)` → 0.0–1.0 via subsequence match + spread/consecutive/prefix bonuses. `MatchMask(query, candidate)` → `bool[]` for highlight rendering. `RankMatches<T>()` filters+sorts any list by score. Registered in `Program.cs` as `AddScoped<FuzzyMatchService>()`.
+
+**QuickEntryBar.razor rewrite (T054+T055+T056):** Full slash-notation state machine replacing the description-only autocomplete. `SlashMode` enum: `None | ProjectActive | TaskActive | Description`. Entry always in `_inputText`; confirmed project/task shown as removable chips (`.entry-segment`) above the input. Debounced `HandleInputChanged` parses `/` to advance segments automatically. `ConfirmProject/Task/Disambiguation` lock segments into `_resolvedProject`/`_resolvedTask`. `FuzzyMatchService.RankMatches` re-scores results from Tauri before display; `RenderHighlighted` uses `MatchMask` to wrap matched chars in `.match-char` spans via `RenderFragment`/`RenderTreeBuilder`. History autocomplete (description-only mode) restores project+task from suggestion if not orphaned. `Timer.StartAsync(desc, projectId, taskId)` — all three params wired.
+
+**Key patterns:**
+- `KeyboardEventArgs` has no `StopPropagation()` — removed; use `@onkeydown:stopPropagation` attribute if needed
+- Disambiguation: when top fuzzy result's name appears under multiple clients, show `.disambiguation-dropdown` before locking project
+- `ProjectMatch` constructor: `(ProjectId, ProjectName, ClientId, ClientName, Score)` — 5 positional params
+- `ClearDropdowns()` called inside `StartTimer()` to avoid stale UI state after submission
+
 
 **Build result:** 0 errors, 0 warnings on `Tracey.App.csproj`
 

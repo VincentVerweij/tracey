@@ -59,6 +59,8 @@ pub fn run() {
             commands::hierarchy::task_create,
             commands::hierarchy::task_update,
             commands::hierarchy::task_delete,
+            commands::hierarchy::fuzzy_match_projects,
+            commands::hierarchy::fuzzy_match_tasks,
             commands::screenshot::screenshot_list,
             commands::screenshot::screenshot_delete_expired,
         ])

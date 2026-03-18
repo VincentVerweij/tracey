@@ -653,3 +653,127 @@ pub fn task_delete(
 
     Ok(serde_json::Value::Null)
 }
+
+// ─────────────────────────────────────────────────────────────
+// T053: Fuzzy Match Commands (US5 — Quick Entry)
+// ─────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct FuzzyProjectMatch {
+    pub project_id: String,
+    pub project_name: String,
+    pub client_id: String,
+    pub client_name: String,
+    pub score: f64, // always 0.0 — C# FuzzyMatchService scores
+}
+
+/// `fuzzy_match_projects` — return non-archived projects whose name contains the query string.
+/// C# FuzzyMatchService performs the real scoring; Rust returns `score: 0.0` for every entry.
+#[tauri::command]
+pub fn fuzzy_match_projects(
+    state: State<'_, AppState>,
+    query: String,
+    limit: i64,
+) -> Result<serde_json::Value, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT p.id, p.name, p.client_id, c.name AS client_name \
+             FROM projects p \
+             JOIN clients c ON p.client_id = c.id \
+             WHERE p.is_archived = 0 \
+               AND c.is_archived = 0 \
+               AND lower(p.name) LIKE lower('%' || ?1 || '%') \
+             ORDER BY p.name \
+             LIMIT ?2",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(params![query, limit], |row| {
+            Ok(FuzzyProjectMatch {
+                project_id: row.get(0)?,
+                project_name: row.get(1)?,
+                client_id: row.get(2)?,
+                client_name: row.get(3)?,
+                score: 0.0,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let matches: Vec<FuzzyProjectMatch> = rows
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({ "matches": matches }))
+}
+
+#[derive(Serialize)]
+pub struct FuzzyTaskMatch {
+    pub task_id: String,
+    pub task_name: String,
+    pub score: f64, // always 0.0 — C# FuzzyMatchService scores
+}
+
+/// `fuzzy_match_tasks` — return tasks for a project whose name contains the query string.
+/// If query is empty/whitespace, all tasks up to `limit` are returned.
+/// C# FuzzyMatchService performs the real scoring; Rust returns `score: 0.0` for every entry.
+#[tauri::command]
+pub fn fuzzy_match_tasks(
+    state: State<'_, AppState>,
+    project_id: String,
+    query: String,
+    limit: i64,
+) -> Result<serde_json::Value, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+
+    let trimmed = query.trim();
+
+    let matches: Vec<FuzzyTaskMatch> = if trimmed.is_empty() {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name FROM tasks \
+                 WHERE project_id = ?1 \
+                 ORDER BY name \
+                 LIMIT ?2",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map(params![project_id, limit], |row| {
+                Ok(FuzzyTaskMatch {
+                    task_id: row.get(0)?,
+                    task_name: row.get(1)?,
+                    score: 0.0,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+    } else {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name FROM tasks \
+                 WHERE project_id = ?1 \
+                   AND lower(name) LIKE lower('%' || ?2 || '%') \
+                 ORDER BY name \
+                 LIMIT ?3",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map(params![project_id, trimmed, limit], |row| {
+                Ok(FuzzyTaskMatch {
+                    task_id: row.get(0)?,
+                    task_name: row.get(1)?,
+                    score: 0.0,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+    };
+
+    Ok(serde_json::json!({ "matches": matches }))
+}

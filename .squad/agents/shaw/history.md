@@ -78,6 +78,36 @@
 - **Issue 2** (timer elapsed jumps ~1h after nav): starts timer, navigates away and back, asserts elapsed `< 1 minute`; root cause is `started_at` stored with `+00:00` suffix, C# parses as Local kind, `DateTime.UtcNow - startLocal` wrong by UTC offset
 - **Issue 3** (task_list camelCase): expands project in UI, asserts `.task-list` visible + "No tasks yet." + no error banner; root cause is C# sending `project_id` but Tauri 2.0 expects `projectId`
 - **Issue 4** (project_list clientId filter): creates two clients each with a project, expands client A, asserts only Project-A-Only present under it; root cause is C# sending `client_id` but Tauri 2.0 expects `clientId`
+
+### 2026-03-18: T050 + T051 + T054a — Phase 7 US5 Fuzzy Quick-Entry Tests
+- **T050**: `src/Tracey.Tests/FuzzyMatchTests.cs` — full xUnit test class replacing empty stub (TDD gate for `FuzzyMatchService`)
+- **T051 + T054a**: `tests/e2e/specs/quick-entry.spec.ts` — new Playwright E2E spec (9 tests, TDD gate for US5)
+- xUnit build: **0 errors** (`dotnet build src/Tracey.Tests/Tracey.Tests.csproj` — exit code 0). `FuzzyMatchService` does not exist yet; compile error expected there until Root implements it. Syntax of test file itself is valid.
+- E2E tests FAIL until US5 ships — TDD gate intentionally OPEN
+- **FuzzyMatchTests coverage** (20 tests):
+  - `Score`: empty query → 1.0; exact match → 1.0; case-insensitive exact → 1.0; empty candidate → 0.0; query not subsequence → 0.0; missing one char → 0.0
+  - Ordering: prefix beats spread; consecutive run beats disjoint; exact >= prefix
+  - Theory rows: partial queries → non-zero; unrelated queries → 0.0
+  - `MatchMask`: correct length; marks matched chars; all-false on no match; all-false on empty query
+  - `RankMatches`: ordered by score descending; filters zero-score items; respects maxResults; empty query returns up to max
+- **Fix applied during authoring**: `Assert.DoesNotContain` with named `Comparer: null` arg does not exist in xUnit — replaced with lambda overload `r => r.Item == "Totally Unrelated"`
+- **quick-entry.spec.ts** (9 tests):
+  - AS1: typing partial name + `/` shows `.fuzzy-dropdown` or `role="listbox"[aria-label*=Project]`
+  - AS2: ArrowDown selects `.fuzzy-item-selected` (self-guarding skip if dropdown absent)
+  - AS3: Tab confirms project → `.entry-segment-project` chip with project name
+  - AS4: two `/` presses → project chip + `.entry-segment-task` chip
+  - AS5: description + Enter → `[role="timer"]` or `.running-elapsed` visible
+  - T054a (×2): unique project → `.disambiguation-dropdown` NOT visible; shared project → disambiguation dropow visible with both client names
+  - Highlight: `.match-char` spans visible inside dropdown (conditional — skips if dropdown absent)
+- **Selector contracts Root must honour** (new):
+  - `.entry-input` — the main quick-entry text input
+  - `.fuzzy-dropdown` — fuzzy match dropdown container
+  - `.fuzzy-item-selected` — highlighted/focused item in dropdown
+  - `.entry-segment-project` — confirmed project chip
+  - `.entry-segment-task` — confirmed task chip
+  - `.disambiguation-dropdown` — client picker shown when project name matches 2+ clients
+  - `.match-char` — `<span>` wrapping each highlighted matched character in dropdown items
+  - `.running-elapsed` or `[role="timer"]` — already established in prior tests
 - **Issue 5a** (includeArchived): archives client, verifies hidden by default, checks checkbox, verifies visible; root cause is C# sending `include_archived` vs Tauri 2.0 expecting `includeArchived`
 - **Issue 5b** (archived name conflict): archives client "X", creates new client "X", asserts no error thrown; root cause is SQL uniqueness check not excluding archived rows
 - **Issue 1** (timeline zoom): scrolls wheel over `.timeline-bar-inner`, asserts `.timeline-zoom-indicator` visible containing "window", double-clicks to reset, asserts indicator gone; self-guards if bar not visible (no screenshots)

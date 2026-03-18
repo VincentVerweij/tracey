@@ -13,5 +13,6 @@ builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.
 builder.Services.AddScoped<TauriIpcService>();
 builder.Services.AddScoped<TauriEventService>();
 builder.Services.AddScoped<ITimerStateService, TimerStateService>();
+builder.Services.AddScoped<FuzzyMatchService>();
 
 await builder.Build().RunAsync();

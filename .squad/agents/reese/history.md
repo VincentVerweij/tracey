@@ -106,3 +106,18 @@ Created `commands/screenshot.rs` with `screenshot_list` (7-column SELECT) and `s
 ### 2026-03-17: Cross-Agent Note (from Root T049)
 IPC wrapper pattern confirmed: `new { request = new { ... } }`. `ErrorPayload` corrected to `{ component, event, error }`. Both documented in Core Context above.
 
+### 2026-03-18: T053 — fuzzy_match_projects + fuzzy_match_tasks (cargo check PASS)
+
+**Files updated:**
+- `commands/hierarchy.rs`: Added `FuzzyProjectMatch`, `fuzzy_match_projects`, `FuzzyTaskMatch`, `fuzzy_match_tasks` at end of file
+- `lib.rs`: Registered both new commands after `task_delete` in `invoke_handler`
+
+**Key patterns:**
+- Both commands return `serde_json::json!({ "matches": [...] })` with `score: 0.0` — C# does real scoring
+- `fuzzy_match_tasks` branches on `query.trim().is_empty()` — empty query returns all tasks (no LIKE filter)
+- `trimmed` binding used for the non-empty SQL branch (passes `&str` to `params![]`); avoids the E0597 borrow-after-drop pattern
+- SQL uses `lower(col) LIKE lower('%' || ?N || '%')` — case-insensitive broad filter before C# scoring
+- `fuzzy_match_projects` JOIN filters both `p.is_archived = 0` AND `c.is_archived = 0`
+
+**cargo check: PASS** — pre-existing dead_code warnings only, 0 errors.
+
