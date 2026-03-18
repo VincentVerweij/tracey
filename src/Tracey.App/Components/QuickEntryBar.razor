@@ -222,7 +222,8 @@
                 {
                     await ConfirmTask(_dropdownIndex < 0 ? 0 : _dropdownIndex);
                 }
-                else if (!string.IsNullOrWhiteSpace(GetDescription()))
+                else if (!string.IsNullOrWhiteSpace(GetDescription()) ||
+                         _slashMode == SlashMode.Description)
                 {
                     await StartTimer();
                 }
@@ -585,7 +586,8 @@
     private async Task StartTimer()
     {
         var description = GetDescription();
-        if (string.IsNullOrWhiteSpace(description)) return;
+        // Allow empty description when project/task already resolved via slash notation
+        if (string.IsNullOrWhiteSpace(description) && _slashMode != SlashMode.Description) return;
 
         _historySuggestions.Clear();
         ClearDropdowns();
