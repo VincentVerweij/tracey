@@ -874,6 +874,21 @@
 **What:** `StartAsync` extended with optional name params (`projectName`, `clientId`, `clientName`, `taskName`). Stored as additional private fields, exposed as `CurrentProjectName`, `CurrentClientId`, `CurrentClientName`, `CurrentTaskName`. Cleared in `StopAsync`. `QuickEntryBar.OnInitialized` reconstructs `_resolvedProject`, `_resolvedTask`, `_clientHint`, and `_slashMode = Description` when re-mounted.
 **Why:** Blazor destroys and recreates components on page navigation. Without storing names in the scoped service, the breadcrumb ("Acme / Project / Task /") was erased every time the user switched pages. Name restoration works within the same session; app restarts restore IDs only (breadcrumb stays blank until next timer start).
 
+### timer_get_active: Returns Project/Client/Task Names for Cold-Boot Breadcrumb
+**By:** Vincent Verweij
+**What:** Rust `timer_get_active` SQL query extended with LEFT JOINs on `projects`, `clients`, `tasks` to return `project_name`, `client_id`, `client_name`, `task_name`. `ActiveTimerResponse` struct and C# record extended accordingly. `TimerStateService.InitializeAsync` stores these names into the `_currentProjectName/ClientId/ClientName/TaskName` fields.
+**Why:** On app restart `StartAsync` is never called, so the stored names from the previous session were always null. The active-timer response now carries the names directly from the DB, enabling the QuickEntryBar breadcrumb to display correctly even after a full app restart.
+
+### time_entry_delete: Delete Completed Time Entries
+**By:** Vincent Verweij
+**What:** New `time_entry_delete(id)` Rust command. Rejects running entries (`cannot_delete_running`). Cascade-deletes `time_entry_tags` before deleting the entry row. Registered in `lib.rs`. `TauriIpcService.TimeEntryDeleteAsync` added. `TimeEntryList` renders a Ghost `✕` button next to Continue; clicking it removes the row from the local list immediately without a full page reload.
+**Why:** Users had no way to remove incorrectly tracked or duplicate time entries.
+
+### QuickEntryBar: Enter While Timer Running Is a No-Op
+**By:** Vincent Verweij
+**What:** `StartTimer()` returns immediately if `Timer.IsRunning`. Previously each Enter keypress while a timer was running called `timer_start`, which Rust interprets as "stop current entry and start a new one", creating one spurious entry per keypress.
+**Why:** Users pressing Enter in the breadcrumb description field to confirm were inadvertently generating multiple time entries.
+
 ### timer_start: Empty Description Allowed When project_id Is Set
 **By:** Vincent Verweij (Bug 6b)
 **What:** Rust `timer_start` validation relaxed: `empty_without_context = description.is_empty() && project_id.is_none()`. Returns `"invalid_description"` only when description is empty AND no project is selected. Max-length guard (500 chars) unchanged.
