@@ -1,13 +1,248 @@
 @page "/settings"
+@using Tracey.App.Services
+@using Tracey.App.Services.Notifications
+@using BlazorBlueprint.Components
+@using System.Text.Json
+@inject TauriIpcService Tauri
+@inject IEnumerable<INotificationChannel> NotificationChannels
 
 <PageTitle>Settings — Tracey</PageTitle>
 
-<div class="stub-page">
+<div class="settings-page">
     <h1 class="page-title">Settings</h1>
-    <p class="text-muted">Configure Tracey — idle detection, external sync, notifications, and appearance.</p>
-    <div class="empty-state-illustration" aria-hidden="true">
-        <span class="empty-state-emoji">⚙️</span>
-        <p class="empty-state-message">Settings coming soon.</p>
-        <p class="empty-state-hint">Configuration options will be available in a future update.</p>
-    </div>
+
+    @if (_loading)
+    {
+        <p class="text-muted">Loading settings…</p>
+    }
+    else if (_error != null)
+    {
+        <BbAlert>
+            <BbAlertTitle>Failed to load settings</BbAlertTitle>
+            <BbAlertDescription>@_error</BbAlertDescription>
+        </BbAlert>
+    }
+    else
+    {
+        <!-- ── Notifications ─────────────────────────────────────────── -->
+        <section class="settings-section">
+            <h2 class="settings-section-title">Notifications</h2>
+            <p class="text-muted">
+                Tracey can alert you when a timer has been running longer than a set threshold.
+            </p>
+
+            <!-- Threshold -->
+            <div class="settings-field">
+                <label for="threshold-input" class="settings-label">
+                    Notification threshold (hours)
+                </label>
+                <input id="threshold-input"
+                       type="number"
+                       class="settings-input"
+                       min="0.5"
+                       max="24"
+                       step="0.5"
+                       @bind="_thresholdHours"
+                       @bind:after="SaveThresholdAsync" />
+                <span class="settings-hint">
+                    Alert when the active timer exceeds this many hours. Default: 8.
+                </span>
+            </div>
+
+            <!-- Email channel -->
+            <div class="settings-channel-card">
+                <div class="settings-channel-header">
+                    <strong>Email (SMTP)</strong>
+                </div>
+                <BbAlert class="settings-channel-stub-notice">
+                    <BbAlertTitle>Coming in a future update</BbAlertTitle>
+                    <BbAlertDescription>
+                        Email notifications require the Tauri desktop process for SMTP delivery.
+                        You can pre-configure your SMTP settings now; they will be used once
+                        this feature is fully enabled.
+                    </BbAlertDescription>
+                </BbAlert>
+                <div class="settings-field">
+                    <label class="settings-label">SMTP host</label>
+                    <input type="text" class="settings-input" placeholder="smtp.example.com"
+                           @bind="_emailConfig[\"smtp_host\"]" @bind:after="SaveChannelConfigsAsync" />
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">SMTP port</label>
+                    <input type="number" class="settings-input" placeholder="587"
+                           @bind="_emailConfig[\"smtp_port\"]" @bind:after="SaveChannelConfigsAsync" />
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">Username</label>
+                    <input type="text" class="settings-input" autocomplete="username"
+                           @bind="_emailConfig[\"smtp_user\"]" @bind:after="SaveChannelConfigsAsync" />
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">Password</label>
+                    <input type="password" class="settings-input" autocomplete="current-password"
+                           @bind="_emailConfig[\"smtp_pass\"]" @bind:after="SaveChannelConfigsAsync" />
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">From address</label>
+                    <input type="email" class="settings-input"
+                           @bind="_emailConfig[\"smtp_from\"]" @bind:after="SaveChannelConfigsAsync" />
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">To address</label>
+                    <input type="email" class="settings-input"
+                           @bind="_emailConfig[\"smtp_to\"]" @bind:after="SaveChannelConfigsAsync" />
+                </div>
+            </div>
+
+            <!-- Telegram channel -->
+            <div class="settings-channel-card">
+                <div class="settings-channel-header">
+                    <strong>Telegram</strong>
+                    <label class="settings-toggle-label">
+                        <input type="checkbox"
+                               @bind="_telegramEnabled"
+                               @bind:after="SaveChannelConfigsAsync"
+                               aria-label="Enable Telegram notifications" />
+                        Enable
+                    </label>
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">Bot token</label>
+                    <input type="password" class="settings-input"
+                           placeholder="123456:ABCdef…"
+                           autocomplete="off"
+                           @bind="_telegramConfig[\"bot_token\"]" @bind:after="SaveChannelConfigsAsync" />
+                    <span class="settings-hint">Obtain from @@BotFather on Telegram.</span>
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">Chat ID</label>
+                    <input type="text" class="settings-input"
+                           placeholder="-1001234567890"
+                           @bind="_telegramConfig[\"chat_id\"]" @bind:after="SaveChannelConfigsAsync" />
+                    <span class="settings-hint">
+                        Your personal chat ID or a group/channel ID (negative for groups).
+                    </span>
+                </div>
+            </div>
+
+            @if (_saveError != null)
+            {
+                <BbAlert>
+                    <BbAlertTitle>Save failed</BbAlertTitle>
+                    <BbAlertDescription>@_saveError</BbAlertDescription>
+                </BbAlert>
+            }
+            @if (_saveSuccess)
+            {
+                <p class="settings-save-ok" role="status">Settings saved.</p>
+            }
+        </section>
+    }
 </div>
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private string? _saveError;
+    private bool _saveSuccess;
+
+    private double _thresholdHours = 8.0;
+
+    private Dictionary<string, string> _emailConfig = new()
+    {
+        ["smtp_host"] = "", ["smtp_port"] = "587",
+        ["smtp_user"] = "", ["smtp_pass"] = "",
+        ["smtp_from"] = "", ["smtp_to"]   = ""
+    };
+
+    private Dictionary<string, string> _telegramConfig = new()
+    {
+        ["bot_token"] = "", ["chat_id"] = ""
+    };
+    private bool _telegramEnabled;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var prefs = await Tauri.PreferencesGetAsync();
+            _thresholdHours = prefs.TimerNotificationThresholdHours > 0
+                ? prefs.TimerNotificationThresholdHours
+                : 8.0;
+
+            LoadChannelConfigs(prefs.NotificationChannelsJson);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void LoadChannelConfigs(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return;
+        try
+        {
+            var entries = JsonSerializer.Deserialize<List<NotificationChannelConfigEntry>>(
+                json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (entries == null) return;
+            foreach (var entry in entries)
+            {
+                switch (entry.ChannelId)
+                {
+                    case "email":
+                        foreach (var kv in entry.Config)
+                            _emailConfig[kv.Key] = kv.Value;
+                        break;
+                    case "telegram":
+                        _telegramEnabled = entry.Enabled;
+                        foreach (var kv in entry.Config)
+                            _telegramConfig[kv.Key] = kv.Value;
+                        break;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Corrupt prefs — leave defaults in place
+        }
+    }
+
+    private Task SaveThresholdAsync() => SaveAsync();
+    private Task SaveChannelConfigsAsync() => SaveAsync();
+
+    private async Task SaveAsync()
+    {
+        _saveError   = null;
+        _saveSuccess = false;
+        try
+        {
+            var channelEntries = new List<NotificationChannelConfigEntry>
+            {
+                new("email",    Enabled: false,           Config: new Dictionary<string, string>(_emailConfig)),
+                new("telegram", Enabled: _telegramEnabled, Config: new Dictionary<string, string>(_telegramConfig))
+            };
+            var channelsJson = JsonSerializer.Serialize(channelEntries);
+
+            await Tauri.PreferencesUpdateAsync(new PreferencesUpdateRequest(
+                TimerNotificationThresholdHours: _thresholdHours,
+                NotificationChannelsJson:        channelsJson));
+
+            _saveSuccess = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _saveSuccess = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
+    }
+}

@@ -54,3 +54,26 @@
 **Also fixed**: `is_orphaned` field added to `time_entry_autocomplete` contract output — was in decisions.md and Root's C# but not in the contract file itself.
 
 **Phase 2 checkpoint**: `cargo tauri dev` will NOT work as-is. `devUrl = "http://localhost:5000"` requires a running Blazor server but `beforeDevCommand` is empty. Fix: either set `beforeDevCommand` to launch `dotnet run`, or remove `devUrl` and publish Blazor first with `dotnet publish`. Full detail in `.squad/decisions/inbox/finch-adjudications-phase2.md`.
+
+### 2026-03-18: Phase 9 — US7 Long-Running Timer Notifications
+
+**Pre-implementation findings**:
+- `tracey://notification-sent` was ALREADY in the IPC contract (no amendment needed).
+- `timer_notification_threshold_hours` was ALREADY in the C# records.
+- **Gap found**: `notification_channels_json` was in the IPC contract but MISSING from `UserPreferences` and `PreferencesUpdateRequest`. Fixed by Root.
+- MailKit 4.15.1 already in csproj — but SMTP (raw TCP sockets) is unavailable in Blazor WASM. Email channel correctly implemented as a stub throwing `NotSupportedException`.
+- TauriEventService already handled `tracey://notification-sent` but only from Rust/JS bridge. Added `RaiseNotificationSent()` public method for C#-originated events.
+
+**Architecture decisions (see finch-phase9-notifications-arch.md)**:
+- AD-1: `SendAsync` takes `NotificationChannelSettings` as parameter. Keeps channels stateless and testable.
+- AD-2: `IHttpClientFactory` for TelegramNotificationChannel (avoids singleton-holds-scoped-HttpClient issue).
+- AD-3: duplicate-notification guard via `_notifiedForEntryId`.
+- AD-4: `notification_channels_json` stores JSON array of `{channel_id, enabled, config}` objects.
+- AD-5: EmailNotificationChannel is a WASM stub; MailKit reserved for future Tauri IPC relay.
+- AD-6: No Rust changes needed for Phase 9.
+
+**Tech debt noted**:
+- `FakeTauriIpcService` in tests uses `new` (hides, not overrides) on `PreferencesGetAsync`. Will silently break if the method signature changes. Resolve by extracting `ITauriIpcService` interface in a future phase.
+- `BackgroundService` singleton in WASM injecting scoped `ITimerStateService` is fine in WASM (single root scope) but would be incorrect in server-side Blazor. Document this assumption if stack ever changes.
+
+**Constitution gate**: all 7 principles pass for Phase 9.

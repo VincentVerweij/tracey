@@ -936,3 +936,231 @@
 **By:** Vincent Verweij
 **What:** Clicking ✕ on a time entry no longer deletes immediately. It sets _pendingDeleteId and renders an inline yellow confirmation banner (ntry-inline-confirm) with the message "Are you sure that you want to delete this time entry?" and Delete / Cancel buttons. DeleteEntry logic split into RequestDeleteEntry (shows prompt) and ConfirmDeleteEntry (clears prompt, then executes delete). CSS added to TimeEntryList.razor.css matching the inline-confirm pattern from Projects.razor.
 **Why:** Destructive action requires confirmation. Accidental ✕ clicks must be recoverable.
+---
+
+## Phase 6–7 Continued (2026-03-17–2026-03-18)
+
+### Reese — Archive Name Re-use (2026-03-17)
+
+#### 2026-03-17: Exclude Archived Clients from Name-Conflict Check
+**By:** Reese
+**What:** `client_create` name-conflict guard now queries `WHERE name = ?1 AND is_archived = 0` (active clients only). Previously checked all clients including archived ones.
+**Why:** Archived clients are logically deleted from the working set. Blocking a new client with the same name as an archived record is incorrect UX. Uniqueness scoped to active records only, consistent with how `client_list` already filters archived entries.
+
+---
+
+### Reese — Screenshot Interval Timer Fix (2026-03-18)
+
+#### 2026-03-18: Interval-Based Screenshot Must Use a Dedicated Variable
+**By:** Reese
+**What:** `start_screenshot_loop` uses `last_interval_capture` (updated ONLY when an interval-triggered shot fires). Window-change shots must never advance `last_interval_capture`. Also: `screenshot_interval_seconds` default is `300` (5 minutes) in both `001_initial_schema.sql` column DEFAULT and `db/mod.rs` seed INSERT — previously inconsistent (`DEFAULT 60` in SQL, `900i64` in seed).
+**Why:** Using a single `last_capture` variable caused every window-change screenshot to reset the interval countdown, so interval shots never fired on an active desktop. Fix: separate variable per trigger path.
+
+---
+
+### Reese — T053: fuzzy_match_projects and fuzzy_match_tasks (2026-03-18)
+
+#### 2026-03-18: Score Always 0.0 from Rust; FuzzyMatchService Owns Ranking
+**By:** Reese (T053)
+**What:** Two new `#[tauri::command]` functions in `hierarchy.rs`. `fuzzy_match_projects(query, limit)` uses SQL `lower(p.name) LIKE lower('%' || ?1 || '%')` broad filter + returns `{ matches: [{ project_id, project_name, client_id, client_name, score: 0.0 }] }`. `fuzzy_match_tasks(project_id, query, limit)` returns empty-query branch (all tasks up to limit) when `query.trim()` is empty. Both return `score: 0.0` — ranking is delegated entirely to C# `FuzzyMatchService`.
+**Why:** Rust is the data supplier; C# owns the ranking algorithm. Avoids duplicating a non-trivial scoring algorithm in two languages. SQL LIKE is cheap pre-filter only.
+
+---
+
+### Root — IPC camelCase Rule and DateTimeOffset Rule (2026-03-17)
+
+#### 2026-03-17: All Tauri 2.0 IPC Parameters Must Use camelCase (Standing Rule)
+**By:** Root
+**What:** Tauri 2.0 renames Rust `snake_case` command parameter names to `camelCase` on the JS bridge. C# anonymous objects in `TauriIpcService.cs` must use camelCase keys. Affected in fix: `client_list`, `project_list`, `task_list`, `fuzzy_match_tasks`. Rule going forward: use C# shorthand `new { camelCaseName }` matching the Tauri bridge expectation.
+**Why:** C# was sending snake_case keys, which were silently dropped, causing "missing required key" errors or wrong data returned.
+
+#### 2026-03-17: Use DateTimeOffset for All Rust Timestamp Parsing (Standing Rule)
+**By:** Root
+**What:** Rust `chrono::Utc::now().to_rfc3339()` produces `+00:00` suffix. `DateTime.TryParse` with `RoundtripKind` interprets this as `Kind=Local`, making `DateTime.UtcNow - localStart` wrong by ±UTC offset (~3592s for UTC+1). Use `DateTimeOffset.TryParse` and `DateTimeOffset.UtcNow` throughout. Apply `Math.Max(0, ...)` guard for clock-skew negatives.
+**Why:** Elapsed timer display was showing ~1h extra after navigating away and back.
+
+---
+
+### Root — TagPicker Always-Visible + Live Tag Persistence (2026-03-18)
+
+#### 2026-03-18: TagPicker Always Visible (Not Gated on `!Timer.IsRunning`)
+**By:** Root
+**What:** Removed `@if (!Timer.IsRunning)` guard from `QuickEntryBar.razor`. TagPicker always rendered. `<div class="quick-entry-tags">` wrapper kept for layout.
+**Why:** No other path to tag a currently-running entry. Hiding the TagPicker was a UX gap.
+
+#### 2026-03-18: `CurrentTagIds` Lives in `ITimerStateService`
+**By:** Root
+**What:** New `string[] CurrentTagIds` property on `ITimerStateService`. Populated from `active.TagIds` in `InitializeAsync`, from `tagIds` param in `StartAsync`, reset to `[]` in `StopAsync`. Tag restore in `RestoreFromTimer()` guarded by `_selectedTagIds.Count == 0` to avoid clobbering user edits.
+**Why:** All running-entry state centralised in one service. Guard ensures local user edits survive tick-driven restore calls.
+
+#### 2026-03-18: Partial `time_entry_update` for Tag-Only Changes
+**By:** Root
+**What:** `TimeEntryUpdateTagsAsync` sends only `{ id, tag_ids }`. All other fields are `Option<T>` in Rust and preserved when absent — `ended_at = NULL` is never touched. Tag update failures silently swallowed (non-fatal; core timer state unaffected).
+**Why:** Full timer update would risk stopping the running entry. Partial update is safe mid-run.
+
+---
+
+### Root — US5 QuickEntryBar Slash-Notation (2026-03-18)
+
+#### 2026-03-18: `KeyboardEventArgs.StopPropagation()` Does Not Exist in Blazor
+**By:** Root (T052–T056)
+**What:** `KeyboardEventArgs` has no `StopPropagation()` method. Use `@onkeydown:stopPropagation` attribute on the element if propagation must be stopped. Never call `.StopPropagation()` on the args object.
+**Why:** Compile error if called; pattern must be documented to prevent recurrence.
+
+#### 2026-03-18: Slash `/` Consumed by KeyDown Branch — Not Passed to Input
+**By:** Root (T054)
+**What:** When `SlashMode.None` and input has text, pressing `/` transitions to `ProjectActive` and clears `_inputText`. The `/` character itself is consumed — it does NOT appear in `_inputText`. User types text first, then `/` to enter project-selection mode.
+**Why:** Prevents stray `/` appearing in the description field.
+
+#### 2026-03-18: Double-Slash Auto-Confirms Best Match and Advances Mode
+**By:** Root (T054)
+**What:** Pressing `/` in `ProjectActive` auto-confirms the index-0 match and advances to `TaskActive`. Same for `TaskActive → Description`. Only triggered when results exist.
+**Why:** Power-user flow: `client/project/task/` full hierarchy entry without arrow key navigation.
+
+#### 2026-03-18: Disambiguation Threshold — Exact Top-Name Match Across Clients
+**By:** Root (T054)
+**What:** Client disambiguation dropdown shown only when `>1` project in results shares the exact top-scoring project name (case-insensitive). Single-name unique projects bypass disambiguation entirely.
+**Why:** Disambiguation is expensive UX. Only needed when genuinely ambiguous.
+
+---
+
+### Shaw — Issue Regression Test Suite (2026-03-17)
+
+#### 2026-03-17: TDD Gate OPEN — 6 Regression Tests Filed Before Fixes
+**By:** Shaw
+**What:** `tests/e2e/specs/issue-regressions.spec.ts` — 6 tests across 5 issues. All intentionally fail before Root applies fixes. Issues covered: elapsed time drift after nav (DateTimeOffset fix), task_list camelCase (`projectId`), project_list clientId filter (`clientId`), archived-client hidden by default (`includeArchived`), archived name re-use (SQL uniqueness scope), timeline zoom indicator.
+**Why:** TDD gate: tests committed before fixes applied.
+
+#### 2026-03-17: IPC Bridge casing contract (Tauri 2.0)
+**By:** Shaw
+**What:** Direct Tauri IPC via `window.__TAURI_INTERNALS__.invoke` uses **camelCase for top-level Rust params** and **snake_case for fields inside struct wrappers** (e.g. `invoke('project_create', { request: { client_id, name } })` vs `invoke('client_list', { includeArchived: true })`).
+**Why:** Canonical rule for all E2E test authors and C# IPC wrappers.
+
+---
+
+### Shaw — US5 Fuzzy Quick-Entry Tests (2026-03-18)
+
+#### 2026-03-18: FuzzyMatchTests.cs — 20 xUnit Tests for FuzzyMatchService (T050)
+**By:** Shaw (T050)
+**What:** `src/Tracey.Tests/FuzzyMatchTests.cs` — 20 tests covering `Score` (empty query, exact match, case-insensitive, empty candidate, non-subsequence, missing char), ordering (prefix > spread, consecutive > disjoint), `Theory` rows, `MatchMask` (length, marks, all-false on no match), `RankMatches` (score order, zero-filter, maxResults, empty query). Build: 0 errors. `FuzzyMatchService` type missing until Root implements — expected compile error on that reference only.
+**Why:** TDD gate for T052. Fix applied: `Assert.DoesNotContain` lambda form (no `Comparer` named param in xUnit).
+
+#### 2026-03-18: quick-entry.spec.ts — 9 E2E Tests for US5 (T051 + T054a)
+**By:** Shaw (T051, T054a)
+**What:** `tests/e2e/specs/quick-entry.spec.ts` — 9 tests: AS1–AS5 (fuzzy dropdown, keyboard nav, project/task chip, timer start), T054a ×2 (unique project no disambiguation; shared name → disambiguation with both client names), highlight (`.match-char` visible). Test data: 2 clients, 3 projects (1 shared-name pair), 1 task. `beforeAll`/`afterAll` IPC helpers.
+**Why:** TDD gate for US5 acceptance scenarios.
+
+---
+
+### UXer — TagPicker CSS Token Fix (2026-03-18)
+
+#### 2026-03-18: All CSS Custom Properties Must Have Concrete Fallbacks for Structural Visibility
+**By:** UXer
+**What:** `TagPicker.razor.css` — replaced undefined `--color-*` and `--shadow-md` tokens with canonical `--tracey-*` tokens plus fallback hex values: `--tracey-surface, #ffffff`; `--tracey-border, #e5e7eb`; `--tracey-shadow, 0 1px 3px ...`; `--tracey-text-muted, #6b7280`. Also added `.quick-entry-tags` separator rule in `QuickEntryBar.razor.css`.
+**Why:** Undefined tokens rendered the dropdown fully transparent; underlying date text bled through. Standing rule: any CSS property controlling structural visibility (background, border, box-shadow) must have a concrete fallback.
+
+---
+
+### UXer — US5 QuickEntryBar Slash-Mode CSS (2026-03-18)
+
+#### 2026-03-18: Slash-Mode CSS Added to QuickEntryBar.razor.css
+**By:** UXer
+**What:** New rule groups appended: `.quick-entry-bar.slash-active`, `.entry-segments`, `.entry-segment`/`-project`/`-task` (pill styling; project uses `--tracey-accent`, task uses emerald), `.segment-text`, `.segment-remove`, `.fuzzy-dropdown`/`.fuzzy-item`/`.fuzzy-item-selected` (240px max-height), `.fuzzy-item-name`/`.fuzzy-item-meta`, `.match-char` (bold + accent, no background), `.disambiguation-dropdown`/`.disambiguation-header`/`.disambiguation-item` (amber accent, z-index 210).
+**Why:** Supports US5 slash-notation state machine. `color-mix(in srgb, ...)` consistent with BlazorBlueprint conventions. Disambiguation z-index 210 floats above fuzzy list at z-index 200.
+
+---
+
+### UXer — Zoom Indicator CSS (2026-03-17)
+
+#### 2026-03-17: Timeline Bar Cursor and Zoom Indicator Styles
+**By:** UXer
+**What:** `Timeline.razor.css`: `cursor: crosshair` → `cursor: ns-resize` on `.timeline-bar-inner` (signals scroll-wheel zoom). New `.timeline-zoom-indicator` block: flex row, right-aligned, between bar and border-bottom, uses `--tracey-surface`/`--tracey-border` tokens. `.zoom-level-text` mono font. `.zoom-reset-btn` ghost button with `--tracey-accent` hover.
+**Why:** `crosshair` gave no scroll affordance hint. CSS-ready classes provided before Root wires C# zoom state.
+
+---
+
+## Phase 9 — US7 Long-Running Timer Notifications (2026-03-18)
+
+### Finch — Phase 9 Architecture Decisions
+
+#### 2026-03-18: `SendAsync` Takes `NotificationChannelSettings` as Parameter (AD-1)
+**By:** Finch (Lead)
+**What:** Interface signature: `SendAsync(NotificationMessage message, NotificationChannelSettings settings, CancellationToken ct = default)`. The orchestration service loads all channel config from `notification_channels_json`, resolves per-channel config, and passes it at call time. Channels are stateless.
+**Why:** Injecting `TauriIpcService` into each channel would couple them to the full IPC surface and make unit testing expensive. Settings-as-parameter is testable with mock settings and no DI coupling.
+
+#### 2026-03-18: IHttpClientFactory for TelegramNotificationChannel (AD-2)
+**By:** Finch (Lead)
+**What:** `TelegramNotificationChannel` injects `IHttpClientFactory` (registered via `builder.Services.AddHttpClient()`). Registration order in Program.cs: `AddHttpClient()`, `AddSingleton<INotificationChannel, EmailNotificationChannel>()`, `AddSingleton<INotificationChannel, TelegramNotificationChannel>()`, `AddHostedService<NotificationOrchestrationService>()`.
+**Why:** Avoids singleton holding a scoped `HttpClient`; enables proper lifecycle management.
+
+#### 2026-03-18: Duplicate-Notification Guard via `_notifiedForEntryId` (AD-3)
+**By:** Finch (Lead)
+**What:** Orchestration service tracks `_notifiedForEntryId`. Once notification fires for a given entry, it does not re-fire unless a different entry starts. Prevents notification spam every 60s after threshold is crossed.
+**Why:** Re-notification on restart of a new timer is correct behaviour; re-notification for the same running entry is spam.
+
+#### 2026-03-18: EmailNotificationChannel Is a WASM Stub (AD-5)
+**By:** Finch (Lead)
+**What:** MailKit 4.15.1 already in project. SMTP uses raw TCP sockets — unavailable in Blazor WASM. `EmailNotificationChannel` throws `NotSupportedException`. When future Tauri IPC email relay is built (`notifications_send_email` command), it must be added to `contracts/ipc-commands.md` via the Finch gate before Root implements the real channel.
+**Why:** WASM has no TCP socket access. MailKit present for future use only.
+
+#### 2026-03-18: No Rust Changes Required for Phase 9 (AD-6)
+**By:** Finch (Lead)
+**What:** All notification logic lives in C# (Blazor). `tracey://notification-sent` was already in `contracts/ipc-commands.md`. No new Tauri commands added. `TauriEventService.RaiseNotificationSent()` raises the event from C# directly.
+**Why:** Notifications poll C# state and call external HTTP APIs (Telegram); no OS-level side effects that would require Rust.
+
+---
+
+### Finch — Phase 9 Review (2026-03-18)
+
+#### 2026-03-18: Phase 9 APPROVED — Notes for Future Phases
+**By:** Finch (Lead)
+**What:** All seven constitution principles pass. No blocking issues. Notes:
+- NOTE-2: `FakeTauriIpcService` uses `new` (not `override`) on `PreferencesGetAsync`. Silently breaks if method signature changes. Fix in future phase: extract `ITauriIpcService` interface.
+- NOTE-3: `BackgroundService` singleton injecting scoped `ITimerStateService` is correct in WASM (single DI root scope) but would be incorrect in server-side Blazor. Document assumption if stack changes.
+- NOTE-4: MailKit is present for future Tauri IPC relay. When done, add `notifications_send_email` to `contracts/ipc-commands.md` via Finch gate.
+- NOTE-5: Telegram MarkdownV2 escaping verified against Telegram Bot API spec.
+- NOTE-6: `@@BotFather` in Razor markup is correct (double `@` to render literal `@`).
+**Why:** Phase gate review. Recorded for future implementation guidance.
+
+---
+
+### Shaw — Phase 9 Test Decisions
+
+#### 2026-03-18: E2E Tests Cover Structure and IPC, Not Real Channels (D1)
+**By:** Shaw (T062)
+**What:** `notifications.spec.ts` covers: Settings UI structural presence (fields, labels, toggles), `preferences_get` IPC contract verification, `tracey://notification-sent` event routing (no-crash), SC-010 invariant (no JS errors). The threshold-trigger test (start timer → wait → verify) requires >36s wait at 0.01h threshold — deferred to Fusco / `tauri-driver` CI integration.
+**Why:** Playwright cannot inject a real Telegram bot or SMTP server in CI. E2E scope bounded to contracts and structure.
+
+#### 2026-03-18: `FakeTauriIpcService` Subclass Pattern for xUnit (D2)
+**By:** Shaw (T063)
+**What:** `FakeTauriIpcService` is a file-scoped subclass of `TauriIpcService` that overrides `PreferencesGetAsync` using `new` (not `virtual`). Returns canned `UserPreferences` without JS interop. This avoids needing a full Blazor test host for orchestration logic tests.
+**Why:** `TauriIpcService` uses `IJSRuntime` for all IPC — not unit-testable without a WASM browser host. The logic under test is the orchestrator's threshold and channel dispatching, not the IPC transport.
+
+#### 2026-03-18: `RecordingHttpMessageHandler` Instead of Mock Library (D3)
+**By:** Shaw (T063)
+**What:** File-scoped `RecordingHttpMessageHandler` captures outgoing `HttpRequestMessage` objects. No third-party mock libraries (e.g. RichardSzalay.MockHttp) added.
+**Why:** Keeps test project dependency surface minimal. Avoids NuGet package drift.
+
+#### 2026-03-18: Orchestration Loop Not Tested Directly — Observable Outcomes Only (D4)
+**By:** Shaw (T063)
+**What:** `NotificationOrchestrationService.ExecuteAsync` runs a 60-second `PeriodicTimer` — not practical to drive in unit tests. Tests cover: `NotificationChannelSettings.Get` fallback, `Disabled` factory, `NotificationChannelConfigEntry` JSON deserialization, message body construction, StartAsync/StopAsync smoke test.
+**Why:** Full integration tests of the loop timing are an E2E concern (see D1).
+
+---
+
+### Root — Phase 9 Notifications Implementation Decisions
+
+#### 2026-03-18: `notification_channels_json` Added to C# Records (D4)
+**By:** Root (T064–T068)
+**What:** `UserPreferences` and `PreferencesUpdateRequest` now include `NotificationChannelsJson` with `[JsonPropertyName("notification_channels_json")]`. Field was present in `contracts/ipc-commands.md` but absent from the C# records since Phase 2.
+**Why:** IPC contract gap. Discovered at Phase 9 implementation time; fixing it was prerequisite to T067/T068.
+
+#### 2026-03-18: `TauriEventService.RaiseNotificationSent()` for C#-Originated Events (D7)
+**By:** Root (T067)
+**What:** Phase 9 notifications originate in C# — the `tracey://notification-sent` event does not arrive via the JS bridge. A new `RaiseNotificationSent(NotificationSentPayload)` public method was added to `TauriEventService` so `NotificationOrchestrationService` can notify the UI without adding JS interop.
+**Why:** Existing `TauriEventService` event subscribers (e.g. UI listeners) need the notification to propagate. Direct public method keeps the event contract consistent without coupling through JS.
+
+#### 2026-03-18: Settings.razor is Full Implementation, Not Stub (D8)
+**By:** Root (T068)
+**What:** `Settings.razor` previously showed only "coming soon" placeholder for all content. T068 implements only the Notifications section scope. Other categories (idle, sync, appearance) remain as future work.
+**Why:** T068 task scope was the Notifications section only. Implementing all settings categories was out of scope for Phase 9.

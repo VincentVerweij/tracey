@@ -24,6 +24,13 @@ public class TauriEventService : IDisposable
     public event Action<NotificationSentPayload>? OnNotificationSent;
     public event Action<ErrorPayload>? OnError;
 
+    /// <summary>
+    /// Called by <c>NotificationOrchestrationService</c> to fire the notification-sent event
+    /// from C# (rather than from Rust via the JS bridge) when a channel successfully sends.
+    /// </summary>
+    public void RaiseNotificationSent(NotificationSentPayload payload) =>
+        OnNotificationSent?.Invoke(payload);
+
     public async Task InitializeAsync()
     {
         _dotNetRef = DotNetObjectReference.Create(this);

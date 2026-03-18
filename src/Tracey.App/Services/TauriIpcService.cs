@@ -226,6 +226,7 @@ public record UserPreferences(
     [property: JsonPropertyName("process_deny_list_json")] string ProcessDenyListJson,
     [property: JsonPropertyName("external_db_enabled")] bool ExternalDbEnabled,
     [property: JsonPropertyName("timer_notification_threshold_hours")] double TimerNotificationThresholdHours,
+    [property: JsonPropertyName("notification_channels_json")] string? NotificationChannelsJson,
     [property: JsonPropertyName("modified_at")] string ModifiedAt);
 
 public record PreferencesUpdateRequest(
@@ -237,7 +238,8 @@ public record PreferencesUpdateRequest(
     [property: JsonPropertyName("page_size")] long? EntriesPerPage = null,
     [property: JsonPropertyName("process_deny_list_json")] string? ProcessDenyListJson = null,
     [property: JsonPropertyName("external_db_enabled")] bool? ExternalDbEnabled = null,
-    [property: JsonPropertyName("timer_notification_threshold_hours")] double? TimerNotificationThresholdHours = null);
+    [property: JsonPropertyName("timer_notification_threshold_hours")] double? TimerNotificationThresholdHours = null,
+    [property: JsonPropertyName("notification_channels_json")] string? NotificationChannelsJson = null);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Timer
