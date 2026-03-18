@@ -142,12 +142,20 @@
                                     {
                                         <p class="edit-error" role="alert">@_editError</p>
                                     }
-                                    <BbButton Variant="ButtonVariant.Ghost"
-                                              Size="ButtonSize.Small"
-                                              AriaLabel="Cancel edit"
-                                              OnClick="CancelEdit">
-                                        Cancel
-                                    </BbButton>
+                                    <div class="edit-actions">
+                                        <BbButton Variant="ButtonVariant.Outline"
+                                                  Size="ButtonSize.Small"
+                                                  AriaLabel="Save changes"
+                                                  OnClick="() => AutoSave(entry)">
+                                            Save
+                                        </BbButton>
+                                        <BbButton Variant="ButtonVariant.Ghost"
+                                                  Size="ButtonSize.Small"
+                                                  AriaLabel="Cancel edit"
+                                                  OnClick="CancelEdit">
+                                            Cancel
+                                        </BbButton>
+                                    </div>
                                 </div>
                             }
                             else

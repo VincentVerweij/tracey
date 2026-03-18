@@ -34,6 +34,10 @@
                 @Timer.Elapsed.ToString(@"hh\:mm\:ss")
             </span>
         }
+        @if (_slashMode == SlashMode.ProjectActive && _clientHint.Length > 0)
+        {
+            <span class="client-hint-prefix" aria-label="Client context: @_clientHint">@_clientHint /</span>
+        }
         <input type="text"
                @ref="_inputRef"
                @bind="_inputText"
@@ -157,6 +161,9 @@
     private enum SlashMode { None, ProjectActive, TaskActive, Description }
     private SlashMode _slashMode = SlashMode.None;
 
+    // Pre-slash client hint — typed before '/', stored as breadcrumb context
+    private string _clientHint = string.Empty;
+
     // Live queries for each segment
     private string _projectQuery = string.Empty;
     private string _taskQuery    = string.Empty;
@@ -239,16 +246,24 @@
                 break;
 
             case "/":
-                // Transition None→ProjectActive: keep query visible, don't auto-confirm
+                // Transition None→ProjectActive: store what was typed as the client hint,
+                // then clear the input so the user can type the project name cleanly.
                 if (_slashMode == SlashMode.None && _inputText.TrimEnd('/').Length > 0)
                 {
-                    _projectQuery = _inputText.TrimEnd('/');
-                    _inputText = _projectQuery;  // keep text visible; slash is stripped
-                    _slashMode = SlashMode.ProjectActive;
+                    _clientHint   = _inputText.TrimEnd('/');
+                    _inputText    = string.Empty;
+                    _projectQuery = string.Empty;
+                    _slashMode    = SlashMode.ProjectActive;
                     _historySuggestions.Clear();
                     await LoadProjectMatches();
                 }
-                // Queue debounce so oninput "/" gets cleaned up after 150 ms
+                // When already in ProjectActive, strip literal '/' the user typed
+                else if (_slashMode == SlashMode.ProjectActive)
+                {
+                    _inputText = _inputText.TrimEnd('/');
+                    StateHasChanged();
+                }
+                // Queue debounce so residual oninput gets reconciled
                 TriggerDebounced();
                 break;
 
@@ -315,9 +330,10 @@
             var slashIdx = text.IndexOf('/');
             if (slashIdx >= 0 && _resolvedProject is null)
             {
-                _projectQuery = text[..slashIdx].Trim();
-                _inputText = _projectQuery;  // show query, don't blank the field
-                _slashMode = SlashMode.ProjectActive;
+                _clientHint   = text[..slashIdx].Trim();
+                _inputText    = string.Empty;  // clear input — user types project next
+                _projectQuery = string.Empty;
+                _slashMode    = SlashMode.ProjectActive;
                 _historySuggestions.Clear();
                 await LoadProjectMatches();
             }
@@ -334,12 +350,12 @@
             if (slashIdx >= 0)
             {
                 _projectQuery = text[..slashIdx].Trim();
-                _inputText = _projectQuery;
+                _inputText    = _projectQuery;
                 await LoadProjectMatches();
                 StateHasChanged();
                 return;
             }
-            _projectQuery = text;
+            _projectQuery  = text;
             _dropdownIndex = -1;
             await LoadProjectMatches();
         }
@@ -368,18 +384,33 @@
 
     private async Task LoadProjectMatches()
     {
-        if (_projectQuery.Length == 0) { _projectMatches.Clear(); StateHasChanged(); return; }
+        // When no project query typed yet, use the client hint to surface that client's
+        // projects. When both are set, project query filters within the client context.
+        var rustQuery = _projectQuery.Length > 0 ? _projectQuery : _clientHint;
+        if (rustQuery.Length == 0) { _projectMatches.Clear(); StateHasChanged(); return; }
         try
         {
-            var result = await Tauri.FuzzyMatchProjectsAsync(_projectQuery, 20);
-            // Score against both project name and client name — typing a client name should surface
-            // its projects even when the project name itself doesn't match the query.
+            var result = await Tauri.FuzzyMatchProjectsAsync(rustQuery, 30);
             _projectMatches = result.Matches
-                .Select(m => (
-                    Item: m,
-                    Score: Math.Max(
-                        Fuzzy.Score(_projectQuery, m.ProjectName),
-                        Fuzzy.Score(_projectQuery, m.ClientName))))
+                .Select(m =>
+                {
+                    bool hasHint  = _clientHint.Length > 0;
+                    bool hasQuery = _projectQuery.Length > 0;
+
+                    var clientScore  = hasHint  ? Fuzzy.Score(_clientHint,  m.ClientName)  : 0.5;
+                    var projectScore = hasQuery
+                        ? Math.Max(Fuzzy.Score(_projectQuery, m.ProjectName),
+                                   Fuzzy.Score(_projectQuery, m.ClientName))
+                        : 1.0;
+
+                    // Client hint acts as a weighted filter: matching client boosts score,
+                    // non-matching client is deprioritised but not hidden entirely.
+                    double score = hasHint
+                        ? projectScore * (0.4 + 0.6 * clientScore)
+                        : projectScore;
+
+                    return (Item: m, Score: score);
+                })
                 .Where(x => x.Score > 0)
                 .OrderByDescending(x => x.Score)
                 .Take(8)
@@ -490,10 +521,11 @@
         _projectMatches.Clear();
         _taskMatches.Clear();
         _disambiguationItems.Clear();
+        _clientHint   = string.Empty;
         _projectQuery = string.Empty;
-        _taskQuery = string.Empty;
-        _inputText = string.Empty;
-        _slashMode = SlashMode.None;
+        _taskQuery    = string.Empty;
+        _inputText    = string.Empty;
+        _slashMode    = SlashMode.None;
         StateHasChanged();
     }
 
@@ -554,12 +586,13 @@
 
     private void ResetAll()
     {
-        _inputText = string.Empty;
-        _slashMode = SlashMode.None;
+        _inputText    = string.Empty;
+        _slashMode    = SlashMode.None;
+        _clientHint   = string.Empty;
         _resolvedProject = null;
-        _resolvedTask = null;
+        _resolvedTask    = null;
         _projectQuery = string.Empty;
-        _taskQuery = string.Empty;
+        _taskQuery    = string.Empty;
         ClearDropdowns();
     }
 

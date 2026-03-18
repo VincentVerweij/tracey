@@ -191,6 +191,13 @@
     margin: 0;
 }
 
+.edit-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.125rem;
+}
+
 /* Load more */
 .load-more-wrapper {
     display: flex;

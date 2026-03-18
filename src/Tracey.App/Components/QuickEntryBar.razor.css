@@ -118,6 +118,17 @@
     border-left: 3px solid var(--tracey-accent, #6366f1);
 }
 
+/* Client hint breadcrumb shown inside input row while typing project name */
+.client-hint-prefix {
+    font-size: 0.9rem;
+    color: var(--tracey-accent, #6366f1);
+    white-space: nowrap;
+    flex-shrink: 0;
+    opacity: 0.75;
+    font-style: italic;
+    user-select: none;
+}
+
 /* ─── Confirmed segment chips ─────────────────────────────── */
 .entry-segments {
     display: flex;
