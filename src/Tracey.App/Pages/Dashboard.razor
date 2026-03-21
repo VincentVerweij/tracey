@@ -12,7 +12,7 @@
         <span class="page-date">@DateTime.Now.ToString("dddd, MMMM d")</span>
     </div>
     <QuickEntryBar OnTimerStarted="RefreshList" OnTimerStopped="RefreshList" />
-    <TimeEntryList @ref="_entryList" />
+    <TimeEntryList @ref="_entryList" OnTimerStarted="HandleEntryListTimerStarted" />
 </div>
 
 <IdleReturnModal @ref="_idleModal" OnResolved="HandleIdleResolved" />
@@ -53,6 +53,14 @@
     private async Task HandleIdleResolved()
     {
         await RefreshList();
+    }
+
+    private async Task HandleEntryListTimerStarted()
+    {
+        // Re-sync TimerStateService from Rust so QuickEntryBar reflects the new running timer
+        // immediately, without waiting for a navigation round-trip.
+        if (Timer is TimerStateService ts)
+            await ts.InitializeAsync();
     }
 
     private async Task RefreshList()

@@ -39,7 +39,8 @@ pub struct AppState {
 // ─────────────────────────────────────────────────────────────
 
 /// Enqueue a delete operation in sync_queue so the SyncService can propagate it
-/// to the external Postgres DB. Called by client_delete / tag_delete.
+/// to the external Postgres DB. Wired in by T083 (window activity sync).
+#[allow(dead_code)]
 pub fn enqueue_delete(
     conn: &rusqlite::Connection,
     table_name: &str,

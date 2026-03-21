@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Structured logger scaffolded for T082 deny-list redaction — not yet wired.
+
 use serde::Serialize;
 
 #[derive(Serialize)]

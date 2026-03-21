@@ -237,6 +237,8 @@
 </div>
 
 @code {
+    [Parameter] public EventCallback OnTimerStarted { get; set; }
+
     private bool _loading = true;
     private List<TimeEntryItem> _entries = new();
     private Dictionary<string, List<TimeEntryItem>> _groupedEntries = new();
@@ -325,6 +327,7 @@
         try
         {
             await Tauri.TimeEntryContinueAsync(entryId);
+            await OnTimerStarted.InvokeAsync();
             await LoadPage(1);
         }
         catch (Exception ex)

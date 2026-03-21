@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Model structs document the DB schema; commands map rows inline.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

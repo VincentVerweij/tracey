@@ -1,99 +1,179 @@
-.tag-picker {
+/* =========================================
+   TagPicker — inline chip multi-select
+   ========================================= */
+
+.tpc {
     position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
+    display: inline-block;
+    font-family: inherit;
 }
 
-.tag-picker-chips {
+/* ── Bar (chips + trigger) ──────────────── */
+
+.tpc-bar {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-1);
     align-items: center;
-    min-height: 28px;
+    gap: 0.3rem;
+    min-height: 26px;
 }
 
-.tag-chip {
+/* ── Selected chip ──────────────────────── */
+
+.tpc-chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    border-radius: var(--radius-full);
-    font-size: var(--text-xs);
+    gap: 0.25rem;
+    padding: 0.15rem 0.5rem 0.15rem 0.6rem;
+    border-radius: 99px;
+    font-size: 0.78rem;
     font-weight: 500;
-    background: var(--color-accent-subtle, #eff6ff);
-    color: var(--color-accent, #2563eb);
-    border: 1px solid var(--color-accent-muted, #bfdbfe);
+    line-height: 1.5;
+    background: rgba(99, 102, 241, 0.1);
+    color: #4338ca;
+    border: 1px solid rgba(99, 102, 241, 0.25);
     white-space: nowrap;
+    user-select: none;
 }
 
-.tag-chip-remove {
+.tpc-chip-x {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 14px;
     height: 14px;
     padding: 0;
+    margin-left: 1px;
     border: none;
     background: transparent;
     color: inherit;
     cursor: pointer;
-    font-size: 10px;
-    opacity: 0.6;
+    font-size: 13px;
+    line-height: 1;
+    opacity: 0.55;
     border-radius: 50%;
-    transition: opacity 0.15s ease, background 0.15s ease;
+    transition: opacity 0.12s, background 0.12s;
+    font-family: inherit;
+    flex-shrink: 0;
 }
 
-.tag-chip-remove:hover {
+.tpc-chip-x:hover {
     opacity: 1;
-    background: var(--color-accent-muted, #bfdbfe);
+    background: rgba(99, 102, 241, 0.2);
 }
 
-.tag-picker-add-btn {
+/* ── Trigger button ─────────────────────── */
+
+.tpc-trigger {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
-    padding: 2px 8px;
-    border-radius: var(--radius-full);
-    font-size: var(--text-xs);
-    color: var(--tracey-text-muted, #6b7280);
+    padding: 0.15rem 0.55rem;
+    border-radius: 99px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--tracey-text-muted);
     background: transparent;
-    border: 1px dashed var(--tracey-border, #e5e7eb);
+    border: 1px dashed var(--tracey-border);
     cursor: pointer;
-    transition: color 0.15s ease, border-color 0.15s ease;
+    transition: color 0.12s, border-color 0.12s, background 0.12s;
     white-space: nowrap;
+    font-family: inherit;
 }
 
-.tag-picker-add-btn:hover {
-    color: var(--color-accent, #2563eb);
-    border-color: var(--color-accent-muted, #bfdbfe);
+.tpc-trigger:hover {
+    color: #4338ca;
+    border-color: rgba(99, 102, 241, 0.4);
+    background: rgba(99, 102, 241, 0.06);
 }
 
-.tag-picker-dropdown {
+/* ── Backdrop (click-away close) ────────── */
+
+.tpc-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 299;
+    cursor: default;
+}
+
+/* ── Popover ────────────────────────────── */
+
+.tpc-popover {
     position: absolute;
-    top: calc(100% + 4px);
+    top: calc(100% + 6px);
     left: 0;
-    z-index: 200;
-    min-width: 160px;
-    max-width: 280px;
-    max-height: 200px;
-    overflow-y: auto;
-    background: var(--tracey-surface, #ffffff);
-    border: 1px solid var(--tracey-border, #e5e7eb);
-    border-radius: var(--radius-md);
-    box-shadow: var(--tracey-shadow, 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06));
+    z-index: 300;
+    width: 220px;
+    background: var(--tracey-surface);
+    border: 1px solid var(--tracey-border);
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+}
+
+/* ── Search input ───────────────────────── */
+
+.tpc-search-wrap {
+    padding: 0.5rem 0.5rem 0.375rem;
+    border-bottom: 1px solid var(--tracey-border);
+}
+
+.tpc-search {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--tracey-border);
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-family: inherit;
+    color: var(--tracey-text);
+    background: var(--tracey-surface-alt);
+    outline: none;
+    transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.tpc-search:focus {
+    border-color: var(--tracey-accent);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+    background: var(--tracey-surface);
+}
+
+.tpc-search::placeholder {
+    color: var(--tracey-text-muted);
+    opacity: 0.8;
+}
+
+/* ── Options list ───────────────────────── */
+
+.tpc-list {
     list-style: none;
     margin: 0;
-    padding: var(--space-1) 0;
+    padding: 0.25rem 0;
+    max-height: 180px;
+    overflow-y: auto;
 }
 
-.tag-picker-option {
-    padding: var(--space-1) var(--space-3);
-    font-size: var(--text-sm);
+.tpc-option {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.84rem;
+    color: var(--tracey-text);
     cursor: pointer;
-    transition: background 0.1s ease;
+    transition: background 0.1s;
+    border-radius: 0;
 }
 
-.tag-picker-option:hover {
-    background: var(--color-surface-hover, #f3f4f6);
+.tpc-option:hover,
+.tpc-option--focused {
+    background: rgba(99, 102, 241, 0.07);
+    color: #4338ca;
+}
+
+/* ── Empty state ────────────────────────── */
+
+.tpc-empty {
+    padding: 0.625rem 0.75rem;
+    font-size: 0.82rem;
+    color: var(--tracey-text-muted);
+    margin: 0;
+    text-align: center;
 }
