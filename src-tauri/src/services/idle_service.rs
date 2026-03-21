@@ -58,13 +58,13 @@ pub fn start_idle_loop(app: AppHandle) {
             let is_now_idle = idle_secs >= threshold_secs as u64;
 
             // Heartbeat log every 10 seconds so the terminal shows the loop is alive
-            if loop_count % 10 == 0 {
-                eprintln!(
-                    "[idle_service] tick#{loop_count}: idle_secs={idle_secs} threshold={threshold_secs}s \
-                    has_running_timer={has_running_timer} is_now_idle={is_now_idle} state.is_idle={}",
-                    state.is_idle
-                );
-            }
+            // if loop_count % 10 == 0 {
+            //     eprintln!(
+            //         "[idle_service] tick#{loop_count}: idle_secs={idle_secs} threshold={threshold_secs}s \
+            //         has_running_timer={has_running_timer} is_now_idle={is_now_idle} state.is_idle={}",
+            //         state.is_idle
+            //     );
+            // }
 
             // Transition: not idle → idle
             if is_now_idle && !state.is_idle {
