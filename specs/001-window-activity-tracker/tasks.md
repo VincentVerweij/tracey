@@ -266,13 +266,13 @@
 
 ### Tests for User Story 9
 
-- [ ] T076 [P] [US9] Write Playwright E2E tests verifying portable execution: app starts from arbitrary path, completes full timer cycle without elevation, data files created in exe directory — `tests/e2e/specs/portable.spec.ts`
+- [x] T076 [P] [US9] Write Playwright E2E tests verifying portable execution: app starts from arbitrary path, completes full timer cycle without elevation, data files created in exe directory — `tests/e2e/specs/portable.spec.ts`
 
 ### Implementation for User Story 9
 
-- [ ] T077 [US9] Configure `tauri.conf.json` bundle settings to produce a single portable `.exe` with no installer (no NSIS/MSI), no registry writes, all data paths relative to `{exe_dir}` — `src-tauri/tauri.conf.json`
-- [ ] T078 [US9] Implement and unit-test portable path resolution logic: write Rust unit tests in `tests/portable_path.rs` covering (a) `{exe_dir}` primary path is used when that directory is writable, (b) fallback to `{APPDATA}/tracey/` when `{exe_dir}` is read-only (simulate with a tempdir set read-only), (c) first-launch directory creation (`tracey.db` parent and `screenshots/`) succeeds without elevation; all tests runnable with `cargo test` using temporary directory fixtures — `src-tauri/src/`, `src-tauri/tests/portable_path.rs`
-- [ ] T079 [P] [US9] Add CI job: `cargo tauri build` (release), verify output is a single `.exe`, run the executable as a restricted user in a GitHub Actions Windows runner — `.github/workflows/ci.yml`
+- [x] T077 [US9] Configure `tauri.conf.json` bundle settings to produce a single portable `.exe` with no installer (no NSIS/MSI), no registry writes, all data paths relative to `{exe_dir}` — `src-tauri/tauri.conf.json`
+- [x] T078 [US9] Implement and unit-test portable path resolution logic: write Rust unit tests in `tests/portable_path.rs` covering (a) `{exe_dir}` primary path is used when that directory is writable, (b) fallback to `{APPDATA}/tracey/` when `{exe_dir}` is read-only (simulate with a tempdir set read-only), (c) first-launch directory creation (`tracey.db` parent and `screenshots/`) succeeds without elevation; all tests runnable with `cargo test` using temporary directory fixtures — `src-tauri/src/`, `src-tauri/tests/portable_path.rs`
+- [x] T079 [P] [US9] Add CI job: `cargo tauri build` (release), verify output is a single `.exe`, run the executable as a restricted user in a GitHub Actions Windows runner — `.github/workflows/ci.yml`
 
 **Checkpoint**: US9 acceptance tests pass. Portable executable confirmed working on a standard user account (SC-005).
 

@@ -36,13 +36,17 @@ pub fn open() -> SqlResult<Connection> {
     Ok(conn)
 }
 
-fn resolve_db_path() -> PathBuf {
-    // Primary: next to the executable (portable)
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            if is_writable(dir) {
-                return dir.join("tracey.db");
-            }
+/// Resolve the best-available portable database path.
+/// `exe_override` is used in tests to inject a fake executable path.
+pub fn resolve_db_path_for(exe_override: Option<&std::path::Path>) -> PathBuf {
+    let candidate = exe_override
+        .map(|p| p.to_path_buf())
+        .or_else(|| std::env::current_exe().ok())
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+
+    if let Some(dir) = candidate {
+        if is_writable(&dir) {
+            return dir.join("tracey.db");
         }
     }
 
@@ -53,7 +57,11 @@ fn resolve_db_path() -> PathBuf {
     path
 }
 
-fn is_writable(path: &std::path::Path) -> bool {
+fn resolve_db_path() -> PathBuf {
+    resolve_db_path_for(None)
+}
+
+pub fn is_writable(path: &std::path::Path) -> bool {
     let test = path.join(".tracey_write_test");
     match std::fs::File::create(&test) {
         Ok(_) => {

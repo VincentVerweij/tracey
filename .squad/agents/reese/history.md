@@ -134,3 +134,16 @@ IPC wrapper pattern confirmed: `new { request = new { ... } }`. `ErrorPayload` c
 
 **cargo check: PASS** — 16 dead_code warnings (all pre-existing), 0 errors.
 
+### 2026-03-21: T077/T078 — Portable exe config + path resolution tests (cargo test PASS)
+
+**Files updated:**
+- `src-tauri/tauri.conf.json`: `bundle.active` set to `false` — skips all installer packaging; raw `target/release/tracey.exe` is the portable artifact. No registry writes can occur without NSIS/MSI bundle active.
+- `src-tauri/src/db/mod.rs`: Extracted `resolve_db_path_for(exe_override: Option<&Path>)` as `pub` function; `is_writable` made `pub`. Private `resolve_db_path()` now calls `resolve_db_path_for(None)`.
+- `src-tauri/src/lib.rs`: `mod db` → `pub mod db` so integration tests can access `tracey_lib::db::resolve_db_path_for`.
+- `src-tauri/Cargo.toml`: Added `[dev-dependencies] tempfile = "3"`.
+- `src-tauri/tests/portable_path.rs`: Created 4 integration tests covering writable primary path, non-writable fallback, first-launch dir creation, and is_writable sanity check.
+
+**Key Windows lesson:** `set_readonly(true)` on a directory does NOT prevent file creation inside it on Windows (ACLs govern write access, not the POSIX read-only attribute). The fallback test uses a deleted tempdir (dropped immediately) so `File::create` fails on the non-existent path — cross-platform and correct.
+
+**cargo test --test portable_path: PASS** — 4/4 tests pass, 0 failures.
+

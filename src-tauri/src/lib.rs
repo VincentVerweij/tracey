@@ -2,7 +2,7 @@ use commands::AppState;
 use commands::SyncState;
 
 mod commands;
-mod db;
+pub mod db;
 mod models;
 mod platform;
 mod services;

@@ -1,0 +1,198 @@
+name: Tracey CI
+
+on:
+  push:
+    branches:
+      - main
+      - 001-window-activity-tracker
+  pull_request:
+    branches:
+      - main
+      - 001-window-activity-tracker
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Job 1: Lint
+  # ─────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Rust lint — cargo clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+
+      - name: .NET lint — dotnet format verify
+        run: dotnet format src/Tracey.App/Tracey.App.csproj --verify-no-changes
+
+  # ─────────────────────────────────────────────
+  # Job 2: Unit Tests + CVE Audit
+  # ─────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests
+    runs-on: windows-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Rust unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: .NET unit tests
+        run: >
+          dotnet test src/Tracey.Tests/Tracey.Tests.csproj
+          --logger "trx;LogFileName=test-results.trx"
+
+      - name: Upload .NET test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-test-results
+          path: src/Tracey.Tests/**/test-results.trx
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: CVE audit — cargo audit
+        run: cargo audit --file src-tauri/Cargo.lock
+
+  # ─────────────────────────────────────────────
+  # Job 3: Build Portable Exe  (T079)
+  # ─────────────────────────────────────────────
+  build-portable:
+    name: Build Portable Exe
+    runs-on: windows-latest
+    needs: unit-tests
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Blazor WASM must be published before cargo build so frontendDist is populated.
+      - name: Publish Blazor WASM
+        run: >
+          dotnet publish src/Tracey.App
+          -c Release
+          -o src/Tracey.App/bin/Release/net10.0/publish
+
+      - name: Build Tauri binary (release)
+        # cargo build --release is used instead of `cargo tauri build` to avoid
+        # requiring the Tauri CLI in CI.  The Blazor publish above satisfies the
+        # frontendDist requirement used at runtime.
+        run: cargo build --manifest-path src-tauri/Cargo.toml --release
+
+      - name: Verify exe exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "src-tauri/target/release/tracey.exe")) {
+            Write-Error "tracey.exe was not produced by the release build"
+            exit 1
+          }
+          Write-Host "tracey.exe found — build PASSED"
+
+      # ── Portable verification ──────────────────────────────────────────────
+      # Copy the exe to a temporary directory (simulating "run from any folder")
+      # and verify it starts cleanly and writes tracey.db to the exe directory
+      # (not to AppData), confirming the portable path-resolution logic (T078).
+      - name: Portable execution check
+        shell: pwsh
+        run: |
+          $tmpDir = Join-Path $env:TEMP "tracey-portable-test-$(New-Guid)"
+          New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+          Copy-Item "src-tauri/target/release/tracey.exe" "$tmpDir/"
+
+          Write-Host "Starting tracey.exe from $tmpDir ..."
+          $proc = Start-Process `
+            -FilePath "$tmpDir/tracey.exe" `
+            -WorkingDirectory $tmpDir `
+            -PassThru
+
+          # Give the app up to 3 seconds to initialise and write its DB.
+          Start-Sleep -Seconds 3
+
+          if ($proc.HasExited -and $proc.ExitCode -ne 0) {
+            Write-Error "tracey.exe exited early with code $($proc.ExitCode)"
+            exit 1
+          }
+
+          # Portable check: tracey.db must appear beside the exe, not in AppData.
+          if (Test-Path "$tmpDir/tracey.db") {
+            Write-Host "tracey.db created in exe directory — portable check PASSED"
+          } else {
+            Write-Error "tracey.db NOT found in exe directory — portable check FAILED"
+            if (-not $proc.HasExited) { $proc.Kill() }
+            exit 1
+          }
+
+          $proc.Kill()
+          Write-Host "Portable verification complete"
+
+      - name: Upload portable exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tracey-portable-exe
+          path: src-tauri/target/release/tracey.exe
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────
+  # Job 4: E2E Tests
+  # Only runs on push to main / 001-window-activity-tracker; skipped on PRs.
+  # ─────────────────────────────────────────────
+  e2e-tests:
+    name: E2E Tests (TypeScript check)
+    runs-on: windows-latest
+    needs: build-portable
+    # Skip on pull_request events — e2e only gates direct branch pushes.
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install E2E dependencies
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: tests/e2e
+        run: npx playwright install chromium
+
+      # E2E tests require a running Tauri app instance — run locally with:
+      #   npx playwright test
+      # In CI we validate that all test files are syntactically correct TypeScript
+      # so structural regressions are caught without needing the running app.
+      - name: Validate E2E test TypeScript (noEmit)
+        working-directory: tests/e2e
+        run: npx tsc --noEmit

@@ -4403,6 +4403,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-fs",
+ "tempfile",
  "tokio",
  "tokio-postgres",
  "ulid",

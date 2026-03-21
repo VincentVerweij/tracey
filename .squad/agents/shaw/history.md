@@ -88,6 +88,19 @@ Added 3 tests to `idle-detection.spec.ts` (7 → 10 total). All three require ge
 
 TDD gate held: all tests written before implementation files existed.
 
+### 2026-03-21: T076 — Phase 11 US9 Portable Execution E2E Tests
+
+**portable.spec.ts** (Playwright, 4 tests): Created `tests/e2e/specs/portable.spec.ts` covering US9 behavioral guarantees.
+
+- **Test 1 — first launch preferences seeded**: calls `preferences_get`, asserts `inactivity_timeout_seconds=300`, `screenshot_interval_seconds=300`, `screenshot_retention_days > 0`, `local_timezone` non-empty. Verifies T012 first-launch init ran (DB created and seeded in exe directory).
+- **Test 2 — full timer cycle no permission errors**: wraps `timer_start` + `timer_get_active` + `timer_stop` + `time_entry_list` in `.resolves.not.toThrow()`. A SQLite "readonly database" or "permission denied" error would surface as a rejected IPC promise.
+- **Test 3 — data survives page navigation**: starts timer, navigates to `/tags`, returns to `/`, re-calls `timer_get_active` — must still return the running entry (stored in SQLite on disk, not in-memory).
+- **Test 4 — health check clean**: `health_get` returns `running: true`, `active_errors.length === 0`.
+
+**Scope note**: Binary-in-tempdir portability (copy `.exe` to temp folder, run as restricted user) is a CI-level test (T079/Fusco). These tests cover in-process behavioral guarantees only. Explicit comment in spec header explains the boundary.
+
+**Pattern used**: Same `APP_URL`, `waitForApp`, `test.afterEach` stopTimer pattern as `timer.spec.ts` and `projects.spec.ts`.
+
 ---
 
 ## Archived Sessions (condensed)
