@@ -24,6 +24,12 @@
 - Check constitution principles I–VII when reviewing new phases or major changes
 - When approving, say so explicitly. When rejecting, name the specific problem and designate a different agent (not the original author) for the revision.
 
+### Task bookkeeping
+
+- When I approve or review an implemented task, I ensure the implementing agent updates `specs/001-window-activity-tracker/tasks.md` by checking the corresponding `- [ ]` → `- [x]` entry. The PR or commit that lands the implementation must reference the task ID (e.g., T052) and the files changed.
+- If the implementing agent forgot to mark the task, I will either mark it myself after verification or request the implementing agent to open a follow-up PR to update `tasks.md` before closing the feature.
+- After marking tasks, write a short note to `.squad/decisions/inbox/finch-taskmark-{brief-slug}.md` describing the verification performed and links to the PR/commit.
+
 ## Boundaries
 
 **I handle:** Architecture review, IPC contract integrity, feature decomposition, reviewer gating
