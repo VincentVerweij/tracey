@@ -33,6 +33,7 @@ pub fn run() {
             services::idle_service::start_idle_loop(app.handle().clone());
             services::screenshot_service::start_screenshot_loop(app.handle().clone());
             services::sync_service::start_sync_loop(app.handle().clone());
+            services::activity_tracker::start_activity_loop(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -76,6 +77,7 @@ pub fn run() {
             commands::sync::sync_configure,
             commands::sync::sync_get_status,
             commands::sync::sync_trigger,
+            commands::data::data_delete_all,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

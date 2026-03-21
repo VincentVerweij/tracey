@@ -291,7 +291,7 @@ file class FakeTauriIpcService : TauriIpcService
     public new Task<UserPreferences> PreferencesGetAsync()
     {
         var prefs = PreferencesToReturn ?? new UserPreferences(
-            Id:                             "pref-1",
+            Id:                             1,
             InactivityTimeoutSeconds:       300,
             ScreenshotIntervalSeconds:      60,
             ScreenshotRetentionDays:        30,
@@ -301,8 +301,7 @@ file class FakeTauriIpcService : TauriIpcService
             ProcessDenyListJson:            "[]",
             ExternalDbEnabled:              false,
             TimerNotificationThresholdHours: 8.0,
-            NotificationChannelsJson:       null,
-            ModifiedAt:                     "2026-03-18T00:00:00Z");
+            NotificationChannelsJson:       null);
         return Task.FromResult(prefs);
     }
 }
@@ -404,7 +403,7 @@ public class NotificationOrchestrationServiceTests
     private static NotificationOrchestrationService CreateService(
         IEnumerable<INotificationChannel> channels,
         ITimerStateService timerState,
-        FakeTauriIpcService tauri)
+        TauriIpcService tauri)
     {
         // TauriEventService needs IJSRuntime — pass null since test doesn't invoke JS
         var events = new TauriEventService(null!);
@@ -413,17 +412,15 @@ public class NotificationOrchestrationServiceTests
 
     private static async Task RunShortLoopAsync(NotificationOrchestrationService svc, CancellationToken ct)
     {
-        try { await svc.StartAsync(ct); }
+        // NotificationOrchestrationService uses Initialize(), not BackgroundService.
+        // The PeriodicTimer fires every 60s, so a 150ms window won't trigger the loop.
+        svc.Initialize();
+        try { await Task.Delay(Timeout.Infinite, ct); }
         catch (OperationCanceledException) { /* expected */ }
-        finally
-        {
-            await svc.StopAsync(CancellationToken.None);
-            svc.Dispose();
-        }
     }
 
     private static UserPreferences MakePrefs(double thresholdHours, string? channelsJson) =>
-        new(Id:                              "pref-1",
+        new(Id:                              1,
             InactivityTimeoutSeconds:        300,
             ScreenshotIntervalSeconds:       60,
             ScreenshotRetentionDays:         30,
@@ -433,6 +430,5 @@ public class NotificationOrchestrationServiceTests
             ProcessDenyListJson:             "[]",
             ExternalDbEnabled:               false,
             TimerNotificationThresholdHours: thresholdHours,
-            NotificationChannelsJson:        channelsJson,
-            ModifiedAt:                      "2026-03-18T00:00:00Z");
+            NotificationChannelsJson:        channelsJson);
 }

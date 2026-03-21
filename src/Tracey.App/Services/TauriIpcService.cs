@@ -164,6 +164,11 @@ public class TauriIpcService
     public Task<SyncTriggerResponse> SyncTriggerAsync() =>
         Invoke<SyncTriggerResponse>("sync_trigger");
 
+    // ── Data ──────────────────────────────────────────────────────────────
+
+    public Task<DataDeleteAllResponse> DataDeleteAllAsync() =>
+        Invoke<DataDeleteAllResponse>("data_delete_all");
+
     // ── Private helper ────────────────────────────────────────────────────
 
     private async Task<T> Invoke<T>(string command, object? args = null)
@@ -198,6 +203,9 @@ public record AffectedEntriesResponse(
 
 public record DeletedCountResponse(
     [property: JsonPropertyName("deleted_count")] long DeletedCount);
+
+public record DataDeleteAllResponse(
+    [property: JsonPropertyName("deleted_records")] long DeletedRecords);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health

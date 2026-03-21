@@ -49,6 +49,13 @@
 - `Pages/Settings.razor`: Notifications section (threshold, email stub, Telegram)
 - `_Imports.razor`: `@using Tracey.App.Components` added
 
+### Files Implemented (Final Phase — T080, T081, T087)
+- `Services/TauriIpcService.cs`: Added `DataDeleteAllAsync()` + `DataDeleteAllResponse` record
+- `Pages/Settings.razor`: Extended with General (timezone, page size), Screenshots (interval, retention, storage path), Process Deny List (dynamic add/remove), Danger Zone (delete-all with confirmation)
+- `Pages/Settings.razor.css`: Added `.settings-select`, `.settings-input-path`, deny-list block (`.settings-deny-*`), danger zone block (`.settings-card-danger`, `.settings-delete-confirm-*`)
+- `Pages/Projects.razor`: Fixed pre-existing `&quot;` HTML-entity bug in `AriaLabel` attributes (lines 129, 198) — reverted to `@($"...")`  Razor pattern
+
+
 ### Timer Architecture
 - `TimerStateService`: local `PeriodicTimer` 1s ticker for smooth UI; `HandleTimerTick(long)` snaps to Rust's authoritative value
 - `StartLocalTicker()` called from `StartAsync()` and `InitializeAsync()` (if restoring running timer); `StopLocalTicker()` from `StopAsync()`
@@ -83,7 +90,28 @@
 
 **Partial tag update:** `TimeEntryUpdateTagsAsync` sends only `{ id, tag_ids }`. `ended_at = NULL` preserved by Rust — running timer unaffected. Failures silently swallowed (non-fatal).
 
-### 2026-03-18: Phase 9 — Notification channels + orchestration service + Settings.razor
+### 2026-03-21: Final Phase — T080 / T081 / T087 — Settings completions
+
+**T080 — General + Screenshots sections:**
+- `UserPreferences` C# field names differ from IPC contract names: `Timezone` maps to `local_timezone`, `EntriesPerPage` maps to `page_size` — the task brief used wrong names; always verify with TauriIpcService.cs.
+- `@bind:after` on `<select>` is valid in Blazor .NET 10 for auto-save on change.
+- IANA timezone list added as `private static readonly string[] _ianaTimezones = [...]` — collection expression, .NET 10 / C# 12 compatible.
+- Inner `try/catch` inside outer `try` block in `OnInitializedAsync` is fine for resilient JSON deserialization of deny list without aborting full prefs load.
+
+**T087 — Process Deny List:**
+- `_denyListInput` as a staging field; `AddDenyEntryAsync` trims, deduplicates with `OrdinalIgnoreCase`, appends to `_denyList`, and immediately calls `SaveDenyListAsync`.
+- `@onkeydown="HandleDenyKeyDownAsync"` (named method) avoids Razor quote-conflict with Enter key check.
+- `@onclick='() => RemoveDenyEntryAsync(entry)'` with single outer quote used for lambda — established pattern.
+- `foreach` closure capture in .NET 10 is safe (each iteration gets its own binding).
+
+**T081 — Danger Zone:**
+- `DataDeleteAllAsync` + `DataDeleteAllResponse` added to `TauriIpcService.cs` under a new `// ── Data ──` section.
+- `_deleteSuccess` (string?) shown with 5s auto-clear; `_deleteError` scoped to the danger zone section.
+- `_deleting` bool drives `disabled="@_deleting"` on both confirm buttons to prevent double-submit.
+
+**Projects.razor bugfix (incidental):**
+- Pre-existing modification had `@($&quot;Confirm delete {name}&quot;)` — HTML entity `&quot;` inside a Razor C# expression causes CS8802/CS0116 cascading compile errors. Fixed to `@($"Confirm delete {name}")` — the standard `"@($"...")"` Blazor double-quote-in-attribute pattern.
+
 
 **New notification files:**
 - `INotificationChannel.cs`: `SendAsync(NotificationMessage, NotificationChannelSettings, CancellationToken)`. Settings at call time; channels stateless. `NotificationChannelSettings.Get(config, channelId)` + `Disabled` singleton.

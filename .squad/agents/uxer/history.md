@@ -7,7 +7,21 @@
 
 ## Learnings
 
-<!-- Append new learnings below. Each entry is something lasting about the project. -->
+## T089 — Tone Audit (2026-03-21)
+
+**"Are you sure?" is pervasive.** Found in both the client and project delete confirms in Projects.razor. The tone guide explicitly bans it — replace with consequence-first phrasing: "All X will be deleted. Y will be kept but unlinked."
+
+**Capitalisation in button labels creeps in.** `+ Add Client`, `+ Add Task`, `+ Add Project`, `Confirm Delete` — all used title case where sentence case is correct. Only proper nouns and the start of a sentence get capitals.
+
+**"Inactivity" is internal language.** The tone guide uses "idle" throughout. Any section title or label using "inactivity" should be "Idle". Applies to Settings section header and could apply to future Rust-side events surfaced in UI.
+
+**Real ellipsis vs three dots.** `...` appeared in three loading strings. Must always use the single `…` character (U+2026) — this matters for screen readers and typographic consistency.
+
+**The `NavMenu.razor` is dead scaffolding.** The actual sidebar lives in `MainLayout.razor`. NavMenu.razor was the Blazor default scaffold (Home / Counter / Weather) and was never updated. Fixed during T089. The MainLayout sidebar also had "Timer" where "Dashboard" belongs.
+
+**"Connect & save" conflates two actions.** The save is implicit when connecting. Shorter is clearer: `Connect`.
+
+**Empty states need two sentences.** Fact + action. `No projects yet.` → `No projects yet. Add one above.` This pattern was missing in Projects; was already correct in Tags and TimeEntryList.
 
 ## Token namespace (2026-03-18)
 

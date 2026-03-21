@@ -16,7 +16,7 @@
             <BbButton Size="ButtonSize.Small"
                       OnClick="@(() => { _showAddClient = !_showAddClient; })"
                       AriaLabel="Add client">
-                + Add Client
+                + Add client
             </BbButton>
         </div>
     </div>
@@ -66,7 +66,7 @@
 
     @if (_loading)
     {
-        <p class="loading-text">Loading...</p>
+        <p class="loading-text">Loading…</p>
     }
     else if (_clients.Count == 0)
     {
@@ -122,11 +122,11 @@
                              aria-label="@($"Confirm delete {client.Name}")"
                              class="inline-confirm">
                             <span class="warn-icon">⚠️</span>
-                            <p>Are you sure? This will delete all projects and tasks under <strong>@client.Name</strong>. Orphaned time entries will be detached.</p>
+                            <p>All projects and tasks under <strong>@client.Name</strong> will be deleted. Time entries will be kept but unlinked.</p>
                             <div class="form-actions">
                                 <BbButton Variant="ButtonVariant.Destructive"
                                           OnClick="() => DeleteClient(client.Id)"
-                                          AriaLabel="@($"Confirm delete {client.Name}")">Confirm Delete</BbButton>
+                                          AriaLabel="@($"Confirm delete {client.Name}")">Delete client</BbButton>
                                 <BbButton Variant="ButtonVariant.Outline"
                                           OnClick="@(() => { _pendingDeleteClient = null; })"
                                           AriaLabel="Cancel delete">Cancel</BbButton>
@@ -139,13 +139,13 @@
                         <div class="project-list">
                             @if (_projectsLoading.Contains(client.Id))
                             {
-                                <p class="loading-text">Loading projects...</p>
+                                <p class="loading-text">Loading projects…</p>
                             }
                             else if (_projects.TryGetValue(client.Id, out var projects))
                             {
                                 @if (projects.Count == 0)
                                 {
-                                    <p class="empty-state">No projects yet.</p>
+                                    <p class="empty-state">No projects yet. Add one above.</p>
                                 }
                                 @foreach (var project in projects)
                                 {
@@ -191,11 +191,11 @@
                                                  aria-label="@($"Confirm delete {project.Name}")"
                                                  class="inline-confirm">
                                                 <span class="warn-icon">⚠️</span>
-                                                <p>Are you sure? Deleting <strong>@project.Name</strong> will also delete its tasks. Orphaned time entries will be detached.</p>
+                                                <p>All tasks under <strong>@project.Name</strong> will be deleted. Time entries will be kept but unlinked.</p>
                                                 <div class="form-actions">
                                                     <BbButton Variant="ButtonVariant.Destructive"
                                                               OnClick="() => DeleteProject(project.Id, client.Id)"
-                                                              AriaLabel="@($"Confirm delete {project.Name}")">Confirm Delete</BbButton>
+                                                              AriaLabel="@($"Confirm delete {project.Name}")">Delete project</BbButton>
                                                     <BbButton Variant="ButtonVariant.Outline"
                                                               OnClick="@(() => { _pendingDeleteProject = null; })"
                                                               AriaLabel="Cancel delete">Cancel</BbButton>
@@ -208,13 +208,13 @@
                                             <div class="task-list">
                                                 @if (_tasksLoading.Contains(project.Id))
                                                 {
-                                                    <p class="loading-text">Loading tasks...</p>
+                                                    <p class="loading-text">Loading tasks…</p>
                                                 }
                                                 else if (_tasks.TryGetValue(project.Id, out var tasks))
                                                 {
                                                     @if (tasks.Count == 0)
                                                     {
-                                                        <p class="empty-state">No tasks yet.</p>
+                                                        <p class="empty-state">No tasks yet. Add one above.</p>
                                                     }
                                                     @foreach (var task in tasks)
                                                     {
@@ -241,7 +241,7 @@
                                                 {
                                                     <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
                                                               OnClick="() => ShowAddTask(project.Id)"
-                                                              AriaLabel="@($"Add task to {project.Name}")">+ Add Task</BbButton>
+                                                              AriaLabel="@($"Add task to {project.Name}")">+ Add task</BbButton>
                                                 }
                                             </div>
                                         }
@@ -264,7 +264,7 @@
                             {
                                 <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
                                           OnClick="() => ShowAddProject(client.Id)"
-                                          AriaLabel="@($"Add project to {client.Name}")">+ Add Project</BbButton>
+                                          AriaLabel="@($"Add project to {client.Name}")">+ Add project</BbButton>
                             }
                         </div>
                     }

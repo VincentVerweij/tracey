@@ -1,68 +1,6 @@
+using Tracey.App.Services;
+
 namespace Tracey.Tests;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ITimerStateService — Specification Interface (T019 / US1)
-//
-// Root moves this interface to Tracey.App/Services/ITimerStateService.cs
-// when implementing T020 (Phase 3). Until then it lives here as a contract.
-//
-// Derived from:
-//   - spec.md US1 acceptance scenarios
-//   - contracts/ipc-commands.md: timer_start, timer_stop, timer_get_active
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// <summary>
-/// Contract for the Blazor service that wraps Rust timer IPC.
-/// Callers depend on this interface; components subscribe to OnStateChanged
-/// to trigger UI re-renders when timer state changes.
-/// </summary>
-public interface ITimerStateService
-{
-    /// <summary>True when a timer is currently running.</summary>
-    bool IsRunning { get; }
-
-    /// <summary>
-    /// Description of the currently running timer entry.
-    /// Null when no timer is running.
-    /// Editable inline while the timer runs (spec US1 AC3).
-    /// </summary>
-    string? CurrentDescription { get; }
-
-    /// <summary>
-    /// Wall-clock elapsed time of the running timer.
-    /// Zero when no timer is running.
-    /// </summary>
-    TimeSpan Elapsed { get; }
-
-    /// <summary>
-    /// ULID of the active time entry returned by timer_start IPC.
-    /// Null when no timer is running.
-    /// </summary>
-    string? CurrentEntryId { get; }
-
-    /// <summary>Optional project ULID for the active timer. Null when unset.</summary>
-    string? CurrentProjectId { get; }
-
-    /// <summary>Optional task ULID for the active timer. Null when unset.</summary>
-    string? CurrentTaskId { get; }
-
-    /// <summary>
-    /// Calls timer_start IPC. If a timer is already running it is automatically
-    /// stopped and saved before the new one starts (spec US1 AC3 / IPC contract).
-    /// </summary>
-    Task StartAsync(string description, string? projectId = null, string? taskId = null);
-
-    /// <summary>
-    /// Calls timer_stop IPC. No-op (does not throw) when no timer is running.
-    /// </summary>
-    Task StopAsync();
-
-    /// <summary>
-    /// Fired whenever timer state changes: on start, stop, and each elapsed tick.
-    /// Blazor components subscribe to force StateHasChanged re-renders.
-    /// </summary>
-    event Action? OnStateChanged;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TimerStateServiceStub — Failing Test Double
@@ -95,13 +33,30 @@ internal sealed class TimerStateServiceStub : ITimerStateService
     public string? CurrentTaskId =>
         throw new NotImplementedException(NotYetImplemented);
 
+    public string? CurrentProjectName =>
+        throw new NotImplementedException(NotYetImplemented);
+
+    public string? CurrentClientId =>
+        throw new NotImplementedException(NotYetImplemented);
+
+    public string? CurrentClientName =>
+        throw new NotImplementedException(NotYetImplemented);
+
+    public string? CurrentTaskName =>
+        throw new NotImplementedException(NotYetImplemented);
+
+    public string[] CurrentTagIds =>
+        throw new NotImplementedException(NotYetImplemented);
+
     public event Action? OnStateChanged
     {
         add => throw new NotImplementedException(NotYetImplemented);
         remove => throw new NotImplementedException(NotYetImplemented);
     }
 
-    public Task StartAsync(string description, string? projectId = null, string? taskId = null) =>
+    public Task StartAsync(string description, string? projectId = null, string? taskId = null,
+        string? projectName = null, string? clientId = null, string? clientName = null,
+        string? taskName = null, string[]? tagIds = null) =>
         throw new NotImplementedException(NotYetImplemented);
 
     public Task StopAsync() =>

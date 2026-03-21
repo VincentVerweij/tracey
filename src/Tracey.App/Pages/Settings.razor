@@ -29,14 +29,55 @@
         </div>
     }
     else
-    {
+    {        <!-- ── General ────────────────────────────────────────────────────────────── -->
+        <section class="settings-card">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">⚙</span>
+                <div>
+                    <h2 class="settings-card-title">General</h2>
+                    <p class="settings-card-desc">Timezone and display preferences.</p>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-row">
+                    <label for="timezone-select" class="settings-label">Timezone</label>
+                    <div class="settings-control-group">
+                        <select id="timezone-select"
+                                class="settings-input settings-select"
+                                @bind="_timezone"
+                                @bind:after="SaveTimezoneAsync">
+                            @foreach (var tz in _ianaTimezones)
+                            {
+                                <option value="@tz">@tz</option>
+                            }
+                        </select>
+                        <span class="settings-hint">Used to display timestamps in your local time.</span>
+                    </div>
+                </div>
+                <div class="settings-row">
+                    <label for="page-size-input" class="settings-label">
+                        Page size
+                        <span class="settings-label-unit">entries</span>
+                    </label>
+                    <div class="settings-control-group">
+                        <input id="page-size-input"
+                               type="number"
+                               class="settings-input settings-input-short"
+                               min="5" max="200" step="5"
+                               @bind="_pageSize"
+                               @bind:after="SavePageSizeAsync" />
+                        <span class="settings-hint">Number of time entries shown per page in the timer list.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
         <!-- ── Inactivity Detection ──────────────────────────────────── -->
         <section class="settings-card">
             <div class="settings-card-label">
                 <span class="settings-card-icon">🕐</span>
                 <div>
-                    <h2 class="settings-card-title">Inactivity Detection</h2>
-                    <p class="settings-card-desc">Tracey watches for periods of no input and prompts you on return.</p>
+                    <h2 class="settings-card-title">Idle Detection</h2>
+                    <p class="settings-card-desc">Tracks when you go idle and prompts you on return.</p>
                 </div>
             </div>
             <div class="settings-card-body">
@@ -59,7 +100,100 @@
                 </div>
             </div>
         </section>
+        <!-- ── Screenshots ────────────────────────────────────────────────────────── -->
+        <section class="settings-card">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">📸</span>
+                <div>
+                    <h2 class="settings-card-title">Screenshots</h2>
+                    <p class="settings-card-desc">Periodic captures stored locally on your device — never synced.</p>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-row">
+                    <label for="screenshot-interval-input" class="settings-label">
+                        Interval
+                        <span class="settings-label-unit">minutes</span>
+                    </label>
+                    <div class="settings-control-group">
+                        <input id="screenshot-interval-input"
+                               type="number"
+                               class="settings-input settings-input-short"
+                               min="1" max="60" step="1"
+                               @bind="_screenshotIntervalMinutes"
+                               @bind:after="SaveScreenshotIntervalAsync" />
+                        <span class="settings-hint">Capture a screenshot every N minutes while active.</span>
+                    </div>
+                </div>
+                <div class="settings-row">
+                    <label for="screenshot-retention-input" class="settings-label">
+                        Keep for
+                        <span class="settings-label-unit">days</span>
+                    </label>
+                    <div class="settings-control-group">
+                        <input id="screenshot-retention-input"
+                               type="number"
+                               class="settings-input settings-input-short"
+                               min="1" max="365" step="1"
+                               @bind="_screenshotRetentionDays"
+                               @bind:after="SaveScreenshotRetentionAsync" />
+                        <span class="settings-hint">Screenshots older than this are automatically deleted.</span>
+                    </div>
+                </div>
+                <div class="settings-row settings-row-stacked">
+                    <label for="screenshot-folder-input" class="settings-label">Storage folder</label>
+                    <div class="settings-control-group">
+                        <input id="screenshot-folder-input"
+                               type="text"
+                               class="settings-input settings-input-path"
+                               placeholder="Default: screenshots/ next to tracey.exe"
+                               @bind="_screenshotStoragePath"
+                               @bind:after="SaveScreenshotStorageAsync" />
+                        <span class="settings-hint">Leave blank to use the default location next to the application.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
 
+        <!-- ── Process Deny List ────────────────────────────────────────────────── -->
+        <section class="settings-card">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">🚫</span>
+                <div>
+                    <h2 class="settings-card-title">Process Deny List</h2>
+                    <p class="settings-card-desc">Window titles and process names containing these patterns won't be tracked.</p>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-deny-add-row">
+                    <input type="text"
+                           class="settings-input"
+                           placeholder="e.g. keepass, 1password, signal"
+                           @bind="_denyListInput"
+                           @onkeydown="HandleDenyKeyDownAsync" />
+                    <button class="t-btn t-btn-secondary t-btn-sm"
+                            @onclick="AddDenyEntryAsync">Add</button>
+                </div>
+                @if (_denyList.Count == 0)
+                {
+                    <p class="settings-hint settings-deny-empty">No patterns configured. Add process names to prevent them from being tracked.</p>
+                }
+                else
+                {
+                    <ul class="settings-deny-list">
+                        @foreach (var entry in _denyList)
+                        {
+                            <li class="settings-deny-item">
+                                <span class="settings-deny-name">@entry</span>
+                                <button class="settings-deny-remove t-btn t-btn-secondary t-btn-sm"
+                                        aria-label="Remove @entry"
+                                        @onclick='() => RemoveDenyEntryAsync(entry)'>×</button>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </section>
         <!-- ── Cloud Sync ────────────────────────────────────────────── -->
         <section class="settings-card">
             <div class="settings-card-label">
@@ -85,7 +219,7 @@
                             <button class="settings-btn settings-btn-primary"
                                     disabled="@_syncConnecting"
                                     @onclick="ConnectSyncAsync">
-                                @(_syncConnecting ? "Connecting…" : "Connect & save")
+                                @(_syncConnecting ? "Connecting…" : "Connect")
                             </button>
                             @if (_syncEnabled)
                             {
@@ -293,6 +427,57 @@
                 }
             </div>
         </section>
+
+        <!-- ── Danger Zone ────────────────────────────────────────────────────────────── -->
+        <section class="settings-card settings-card-danger">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">⚠</span>
+                <div>
+                    <h2 class="settings-card-title settings-card-title-danger">Danger Zone</h2>
+                    <p class="settings-card-desc">These actions cannot be undone.</p>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                @if (_deleteSuccess != null)
+                {
+                    <div class="settings-inline-ok" role="status"><span>✓</span> @_deleteSuccess</div>
+                }
+                @if (!_showDeleteConfirm)
+                {
+                    <div class="settings-danger-row">
+                        <div>
+                            <strong class="settings-danger-action-title">Delete all data</strong>
+                            <p class="settings-hint">Removes all time entries, clients, projects, tasks, tags, screenshots, and activity records. Your settings are preserved.</p>
+                        </div>
+                        <button class="t-btn t-btn-danger" @onclick="RequestDeleteAll">Delete all data</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="settings-delete-confirm" role="alertdialog" aria-label="Confirm delete all data">
+                        <p class="settings-delete-confirm-message">
+                            <strong>Are you sure?</strong> This will permanently delete all time entries, clients, projects, tasks, tags, screenshots, and activity records. This cannot be undone.
+                        </p>
+                        @if (_deleteError != null)
+                        {
+                            <p class="t-inline-error" role="alert">@_deleteError</p>
+                        }
+                        <div class="settings-delete-confirm-actions">
+                            <button class="t-btn t-btn-danger"
+                                    disabled="@_deleting"
+                                    @onclick="ConfirmDeleteAllAsync">
+                                @(_deleting ? "Deleting…" : "Yes, delete everything")
+                            </button>
+                            <button class="t-btn t-btn-secondary"
+                                    disabled="@_deleting"
+                                    @onclick="CancelDeleteAll">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
     }
 </div>
 
@@ -304,7 +489,39 @@
 
     private double _thresholdHours = 8.0;
     private double _inactivityTimeoutMinutes = 5.0;
+    // ── General ───────────────────────────────────────────────────────────────────
+    private string _timezone = "Europe/Amsterdam";
+    private int _pageSize = 25;
 
+    // ── Screenshots ─────────────────────────────────────────────────────────────
+    private int _screenshotIntervalMinutes = 5;
+    private int _screenshotRetentionDays = 30;
+    private string _screenshotStoragePath = "";
+
+    // ── Process Deny List ─────────────────────────────────────────────────────
+    private List<string> _denyList = new();
+    private string _denyListInput = "";
+
+    // ── Danger Zone ─────────────────────────────────────────────────────────────
+    private bool _showDeleteConfirm;
+    private bool _deleting;
+    private string? _deleteError;
+    private string? _deleteSuccess;
+
+    private static readonly string[] _ianaTimezones =
+    [
+        "Africa/Abidjan", "Africa/Cairo", "Africa/Johannesburg", "Africa/Lagos", "Africa/Nairobi",
+        "America/Anchorage", "America/Buenos_Aires", "America/Chicago", "America/Denver",
+        "America/Los_Angeles", "America/Mexico_City", "America/New_York", "America/Sao_Paulo", "America/Toronto",
+        "Asia/Bangkok", "Asia/Dubai", "Asia/Hong_Kong", "Asia/Jakarta", "Asia/Karachi",
+        "Asia/Kolkata", "Asia/Seoul", "Asia/Shanghai", "Asia/Singapore", "Asia/Tokyo",
+        "Asia/Yangon", "Atlantic/Azores", "Australia/Brisbane", "Australia/Melbourne", "Australia/Perth", "Australia/Sydney",
+        "Europe/Amsterdam", "Europe/Athens", "Europe/Berlin", "Europe/Brussels", "Europe/Budapest",
+        "Europe/Copenhagen", "Europe/Dublin", "Europe/Helsinki", "Europe/Istanbul", "Europe/Kiev",
+        "Europe/Lisbon", "Europe/London", "Europe/Madrid", "Europe/Moscow", "Europe/Oslo",
+        "Europe/Paris", "Europe/Prague", "Europe/Rome", "Europe/Stockholm", "Europe/Vienna", "Europe/Warsaw", "Europe/Zurich",
+        "Pacific/Auckland", "Pacific/Honolulu", "Pacific/Tahiti", "UTC"
+    ];
     // ── Sync backing fields ───────────────────────────────────────────────
     private string _syncUri = string.Empty;
     private bool _syncEnabled;
@@ -345,6 +562,23 @@
             // Load sync status
             _syncEnabled = prefs.ExternalDbEnabled;
             _syncStatus = await Tauri.SyncGetStatusAsync();
+
+            // ── General ─────────────────────────────────────────────────────
+            _timezone = string.IsNullOrEmpty(prefs.Timezone) ? "Europe/Amsterdam" : prefs.Timezone;
+            _pageSize = (int)(prefs.EntriesPerPage > 0 ? prefs.EntriesPerPage : 25);
+
+            // ── Screenshots ──────────────────────────────────────────────────
+            _screenshotIntervalMinutes = (int)(prefs.ScreenshotIntervalSeconds > 0 ? prefs.ScreenshotIntervalSeconds / 60 : 5);
+            _screenshotRetentionDays   = (int)(prefs.ScreenshotRetentionDays   > 0 ? prefs.ScreenshotRetentionDays   : 30);
+            _screenshotStoragePath     = prefs.ScreenshotStoragePath ?? "";
+
+            // ── Process Deny List ────────────────────────────────────────────
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<List<string>>(prefs.ProcessDenyListJson);
+                _denyList = parsed ?? new();
+            }
+            catch { _denyList = new(); }
         }
         catch (Exception ex)
         {
@@ -437,6 +671,128 @@
         catch (Exception ex)
         {
             _saveError = ex.Message;
+        }
+    }
+
+    // ── General & Screenshots save methods ───────────────────────────────
+
+    private Task SaveTimezoneAsync() => SaveGeneralAsync();
+    private Task SavePageSizeAsync() => SaveGeneralAsync();
+
+    private async Task SaveGeneralAsync()
+    {
+        _saveError   = null;
+        _saveSuccess = false;
+        try
+        {
+            await Tauri.PreferencesUpdateAsync(new PreferencesUpdateRequest(
+                Timezone:      _timezone,
+                EntriesPerPage: (long)_pageSize));
+            _saveSuccess = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _saveSuccess = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
+    }
+
+    private Task SaveScreenshotIntervalAsync() => SaveScreenshotsAsync();
+    private Task SaveScreenshotRetentionAsync() => SaveScreenshotsAsync();
+    private Task SaveScreenshotStorageAsync()   => SaveScreenshotsAsync();
+
+    private async Task SaveScreenshotsAsync()
+    {
+        _saveError   = null;
+        _saveSuccess = false;
+        try
+        {
+            await Tauri.PreferencesUpdateAsync(new PreferencesUpdateRequest(
+                ScreenshotIntervalSeconds: (long)(_screenshotIntervalMinutes * 60),
+                ScreenshotRetentionDays:   (long)_screenshotRetentionDays,
+                ScreenshotStoragePath:     _screenshotStoragePath));
+            _saveSuccess = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _saveSuccess = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
+    }
+
+    // ── Deny list methods ─────────────────────────────────────────────────
+
+    private async Task AddDenyEntryAsync()
+    {
+        var entry = _denyListInput.Trim();
+        if (string.IsNullOrEmpty(entry) || _denyList.Contains(entry, StringComparer.OrdinalIgnoreCase))
+        {
+            _denyListInput = "";
+            return;
+        }
+        _denyList.Add(entry);
+        _denyListInput = "";
+        await SaveDenyListAsync();
+    }
+
+    private async Task RemoveDenyEntryAsync(string entry)
+    {
+        _denyList.Remove(entry);
+        await SaveDenyListAsync();
+    }
+
+    private async Task SaveDenyListAsync()
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(_denyList);
+            await Tauri.PreferencesUpdateAsync(new PreferencesUpdateRequest(ProcessDenyListJson: json));
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
+    }
+
+    private async Task HandleDenyKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddDenyEntryAsync();
+    }
+
+    // ── Danger Zone methods ───────────────────────────────────────────────
+
+    private void RequestDeleteAll() => _showDeleteConfirm = true;
+    private void CancelDeleteAll() { _showDeleteConfirm = false; _deleteError = null; }
+
+    private async Task ConfirmDeleteAllAsync()
+    {
+        _deleting = true;
+        _deleteError = null;
+        StateHasChanged();
+        try
+        {
+            var result = await Tauri.DataDeleteAllAsync();
+            _showDeleteConfirm = false;
+            _deleteSuccess = $"All data deleted ({result.DeletedRecords:N0} records removed). App ready to start fresh.";
+            StateHasChanged();
+            await Task.Delay(5000);
+            _deleteSuccess = null;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _deleteError = ex.Message;
+        }
+        finally
+        {
+            _deleting = false;
+            StateHasChanged();
         }
     }
 

@@ -134,6 +134,25 @@ IPC wrapper pattern confirmed: `new { request = new { ... } }`. `ErrorPayload` c
 
 **cargo check: PASS** — 16 dead_code warnings (all pre-existing), 0 errors.
 
+### 2026-03-21: T082/T083/T081-backend — activity_tracker.rs + data_delete_all (cargo check PASS)
+
+**Files created:**
+- `src-tauri/src/services/activity_tracker.rs`: `start_activity_loop` — 1s poll, foreground window change detection, process deny-list check before any DB write, INSERT into `window_activity_records`. MutexGuard dropped before next `.await` using the inner-block pattern from `timer_tick.rs` and `idle_service.rs`. Returns `Option<Option<(String, String)>>` from block: outer `Some` = update needed; inner value = new `last_window`.
+- `src-tauri/src/commands/data.rs`: `data_delete_all` — deletes all data tables (FK-safe order), reads `screenshot_storage_path` from prefs, wipes screenshots folder and recreates it; file errors are non-fatal warnings; returns `{ "deleted_records": N }`.
+
+**Files modified:**
+- `src-tauri/src/services/mod.rs`: Added `pub mod activity_tracker;`
+- `src-tauri/src/commands/mod.rs`: Added `pub mod data;`
+- `src-tauri/src/lib.rs`: Called `start_activity_loop` in `.setup()`; registered `data_delete_all` in `invoke_handler`.
+
+**Key decisions:**
+- T083 sync: `sync_service.rs` already has `read_window_activity` + the full sync loop — no new 30s ticker needed in activity_tracker.
+- `trigger_on_window_change()`: No such function in `screenshot_service.rs` — screenshot service already does its own window change detection independently; activity_tracker just writes the record.
+- `window_handle` column: `format!("{}:{}", process_name, title)` — composite string since raw HWND isn't safely exposed past the inner block.
+- FK deletion order for `data_delete_all`: `time_entry_tags` → `time_entries` → `window_activity_records` → `screenshots` → `sync_queue` → `clients` (CASCADE to projects/tasks) → `projects` → `tasks` → `tags`.
+
+**cargo check: PASS** — pre-existing warnings only, 0 errors.
+
 ### 2026-03-21: T077/T078 — Portable exe config + path resolution tests (cargo test PASS)
 
 **Files updated:**

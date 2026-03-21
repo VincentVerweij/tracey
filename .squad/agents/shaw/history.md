@@ -99,6 +99,33 @@ TDD gate held: all tests written before implementation files existed.
 
 **Scope note**: Binary-in-tempdir portability (copy `.exe` to temp folder, run as restricted user) is a CI-level test (T079/Fusco). These tests cover in-process behavioral guarantees only. Explicit comment in spec header explains the boundary.
 
+### 2026-03-21: T084 + T088 — Performance Benchmarks & Accessibility Audit
+
+**db_benchmarks.rs** (Criterion, 4 benchmarks): Created `src-tauri/benches/db_benchmarks.rs` with criterion harness. Added `criterion = { version = "0.5", features = ["html_reports"] }` to `[dev-dependencies]` and `[[bench]] name = "db_benchmarks" harness = false` in `Cargo.toml`.
+
+- `bench_time_entry_list_100_rows_page1`: 100 pre-inserted rows, paged SELECT LIMIT 25 — baseline.
+- `bench_time_entry_list_1000_rows_page1`: 1 000 rows — primary budget check (< 500 ms p95 per decisions.md).
+- `bench_window_activity_insert`: single-row INSERT throughput — must be negligible vs 1-second polling interval.
+- `bench_window_activity_unsynced_select_500`: SELECT of 500 un-synced rows (flush-to-external-DB query pattern).
+
+**Key decisions on benchmark design:**
+- In-memory SQLite (`Connection::open_in_memory()`) — isolates query cost from disk I/O; production WAL-mode latency will be higher but still within budget.
+- `chrono` is already in `[dependencies]` (not dev-only) — available in benches without extra declaration.
+- Timestamps use fixed ISO-8601 strings to keep chrono overhead out of the hot loop.
+- `criterion::black_box` wraps collected rows to prevent compiler from eliding the query.
+
+**accessibility.spec.ts** (Playwright + axe-core, 7 tests): Created `tests/e2e/specs/accessibility.spec.ts`. Added `@axe-core/playwright@^4.10.0` to `tests/e2e/package.json` devDependencies.
+
+- 5 per-page axe audits (Dashboard, Projects, Tags, Timeline, Settings) — WCAG 2.1 AA tags: `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`.
+- Dashboard keyboard nav: 50 Tab presses, asserts > 3 focusable elements receive focus.
+- Settings keyboard nav: 80 Tab presses, asserts > 8 native form elements (`INPUT|SELECT|TEXTAREA|BUTTON`) receive focus.
+
+**Key design choices:**
+- No `baseURL` in `playwright.config.ts` — tests use `APP_URL = 'http://localhost:5000'` constant (consistent with all other specs).
+- Violations are printed to stdout on failure for CI triage without re-running.
+- `waitForTimeout(500)` after `networkidle` gives Blazor WASM component lifecycle time to complete (same pattern as portable.spec.ts).
+- `AxeBuilder` imported from `@axe-core/playwright` — requires `npm install` before first run (`npm install --save-dev @axe-core/playwright@^4.10.0`).
+
 **Pattern used**: Same `APP_URL`, `waitForApp`, `test.afterEach` stopTimer pattern as `timer.spec.ts` and `projects.spec.ts`.
 
 ---

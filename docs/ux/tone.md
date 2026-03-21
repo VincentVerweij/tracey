@@ -57,6 +57,13 @@ Use the same word for the same thing every time. Decisions:
 - State what to do: "Check Settings → Database to reconnect."
 - Never stack all three into one sentence
 
+## Loading and Status Patterns
+
+- Loading indicators name what's loading: "Loading entries…" not "Loading…"
+- Use a real ellipsis character (…) not three dots (...)
+- Success confirmations stay brief: "Settings saved." not "Your settings have been successfully saved."
+- Connected state: "Connected" not "Connection established"
+
 ## Example String Pairs
 
 | ❌ Avoid | ✅ Use |
@@ -68,3 +75,9 @@ Use the same word for the same thing every time. Decisions:
 | "Click here to start tracking" | "Start timer" |
 | "Inactivity detected" | "You were away" |
 | "TimeEntry deleted successfully" | "Entry deleted" |
+| "Inactivity Detection" (section title) | "Idle Detection" |
+| "Connect & save" | "Connect" |
+| "Confirm Delete" (button) | "Delete client" / "Delete project" |
+| "Are you sure? Deleting X will…" | "All tasks under X will be deleted." |
+| "Hover over the timeline or click a dot to preview a screenshot" | "Hover or click a dot to preview" |
+| "+ Add Task" / "+ Add Project" | "+ Add task" / "+ Add project" |

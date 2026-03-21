@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod data;
 pub mod hierarchy;
 pub mod idle;
 pub mod screenshot;
