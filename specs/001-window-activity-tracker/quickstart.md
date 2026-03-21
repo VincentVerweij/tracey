@@ -37,7 +37,7 @@ cargo tauri --version  # tauri-cli 2.0.x
 tracey/
 ├── src-tauri/          # Rust / Tauri native layer
 ├── src/                # C# Blazor .NET 10 frontend
-│   ├── Tracey.sln
+│   ├── Tracey.slnx
 │   └── Tracey.App/
 ├── tests/
 │   └── e2e/            # Playwright tests
@@ -73,7 +73,7 @@ dotnet restore
 cd ..
 ```
 
-The project references **BlazorBlueprint.Components** from NuGet. Run `dotnet restore` to pull it.
+The project references **BlazorBlueprint.Components** and **MailKit** from NuGet. Run `dotnet restore` to pull them.
 
 > **NuGet package**: `BlazorBlueprint.Components`  
 > **Docs**: https://blazorblueprintui.com  
@@ -101,8 +101,8 @@ cargo tauri dev
 ```
 
 This command:
-1. Starts the Blazor Server on a random local port (configured in `tauri.conf.json` → `build.devUrl`).
-2. Launches the Tauri window pointed at that URL.
+1. Runs `dotnet watch run --project ../src/Tracey.App --urls http://localhost:5000` (configured in `tauri.conf.json` → `build.beforeDevCommand`).
+2. Launches the Tauri window pointed at `http://localhost:5000`.
 3. Watches for Rust changes and recompiles the native layer.
 
 ### Hot Reload (Blazor Only)
@@ -185,19 +185,23 @@ Output is in `src-tauri/target/release/`. The result is a **single portable `.ex
 
 ```toml
 [dependencies]
-tauri                    = { version = "2", features = ["wry"] }
-tauri-plugin-system-idle = "2"
-windows                  = { version = "0.58", features = [
+tauri    = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-fs = "2"
+# Idle detection handled via Win32 in platform/windows.rs (no tauri-plugin-system-idle)
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows  = { version = "0.58", features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_SystemInformation",
     "Win32_System_ProcessStatus",
-    "Win32_Graphics_Gdi",
+    "Win32_System_Threading",
     "Win32_Foundation",
+    "Win32_Graphics_Gdi",
 ] }
-image    = "0.25"
+image    = { version = "0.25", default-features = false, features = ["jpeg"] }
 serde    = { version = "1", features = ["derive"] }
-keyring  = "2"
+keyring  = "3"
 tokio    = { version = "1", features = ["full"] }
 
 [features]
@@ -209,11 +213,15 @@ test = []   # enables test doubles for screenshot capture
 ## Blazor .csproj Key References
 
 ```xml
-<PackageReference Include="BlazorBlueprint.Components" Version="*" />
-<PackageReference Include="Microsoft.Data.Sqlite"       Version="*" />
-<PackageReference Include="Npgsql"                      Version="*" />
-<PackageReference Include="MailKit"                     Version="*" />
+<PackageReference Include="BlazorBlueprint.Components"                        Version="3.5.2" />
+<PackageReference Include="MailKit"                                            Version="4.15.1" />
+<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly"        Version="10.0.4" />
+<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.4" />
+<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions"          Version="10.0.4" />
+<PackageReference Include="Microsoft.Extensions.Http"                          Version="10.0.4" />
 ```
+
+> **Note**: SQLite is provided by `rusqlite` on the Rust side (bundled). There is no `Microsoft.Data.Sqlite` or `Npgsql` .NET package — PostgreSQL sync uses `tokio-postgres` in the Rust layer.
 
 ---
 
@@ -221,21 +229,19 @@ test = []   # enables test doubles for screenshot capture
 
 ```json
 {
-  "$schema": "../gen/schemas/desktop-schema.json",
+  "$schema": "https://schema.tauri.app/config/2",
   "identifier": "default",
-  "description": "Tracey default capabilities",
+  "description": "Least-privilege capability grants for Tracey.",
   "windows": ["main"],
   "permissions": [
-    "core:event:default",
-    "core:window:default",
-    "system-idle:allow-get-idle-time",
-    { "identifier": "fs:allow-write-file", "allow": ["$APPDATA/tracey/**", "$HOME/tracey/**"] },
-    { "identifier": "fs:allow-read-file",  "allow": ["$APPDATA/tracey/**", "$HOME/tracey/**"] }
+    "core:default",
+    "fs:allow-write-file",
+    "fs:allow-read-file"
   ]
 }
 ```
 
-> **Note**: Use `fs:allow-write-file` (singular), not `fs:allow-write-files` (plural) — the plural form does not exist and silently fails.
+> **Note**: Use `fs:allow-write-file` (singular), not `fs:allow-write-files` (plural) — the plural form does not exist and silently fails. Idle detection does not require a Tauri plugin — it is implemented directly via Win32 `GetLastInputInfo` in `platform/windows.rs`.
 
 ---
 
