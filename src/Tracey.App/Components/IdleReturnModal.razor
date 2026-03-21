@@ -118,12 +118,25 @@
         }
     }
 
-    private async Task ShowSpecifyInput()
+    private bool _pendingFocusSpecify = false;
+
+    private void ShowSpecifyInput()
     {
         _specifyError = string.Empty;
         _showSpecifyInput = true;
-        await InvokeAsync(StateHasChanged);
-        await _specifyInputRef.FocusAsync();
+        _pendingFocusSpecify = true;
+        // Focus is deferred to OnAfterRenderAsync — the input doesn't exist in the DOM
+        // until _showSpecifyInput = true has been applied by the next render cycle.
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingFocusSpecify)
+        {
+            _pendingFocusSpecify = false;
+            try { await _specifyInputRef.FocusAsync(); }
+            catch { /* silently ignore if the ref is not yet assigned */ }
+        }
     }
 
     private async Task SubmitSpecify()

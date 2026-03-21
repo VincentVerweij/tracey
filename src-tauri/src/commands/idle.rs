@@ -59,6 +59,16 @@ pub struct IdleResolveRequest {
 #[derive(Serialize)]
 pub struct IdleResolveResponse {
     pub created_entry_id: Option<String>,
+    pub resumed_entry_id: Option<String>,
+    pub resumed_started_at: Option<String>,
+}
+
+/// Info captured from the running timer before it is stopped — used to auto-resume after idle.
+struct RunningTimerInfo {
+    description: String,
+    project_id: Option<String>,
+    task_id: Option<String>,
+    tag_ids: Vec<String>,
 }
 
 #[tauri::command]
@@ -73,12 +83,11 @@ pub fn idle_resolve(
     match request.resolution.as_str() {
         "keep" => {
             // No-op: timer keeps running, no new entries
-            Ok(IdleResolveResponse { created_entry_id: None })
+            Ok(IdleResolveResponse { created_entry_id: None, resumed_entry_id: None, resumed_started_at: None })
         }
 
         "break" => {
-            // Stop the running timer at idle_started_at
-            stop_running_timer_at(&conn, &request.idle_started_at, &now)?;
+            let info = stop_running_timer_at(&conn, &request.idle_started_at, &now)?;
 
             // Insert a break entry for the idle period
             let break_id = Ulid::new().to_string();
@@ -95,12 +104,19 @@ pub fn idle_resolve(
                 &now,
             )?;
 
-            Ok(IdleResolveResponse { created_entry_id: Some(break_id) })
+            let (resumed_entry_id, resumed_started_at) = if let Some(i) = info {
+                let rid = insert_running_entry(
+                    &conn, &i.description, i.project_id.as_deref(), i.task_id.as_deref(),
+                    &i.tag_ids, &request.idle_ended_at, &device_id, &now,
+                )?;
+                (Some(rid), Some(request.idle_ended_at.clone()))
+            } else { (None, None) };
+
+            Ok(IdleResolveResponse { created_entry_id: Some(break_id), resumed_entry_id, resumed_started_at })
         }
 
         "meeting" => {
-            // Stop running timer at idle_started_at
-            stop_running_timer_at(&conn, &request.idle_started_at, &now)?;
+            let info = stop_running_timer_at(&conn, &request.idle_started_at, &now)?;
 
             let meeting_id = Ulid::new().to_string();
             insert_entry(
@@ -116,15 +132,22 @@ pub fn idle_resolve(
                 &now,
             )?;
 
-            Ok(IdleResolveResponse { created_entry_id: Some(meeting_id) })
+            let (resumed_entry_id, resumed_started_at) = if let Some(i) = info {
+                let rid = insert_running_entry(
+                    &conn, &i.description, i.project_id.as_deref(), i.task_id.as_deref(),
+                    &i.tag_ids, &request.idle_ended_at, &device_id, &now,
+                )?;
+                (Some(rid), Some(request.idle_ended_at.clone()))
+            } else { (None, None) };
+
+            Ok(IdleResolveResponse { created_entry_id: Some(meeting_id), resumed_entry_id, resumed_started_at })
         }
 
         "specify" => {
             let details = request.entry_details
                 .ok_or_else(|| "specify requires entry_details".to_string())?;
 
-            // Stop running timer at idle_started_at
-            stop_running_timer_at(&conn, &request.idle_started_at, &now)?;
+            let info = stop_running_timer_at(&conn, &request.idle_started_at, &now)?;
 
             let entry_id = Ulid::new().to_string();
             insert_entry(
@@ -140,7 +163,7 @@ pub fn idle_resolve(
                 &now,
             )?;
 
-            // Insert tag associations
+            // Insert tag associations for the idle (specify) entry
             for tag_id in &details.tag_ids {
                 conn.execute(
                     "INSERT INTO time_entry_tags (time_entry_id, tag_id) VALUES (?1, ?2)",
@@ -148,34 +171,90 @@ pub fn idle_resolve(
                 ).map_err(|e| e.to_string())?;
             }
 
-            Ok(IdleResolveResponse { created_entry_id: Some(entry_id) })
+            // Resume the original pre-idle activity
+            let (resumed_entry_id, resumed_started_at) = if let Some(i) = info {
+                let rid = insert_running_entry(
+                    &conn, &i.description, i.project_id.as_deref(), i.task_id.as_deref(),
+                    &i.tag_ids, &request.idle_ended_at, &device_id, &now,
+                )?;
+                (Some(rid), Some(request.idle_ended_at.clone()))
+            } else { (None, None) };
+
+            Ok(IdleResolveResponse { created_entry_id: Some(entry_id), resumed_entry_id, resumed_started_at })
         }
 
         other => Err(format!("unknown resolution: {}", other)),
     }
 }
 
-/// Stop any running timer, setting ended_at to the given timestamp (not now).
-/// Timer stopped at idle_started_at — not at resolution time.
+/// Stop the running timer at `ended_at`. Returns info about the stopped entry so it can be
+/// resumed after the idle period. Returns `None` if no timer was running.
 fn stop_running_timer_at(
     conn: &rusqlite::Connection,
     ended_at: &str,
     modified_at: &str,
-) -> Result<(), String> {
+) -> Result<Option<RunningTimerInfo>, String> {
     let running = conn.query_row(
-        "SELECT id FROM time_entries WHERE ended_at IS NULL LIMIT 1",
+        "SELECT id, description, project_id, task_id \
+         FROM time_entries WHERE ended_at IS NULL LIMIT 1",
         [],
-        |r| r.get::<_, String>(0),
+        |r| Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, Option<String>>(2)?,
+            r.get::<_, Option<String>>(3)?,
+        )),
     ).ok();
 
-    if let Some(running_id) = running {
+    let Some((id, description, project_id, task_id)) = running else {
+        return Ok(None);
+    };
+
+    let mut stmt = conn.prepare(
+        "SELECT tag_id FROM time_entry_tags WHERE time_entry_id = ?1"
+    ).map_err(|e| e.to_string())?;
+    let tag_ids: Vec<String> = stmt
+        .query_map(params![&id], |r| r.get(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    conn.execute(
+        "UPDATE time_entries SET ended_at = ?1, modified_at = ?2 WHERE id = ?3",
+        params![ended_at, modified_at, &id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(Some(RunningTimerInfo { description, project_id, task_id, tag_ids }))
+}
+
+/// Insert a new running entry (ended_at = NULL). Used to auto-resume the pre-idle activity.
+/// Returns the new entry id.
+fn insert_running_entry(
+    conn: &rusqlite::Connection,
+    description: &str,
+    project_id: Option<&str>,
+    task_id: Option<&str>,
+    tag_ids: &[String],
+    started_at: &str,
+    device_id: &str,
+    now: &str,
+) -> Result<String, String> {
+    let id = Ulid::new().to_string();
+    conn.execute(
+        "INSERT INTO time_entries \
+            (id, description, project_id, task_id, started_at, ended_at, is_break, device_id, created_at, modified_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, NULL, 0, ?6, ?7, ?8)",
+        params![id, description, project_id, task_id, started_at, device_id, now, now],
+    ).map_err(|e| format!("insert_running_entry failed: {}", e))?;
+
+    for tag_id in tag_ids {
         conn.execute(
-            "UPDATE time_entries SET ended_at = ?1, modified_at = ?2 WHERE id = ?3",
-            params![ended_at, modified_at, running_id],
+            "INSERT INTO time_entry_tags (time_entry_id, tag_id) VALUES (?1, ?2)",
+            params![id, tag_id],
         ).map_err(|e| e.to_string())?;
     }
 
-    Ok(())
+    Ok(id)
 }
 
 /// Insert a completed time entry (started_at and ended_at both known).

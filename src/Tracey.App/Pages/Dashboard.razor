@@ -52,6 +52,9 @@
 
     private async Task HandleIdleResolved()
     {
+        // Re-sync timer state so QuickEntryBar reflects the resumed timer.
+        if (Timer is TimerStateService ts)
+            await ts.InitializeAsync();
         await RefreshList();
     }
 

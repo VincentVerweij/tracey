@@ -494,7 +494,9 @@ public record IdleEntryDetails(
     [property: JsonPropertyName("tag_ids")] string[] TagIds);
 
 public record IdleResolveResponse(
-    [property: JsonPropertyName("created_entry_id")] string? CreatedEntryId);
+    [property: JsonPropertyName("created_entry_id")] string? CreatedEntryId,
+    [property: JsonPropertyName("resumed_entry_id")] string? ResumedEntryId,
+    [property: JsonPropertyName("resumed_started_at")] string? ResumedStartedAt);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sync
