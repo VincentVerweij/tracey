@@ -159,7 +159,7 @@
  - [x] T047 [P] [US4] Implement `screenshot_list` Tauri command (queries local `screenshots` SQLite table by time range) and `screenshot_delete_expired` command (removes expired file + row pairs); both backed by the `screenshots` table defined in the migration from T009 — `src-tauri/src/commands/screenshot.rs`
  - [x] T048 [US4] Implement screenshot retention cleanup background job (delete files + records older than `screenshot_retention_days`; log failures without crashing) — `src-tauri/src/services/screenshot_service.rs`
  
-- [ ] T049 [US4] Build `ScreenshotTimeline.razor` page: scrollable chronological timeline, screenshot viewer, nearest-time query via `screenshot_list`, in-app error notification when storage fails; subscribe to the `tracey://error` event emitted by T046 and surface a dismissible in-app banner (using the BlazorBlueprint alert component) whenever a screenshot write failure occurs — `src/Tracey.App/Pages/Timeline.razor`
+- [x] T049 [US4] Build `ScreenshotTimeline.razor` page: scrollable chronological timeline, screenshot viewer, nearest-time query via `screenshot_list`, in-app error notification when storage fails; subscribe to the `tracey://error` event emitted by T046 and surface a dismissible in-app banner (using the BlazorBlueprint alert component) whenever a screenshot write failure occurs — `src/Tracey.App/Pages/Timeline.razor`
 
 **Checkpoint**: US4 acceptance tests pass. Screenshot timeline displays captured images at the correct times.
 

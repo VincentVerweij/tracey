@@ -9,7 +9,7 @@
 <div class="timeline-page">
     @if (_errorMessage is not null)
     {
-        <div role="alert" class="timeline-error-banner">
+        <div role="alert" class="t-error-banner">
             <span>@_errorMessage</span>
             <button @onclick="DismissError" aria-label="Dismiss error">✕</button>
         </div>
@@ -22,7 +22,7 @@
                    @bind="_dateFilter"
                    @bind:after="LoadScreenshots"
                    aria-label="Filter by date" />
-            <button @onclick="RunCleanup" class="btn-ghost" aria-label="Clean up expired screenshots">
+            <button @onclick="RunCleanup" class="t-btn t-btn-ghost" aria-label="Clean up expired screenshots">
                 Clean up
             </button>
         </div>
@@ -30,7 +30,7 @@
 
     @if (_isLoading)
     {
-        <div class="timeline-loading" aria-live="polite">Loading…</div>
+        <div class="t-loading-text" aria-live="polite">Loading…</div>
     }
     else if (_screenshots.Count == 0)
     {

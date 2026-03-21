@@ -1329,6 +1329,12 @@ The `tauri-bridge.js` registers `tracey://idle-detected` listeners via Tauri's n
 **Why:** Razor parse errors RZ1027/CS1039/CS1073 blocked build during Phase 4 final fixes. The pattern `@onchange='@(e => Foo($"bar: \"{e.Value}\""))'` is illegal. Use `var msg = $"bar: \"{e.Value}\""; @onchange="@(_ => Foo(msg))"` instead.
 **Applies to:** All future `@code` lambdas with string interpolation containing quotes.
 
+## 2026-03-21: Design System Unification — Shared CSS Utility Classes
+
+**By:** UXer (Vincent Verweij session)
+**What:** Added a shared Tracey button system (`.t-btn`, `.t-btn-primary`, `.t-btn-secondary`, `.t-btn-ghost`, `.t-btn-danger`, `.t-btn-danger-outline`, `.t-btn-sm`) and `.t-input`, `.t-loading-text`, `.t-error-banner`, `.t-inline-error`, `.page-subtitle` utility classes to `app.css`. Pages/components updated to use the shared system: Tags.razor (fully migrated to `t-btn-*` + `t-input`), Settings.razor (`settings-header-sub` → `page-subtitle`), Timeline.razor (error banner → `t-error-banner`, loading → `t-loading-text`, cleanup button → `t-btn t-btn-ghost`). All remaining input focus rings aligned to `box-shadow: 0 0 0 3px rgba(99,102,241,0.12)` + `border-color` pattern across Projects.razor.css, TimeEntryList.razor.css, and IdleReturnModal.razor.css. All input `border-radius` normalised to `6px`. `.settings-error-banner` updated with left accent border to match `t-error-banner`. Tags empty state migrated to global `empty-state-illustration` pattern. `t-` prefix chosen to avoid Bootstrap `.btn` class conflicts.
+**Why:** Each page had grown its own isolated button/input/error/loading styles (`settings-btn*`, `tag-btn*`, `btn-ghost`, etc.). The inconsistency was visually apparent — different padding, focus rings, border-radius, and error banner styles across pages. Centralising into `t-*` utilities eliminates duplication and ensures every native-button interaction looks identical regardless of which page it appears on.
+
 ## 2026-03-19: Diagnostics Pattern for Event Pipeline Debugging
 **By:** Finch (Phase 4)
 **What:** When debugging a Tauri→JS→C# event pipeline issue, add diagnostics at 4 layers: (1) Rust `eprintln!` in the emitting service (e.g. `idle_service.rs` heartbeat + emit result), (2) `console.log` in `tauri-bridge.js` on receive (bridge init, per-event, registration confirm), (3) `Console.WriteLine` in `TauriEventService.RouteEvent` + per-event handler, (4) `Console.WriteLine` in the Blazor component handler. Remove all diagnostics once the pipeline is confirmed working.

@@ -65,16 +65,18 @@
 .specify-form input {
     padding: 0.5rem 0.75rem;
     border: 1px solid var(--tracey-border);
-    border-radius: 4px;
+    border-radius: 6px;
     font-size: 0.9rem;
     font-family: inherit;
     color: var(--tracey-text);
     background: var(--tracey-surface);
+    transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .specify-form input:focus {
-    outline: 2px solid var(--tracey-accent);
-    outline-offset: -1px;
+    outline: none;
+    border-color: var(--tracey-accent);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
 }
 
 .specify-actions {

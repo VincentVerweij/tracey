@@ -16,11 +16,7 @@
     margin-bottom: 0.25rem;
 }
 
-.settings-header-sub {
-    font-size: 0.9rem;
-    color: var(--tracey-text-muted);
-    margin: 0.25rem 0 0;
-}
+/* .settings-header-sub replaced by global .page-subtitle */
 
 /* ── Loading / error banners ─────────────── */
 
@@ -54,6 +50,7 @@
     gap: 0.5rem;
     background: #fef2f2;
     border: 1px solid #fecaca;
+    border-left: 3px solid #ef4444;
     border-radius: var(--tracey-radius);
     padding: 0.875rem 1rem;
     color: #991b1b;

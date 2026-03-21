@@ -24,42 +24,25 @@
 .timeline-controls input[type="date"] {
     padding: 0.4rem 0.75rem;
     border: 1px solid var(--tracey-border);
-    border-radius: var(--tracey-radius);
+    border-radius: 6px;
     font-family: inherit;
     font-size: 0.875rem;
     background: var(--tracey-surface);
     color: var(--tracey-text);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.timeline-controls input[type="date"]:focus {
+    outline: none;
+    border-color: var(--tracey-accent);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
 }
 
 /* ─── Error banner ────────────────────────────────────────── */
-.timeline-error-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 1rem;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
-    border-left: 3px solid #ef4444;
-    border-radius: var(--tracey-radius);
-    color: #991b1b;
-    font-size: 0.875rem;
-}
-.timeline-error-banner button {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: #991b1b;
-    font-size: 1rem;
-    line-height: 1;
-}
+/* Error banner now uses global .t-error-banner */
+/* Loading state now uses global .t-loading-text */
 
 /* ─── Empty / loading states ──────────────────────────────── */
-.timeline-loading {
-    text-align: center;
-    color: var(--tracey-text-muted, #6b7280);
-    padding: 3rem;
-    font-size: 0.9rem;
-}
 
 .empty-state-illustration {
     display: flex;
