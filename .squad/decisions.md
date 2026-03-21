@@ -943,6 +943,65 @@
 
 ---
 
+## 2026-03-21: Cloud Sync — URI Caching in SyncState
+
+### Sync: Connection URI Cached In-Memory, Keychain Only at Startup
+**By:** Finch / Reese (Vincent Verweij session)
+**What:** Connection URI cached in `SyncState.cached_uri: Option<String>` after successful `sync_configure`. Background loop and `sync_trigger` read from the in-memory cache. Keychain (`keyring`) is read exactly once — at `start_sync_loop` startup — to restore the URI across app restarts. Keychain writes are best-effort (log warning, don't abort on failure).
+**Why:** Windows Credential Manager (via `keyring`) is not reliably accessible on every 30-second tick inside the Tauri async runtime. Per-tick keychain calls produced "No matching entry found in secure storage" errors. Caching eliminates this class of error.
+
+---
+
+## 2026-03-21: Cloud Sync — No UNIQUE Name Constraints on Sync Tables
+
+### Sync: Name Uniqueness Not Enforced in Postgres
+**By:** Finch / Leon (Vincent Verweij session)
+**What:** `clients_name_unique`, `projects_client_name_unique`, and `tags_name_unique` UNIQUE constraints removed from the external Postgres DDL. The DDL now includes idempotent `DO $$ BEGIN … DROP CONSTRAINT IF EXISTS … END $$` blocks so already-deployed Supabase schemas are fixed on the next sync cycle.
+**Why:** Multi-device sync means two devices can independently create records with the same name before their first sync. The primary key (`id`, a ULID) is the uniqueness anchor, not the name. Enforcing name uniqueness at the DB level caused upsert failures when syncing records from SQLite, where names were unique only by user convention.
+
+### Sync: DDL Refresh Runs at the Start of Every Cycle
+**By:** Finch (Vincent Verweij session)
+**What:** `run_sync_cycle_inline` calls `batch_execute(EXTERNAL_DDL)` before any upsert work. The DDL is fully idempotent (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS`).
+**Why:** Ensures schema fixes (e.g. constraint removal) apply to already-deployed Supabase instances without requiring a manual migration step.
+
+---
+
+## 2026-03-21: Cloud Sync — tokio-postgres Timestamp Serialization
+
+### Sync: Timestamps Use `$N::text::timestamptz` Double-Cast
+**By:** Reese (Vincent Verweij session)
+**What:** All timestamp bind parameters in sync SQL use `$N::text::timestamptz` (double-cast) instead of `$N::timestamptz`. Applies to all 7 INSERT … ON CONFLICT DO UPDATE statements across all synced tables.
+**Why:** `tokio-postgres` uses prepared-statement protocol and asks Postgres for the expected OID of each parameter. `$N::timestamptz` causes Postgres to request the TIMESTAMPTZ wire type (OID 1184), which Rust `String` cannot serialize. `$N::text::timestamptz` tells Postgres the parameter is TEXT (OID 25), which `String` can serialize. Postgres then coerces TEXT → TIMESTAMPTZ internally. The symptom was "error serializing parameter N" on every sync attempt.
+
+---
+
+## 2026-03-21: Cloud Sync — Manual Sync Always Full Epoch Scan
+
+### Sync: sync_trigger Ignores Background Loop Cursor
+**By:** Finch (Vincent Verweij session)
+**What:** `sync_trigger` (the "Sync now" button handler) always passes `cursor = None`, which triggers a full scan from the epoch regardless of where the background loop's incremental cursor sits.
+**Why:** The background loop advances its cursor to "now" after each 30-second cycle. If `sync_trigger` reused that cursor, a manual sync fired immediately after an automatic one would find 0 rows. Manual sync is a user-driven "push everything" operation; incremental cursor-based scanning is an optimisation for the automatic background loop only.
+
+---
+
+## 2026-03-21: Cloud Sync — SQLite device_id Migration
+
+### Sync: device_id Added to Sync Tables via Migration 004
+**By:** Leon (Vincent Verweij session)
+**What:** Migration `004_add_device_id_columns.sql` adds `device_id TEXT NOT NULL DEFAULT ''` to `clients`, `projects`, `tasks`, and `tags`. Read helpers substitute a live `device_id()` call (resolves to `COMPUTERNAME` on Windows, `HOSTNAME` elsewhere) for rows whose stored value is the empty-string default.
+**Why:** These tables were created before `device_id` was added to the data model. The external Postgres schema requires the column. Existing rows receive an empty string from the migration; the sync service fills in the current hostname transparently at read time, so all upserts carry a correct `device_id` without a data-backfill step.
+
+---
+
+## 2026-03-21: Cloud Sync UX — Sync Now Button Disabled During Sync
+
+### Sync UX: In-Progress State on Sync Now Button
+**By:** UXer + Root (Vincent Verweij session)
+**What:** `Settings.razor` gains a `_syncInProgress: bool` backing field. The Sync Now button is `disabled` while `_syncInProgress` is true and shows an inline CSS spinner + "Syncing…" label. `TriggerSyncAsync` sets the flag to `true` before the `await`, wraps the IPC call in `try/finally`, and clears the flag in the `finally` block. `.sync-btn-spinner` is a 11 × 11 px `border-radius: 50%` element reusing the existing `@keyframes spin` definition in `Settings.razor.css`.
+**Why:** Without the disabled state, double-clicking Sync Now could fire two concurrent sync cycles. The spinner provides immediate visual feedback that work is in progress.
+
+---
+
 ## Session 2026-03-18 — Bug Fixes & UX Improvements
 
 ### 2026-03-18: Breadcrumb Persistence Across Navigation and Cold Boot

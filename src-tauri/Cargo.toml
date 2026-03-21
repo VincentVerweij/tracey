@@ -31,6 +31,9 @@ image = { version = "0.25", default-features = false, features = ["jpeg"] }
 log = "0.4"
 env_logger = "0.11"
 ulid = "1"
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-uuid-1"] }
+postgres-native-tls = "0.5"
+native-tls = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = [

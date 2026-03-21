@@ -159,7 +159,7 @@ public class TauriIpcService
         Invoke<SyncStatusResponse>("sync_get_status");
 
     public Task<SyncConfigureResponse> SyncConfigureAsync(SyncConfigureRequest request) =>
-        Invoke<SyncConfigureResponse>("sync_configure", request);
+        Invoke<SyncConfigureResponse>("sync_configure", new { request });
 
     public Task<SyncTriggerResponse> SyncTriggerAsync() =>
         Invoke<SyncTriggerResponse>("sync_trigger");

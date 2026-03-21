@@ -243,16 +243,16 @@
 
 ### Tests for User Story 8
 
-- [ ] T069 [P] [US8] Write Playwright E2E tests covering all US8 acceptance scenarios (cross-instance timer visibility, offline queue sync-on-reconnect, conflict resolution, window activity synced, screenshots not synced) — `tests/e2e/specs/cloud-sync.spec.ts`
+- [x] T069 [P] [US8] Write Playwright E2E tests covering all US8 acceptance scenarios (cross-instance timer visibility, offline queue sync-on-reconnect, conflict resolution, window activity synced, screenshots not synced) — `tests/e2e/specs/cloud-sync.spec.ts`
 
 ### Implementation for User Story 8
 
-- [ ] T070 [US8] Implement `sync_configure` Tauri command: validate connection URI, store securely in OS keychain via `keyring` crate (never in SQLite), set `external_db_enabled = true` in preferences — `src-tauri/src/commands/sync.rs`
-- [ ] T071 [US8] Implement external DB schema migration runner: connect to Postgres, apply all DDL migrations from `contracts/sync-api.md` (versioned via `schema_migrations` table) — `src-tauri/src/services/sync_service.rs`
-- [ ] T072 [US8] Implement `SyncService` background loop: process `sync_queue` in upsert batches (50 entries / 500 window records per cycle), 30-second interval, immediate trigger on local write; use `ON CONFLICT ... DO UPDATE` with `modified_at` GREATEST for last-write-wins — `src-tauri/src/services/sync_service.rs`
-- [ ] T073 [US8] Implement offline resilience: queue all writes to `sync_queue` when external DB unreachable; auto-replay on reconnect; preserve queue across app restarts (persisted in SQLite) — `src-tauri/src/services/sync_service.rs`
-- [ ] T074 [P] [US8] Implement `sync_get_status` and `sync_trigger` Tauri commands; emit `tracey://sync-status-changed` event on state changes — `src-tauri/src/commands/sync.rs`
-- [ ] T075 [US8] Add sync connection settings section to `Settings.razor` (URI input masked, connect button, sync status indicator, last sync time) — `src/Tracey.App/Pages/Settings.razor`
+- [x] T070 [US8] Implement `sync_configure` Tauri command: validate connection URI, store securely in OS keychain via `keyring` crate (never in SQLite), set `external_db_enabled = true` in preferences — `src-tauri/src/commands/sync.rs`
+- [x] T071 [US8] Implement external DB schema migration runner: connect to Postgres, apply all DDL migrations from `contracts/sync-api.md` (versioned via `schema_migrations` table) — `src-tauri/src/services/sync_service.rs`
+- [x] T072 [US8] Implement `SyncService` background loop: process `sync_queue` in upsert batches (50 entries / 500 window records per cycle), 30-second interval, immediate trigger on local write; use `ON CONFLICT ... DO UPDATE` with `modified_at` GREATEST for last-write-wins — `src-tauri/src/services/sync_service.rs`
+- [x] T073 [US8] Implement offline resilience: queue all writes to `sync_queue` when external DB unreachable; auto-replay on reconnect; preserve queue across app restarts (persisted in SQLite) — `src-tauri/src/services/sync_service.rs`
+- [x] T074 [P] [US8] Implement `sync_get_status` and `sync_trigger` Tauri commands; emit `tracey://sync-status-changed` event on state changes — `src-tauri/src/commands/sync.rs`
+- [x] T075 [US8] Add sync connection settings section to `Settings.razor` (URI input masked, connect button, sync status indicator, last sync time) — `src/Tracey.App/Pages/Settings.razor`
 
 **Checkpoint**: US8 acceptance tests pass. Timer visible cross-device within 10 s (SC-008). Offline entries sync within 60 s of reconnect (SC-004).
 

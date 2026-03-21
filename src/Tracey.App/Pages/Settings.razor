@@ -9,154 +9,289 @@
 <PageTitle>Settings — Tracey</PageTitle>
 
 <div class="settings-page">
-    <h1 class="page-title">Settings</h1>
+    <header class="settings-header">
+        <h1 class="page-title">Settings</h1>
+        <p class="settings-header-sub">Manage how Tracey tracks time, syncs, and notifies you.</p>
+    </header>
 
     @if (_loading)
     {
-        <p class="text-muted">Loading settings…</p>
+        <div class="settings-loading">
+            <span class="settings-loading-spinner" aria-hidden="true"></span>
+            <span>Loading…</span>
+        </div>
     }
     else if (_error != null)
     {
-        <BbAlert>
-            <BbAlertTitle>Failed to load settings</BbAlertTitle>
-            <BbAlertDescription>@_error</BbAlertDescription>
-        </BbAlert>
+        <div class="settings-error-banner" role="alert">
+            <span class="settings-error-icon">⚠</span>
+            <span>@_error</span>
+        </div>
     }
     else
     {
         <!-- ── Inactivity Detection ──────────────────────────────────── -->
-        <section class="settings-section">
-            <h2 class="settings-section-title">Inactivity Detection</h2>
-            <div class="settings-field">
-                <label for="inactivity-input" class="settings-label">
-                    Inactivity timeout (minutes)
-                </label>
-                <input id="inactivity-input"
-                       type="number"
-                       class="settings-input"
-                       min="0.5"
-                       max="60"
-                       step="0.5"
-                       @bind="_inactivityTimeoutMinutes"
-                       @bind:after="SaveInactivityAsync" />
-                <span class="settings-hint">
-                    After this many minutes of inactivity, the on-return prompt will appear (if a timer is running).
-                </span>
+        <section class="settings-card">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">🕐</span>
+                <div>
+                    <h2 class="settings-card-title">Inactivity Detection</h2>
+                    <p class="settings-card-desc">Tracey watches for periods of no input and prompts you on return.</p>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-row">
+                    <label for="inactivity-input" class="settings-label">
+                        Timeout
+                        <span class="settings-label-unit">minutes</span>
+                    </label>
+                    <div class="settings-control-group">
+                        <input id="inactivity-input"
+                               type="number"
+                               class="settings-input settings-input-short"
+                               min="0.5"
+                               max="60"
+                               step="0.5"
+                               @bind="_inactivityTimeoutMinutes"
+                               @bind:after="SaveInactivityAsync" />
+                        <span class="settings-hint">After this many minutes without input, the on-return prompt appears when a timer is running.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── Cloud Sync ────────────────────────────────────────────── -->
+        <section class="settings-card">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">☁</span>
+                <div>
+                    <h2 class="settings-card-title">Cloud Sync</h2>
+                    <p class="settings-card-desc">Sync entries, projects, and tags across devices via a shared database. Screenshots stay local.</p>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-row settings-row-stacked">
+                    <label for="sync-uri-input" class="settings-label">
+                        Connection URI
+                    </label>
+                    <div class="settings-control-group">
+                        <div class="settings-uri-row">
+                            <input id="sync-uri-input"
+                                   type="password"
+                                   class="settings-input settings-input-uri"
+                                   placeholder="postgresql://user:password@host:5432/dbname"
+                                   autocomplete="off"
+                                   @bind="_syncUri" />
+                            <button class="settings-btn settings-btn-primary"
+                                    disabled="@_syncConnecting"
+                                    @onclick="ConnectSyncAsync">
+                                @(_syncConnecting ? "Connecting…" : "Connect & save")
+                            </button>
+                            @if (_syncEnabled)
+                            {
+                                <button class="settings-btn settings-btn-ghost-danger"
+                                        disabled="@_syncConnecting"
+                                        @onclick="DisableSyncAsync">
+                                    Disconnect
+                                </button>
+                            }
+                        </div>
+                        <span class="settings-hint">Stored securely in the OS credential store — never written to disk.</span>
+                    </div>
+                </div>
+
+                @if (_syncError != null)
+                {
+                    <div class="settings-inline-error" role="alert">
+                        <span class="settings-error-icon">⚠</span>
+                        @_syncError
+                    </div>
+                }
+                @if (_syncSuccess)
+                {
+                    <div class="settings-inline-ok" role="status">
+                        <span>✓</span> Connected and syncing.
+                    </div>
+                }
+
+                @if (_syncStatus != null)
+                {
+                    <div class="settings-sync-pill @(_syncStatus.Connected ? "sync-pill-connected" : _syncEnabled ? "sync-pill-error" : "sync-pill-off")">
+                        <span class="sync-dot"></span>
+                        @if (_syncStatus.Connected)
+                        {
+                            <span>Connected</span>
+                            @if (_syncStatus.PendingQueueSize > 0)
+                            {
+                                <span class="sync-queue-badge">@_syncStatus.PendingQueueSize pending</span>
+                            }
+                            @if (_syncStatus.LastSyncAt != null)
+                            {
+                                <span class="sync-last-at">Last sync: @_syncStatus.LastSyncAt</span>
+                            }
+                            <button class="settings-btn settings-btn-ghost-muted settings-btn-sm"
+                                    disabled="@_syncInProgress"
+                                    @onclick="TriggerSyncAsync">
+                                @if (_syncInProgress)
+                                {
+                                    <span class="sync-btn-spinner" aria-hidden="true"></span>
+                                    <span>Syncing…</span>
+                                }
+                                else
+                                {
+                                    <span>Sync now</span>
+                                }
+                            </button>
+                        }
+                        else if (_syncEnabled)
+                        {
+                            <span>Disconnected@(_syncStatus.LastError != null ? $" — {_syncStatus.LastError}" : "")</span>
+                        }
+                        else
+                        {
+                            <span>Not configured</span>
+                        }
+                    </div>
+
+                    @if (_syncLastTriggerResult != null)
+                    {
+                        var isError = _syncLastTriggerResult.Contains("error");
+                        <div class="@(isError ? "settings-inline-error" : "settings-inline-ok")" role="status">
+                            <span>@(isError ? "⚠" : "✓")</span> @_syncLastTriggerResult
+                        </div>
+                    }
+                }
             </div>
         </section>
 
         <!-- ── Notifications ─────────────────────────────────────────── -->
-        <section class="settings-section">
-            <h2 class="settings-section-title">Notifications</h2>
-            <p class="text-muted">
-                Tracey can alert you when a timer has been running longer than a set threshold.
-            </p>
-
-            <!-- Threshold -->
-            <div class="settings-field">
-                <label for="threshold-input" class="settings-label">
-                    Notification threshold (hours)
-                </label>
-                <input id="threshold-input"
-                       type="number"
-                       class="settings-input"
-                       min="0.5"
-                       max="24"
-                       step="0.5"
-                       @bind="_thresholdHours"
-                       @bind:after="SaveThresholdAsync" />
-                <span class="settings-hint">
-                    Alert when the active timer exceeds this many hours. Default: 8.
-                </span>
-            </div>
-
-            <!-- Email channel -->
-            <div class="settings-channel-card">
-                <div class="settings-channel-header">
-                    <strong>Email (SMTP)</strong>
-                </div>
-                <BbAlert class="settings-channel-stub-notice">
-                    <BbAlertTitle>Coming in a future update</BbAlertTitle>
-                    <BbAlertDescription>
-                        Email notifications require the Tauri desktop process for SMTP delivery.
-                        You can pre-configure your SMTP settings now; they will be used once
-                        this feature is fully enabled.
-                    </BbAlertDescription>
-                </BbAlert>
-                <div class="settings-field">
-                    <label class="settings-label">SMTP host</label>
-                    <input type="text" class="settings-input" placeholder="smtp.example.com"
-                           @bind='_emailConfig["smtp_host"]' @bind:after="SaveChannelConfigsAsync" />
-                </div>
-                <div class="settings-field">
-                    <label class="settings-label">SMTP port</label>
-                    <input type="number" class="settings-input" placeholder="587"
-                           @bind='_emailConfig["smtp_port"]' @bind:after="SaveChannelConfigsAsync" />
-                </div>
-                <div class="settings-field">
-                    <label class="settings-label">Username</label>
-                    <input type="text" class="settings-input" autocomplete="username"
-                           @bind='_emailConfig["smtp_user"]' @bind:after="SaveChannelConfigsAsync" />
-                </div>
-                <div class="settings-field">
-                    <label class="settings-label">Password</label>
-                    <input type="password" class="settings-input" autocomplete="current-password"
-                           @bind='_emailConfig["smtp_pass"]' @bind:after="SaveChannelConfigsAsync" />
-                </div>
-                <div class="settings-field">
-                    <label class="settings-label">From address</label>
-                    <input type="email" class="settings-input"
-                           @bind='_emailConfig["smtp_from"]' @bind:after="SaveChannelConfigsAsync" />
-                </div>
-                <div class="settings-field">
-                    <label class="settings-label">To address</label>
-                    <input type="email" class="settings-input"
-                           @bind='_emailConfig["smtp_to"]' @bind:after="SaveChannelConfigsAsync" />
+        <section class="settings-card">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">🔔</span>
+                <div>
+                    <h2 class="settings-card-title">Notifications</h2>
+                    <p class="settings-card-desc">Alert yourself when a timer runs longer than expected.</p>
                 </div>
             </div>
+            <div class="settings-card-body">
 
-            <!-- Telegram channel -->
-            <div class="settings-channel-card">
-                <div class="settings-channel-header">
-                    <strong>Telegram</strong>
-                    <label class="settings-toggle-label">
-                        <input type="checkbox"
-                               @bind="_telegramEnabled"
-                               @bind:after="SaveChannelConfigsAsync"
-                               aria-label="Enable Telegram notifications" />
-                        Enable
+                <!-- Threshold -->
+                <div class="settings-row">
+                    <label for="threshold-input" class="settings-label">
+                        Threshold
+                        <span class="settings-label-unit">hours</span>
                     </label>
+                    <div class="settings-control-group">
+                        <input id="threshold-input"
+                               type="number"
+                               class="settings-input settings-input-short"
+                               min="0.5"
+                               max="24"
+                               step="0.5"
+                               @bind="_thresholdHours"
+                               @bind:after="SaveThresholdAsync" />
+                        <span class="settings-hint">Notify when the active timer exceeds this duration. Default: 8 hours.</span>
+                    </div>
                 </div>
-                <div class="settings-field">
-                    <label class="settings-label">Bot token</label>
-                    <input type="password" class="settings-input"
-                           placeholder="123456:ABCdef…"
-                           autocomplete="off"
-                           @bind='_telegramConfig["bot_token"]' @bind:after="SaveChannelConfigsAsync" />
-                    <span class="settings-hint">Obtain from @@BotFather on Telegram.</span>
-                </div>
-                <div class="settings-field">
-                    <label class="settings-label">Chat ID</label>
-                    <input type="text" class="settings-input"
-                           placeholder="-1001234567890"
-                           @bind='_telegramConfig["chat_id"]' @bind:after="SaveChannelConfigsAsync" />
-                    <span class="settings-hint">
-                        Your personal chat ID or a group/channel ID (negative for groups).
-                    </span>
-                </div>
-            </div>
 
-            @if (_saveError != null)
-            {
-                <BbAlert>
-                    <BbAlertTitle>Save failed</BbAlertTitle>
-                    <BbAlertDescription>@_saveError</BbAlertDescription>
-                </BbAlert>
-            }
-            @if (_saveSuccess)
-            {
-                <p class="settings-save-ok" role="status">Settings saved.</p>
-            }
+                <hr class="settings-divider" />
+
+                <!-- Email channel -->
+                <div class="settings-channel">
+                    <div class="settings-channel-header">
+                        <span class="settings-channel-name">Email (SMTP)</span>
+                        <span class="settings-channel-badge settings-channel-badge-soon">Coming soon</span>
+                    </div>
+                    <p class="settings-hint">Email notifications require the Tauri desktop process for SMTP delivery. Configure now; enabling will be available in a future update.</p>
+                    <div class="settings-channel-fields">
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label">SMTP host</label>
+                            <input type="text" class="settings-input" placeholder="smtp.example.com"
+                                   @bind='_emailConfig["smtp_host"]' @bind:after="SaveChannelConfigsAsync" />
+                        </div>
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label">Port</label>
+                            <input type="number" class="settings-input settings-input-short" placeholder="587"
+                                   @bind='_emailConfig["smtp_port"]' @bind:after="SaveChannelConfigsAsync" />
+                        </div>
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label">Username</label>
+                            <input type="text" class="settings-input" autocomplete="username"
+                                   @bind='_emailConfig["smtp_user"]' @bind:after="SaveChannelConfigsAsync" />
+                        </div>
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label">Password</label>
+                            <input type="password" class="settings-input" autocomplete="current-password"
+                                   @bind='_emailConfig["smtp_pass"]' @bind:after="SaveChannelConfigsAsync" />
+                        </div>
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label">From</label>
+                            <input type="email" class="settings-input"
+                                   @bind='_emailConfig["smtp_from"]' @bind:after="SaveChannelConfigsAsync" />
+                        </div>
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label">To</label>
+                            <input type="email" class="settings-input"
+                                   @bind='_emailConfig["smtp_to"]' @bind:after="SaveChannelConfigsAsync" />
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="settings-divider" />
+
+                <!-- Telegram channel -->
+                <div class="settings-channel">
+                    <div class="settings-channel-header">
+                        <span class="settings-channel-name">Telegram</span>
+                        <label class="settings-toggle">
+                            <input type="checkbox"
+                                   class="settings-toggle-input"
+                                   @bind="_telegramEnabled"
+                                   @bind:after="SaveChannelConfigsAsync"
+                                   aria-label="Enable Telegram notifications" />
+                            <span class="settings-toggle-track">
+                                <span class="settings-toggle-thumb"></span>
+                            </span>
+                            <span class="settings-toggle-label">@(_telegramEnabled ? "Enabled" : "Disabled")</span>
+                        </label>
+                    </div>
+                    <div class="settings-channel-fields">
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label">Bot token</label>
+                            <div class="settings-control-group">
+                                <input type="password" class="settings-input"
+                                       placeholder="123456:ABCdef…"
+                                       autocomplete="off"
+                                       @bind='_telegramConfig["bot_token"]' @bind:after="SaveChannelConfigsAsync" />
+                                <span class="settings-hint">Obtain from @@BotFather on Telegram.</span>
+                            </div>
+                        </div>
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label">Chat ID</label>
+                            <div class="settings-control-group">
+                                <input type="text" class="settings-input"
+                                       placeholder="-1001234567890"
+                                       @bind='_telegramConfig["chat_id"]' @bind:after="SaveChannelConfigsAsync" />
+                                <span class="settings-hint">Your personal chat ID, or a group/channel ID (negative number for groups).</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @if (_saveError != null)
+                {
+                    <div class="settings-inline-error" role="alert">
+                        <span class="settings-error-icon">⚠</span>
+                        @_saveError
+                    </div>
+                }
+                @if (_saveSuccess)
+                {
+                    <div class="settings-inline-ok" role="status">
+                        <span>✓</span> Settings saved.
+                    </div>
+                }
+            </div>
         </section>
     }
 </div>
@@ -169,6 +304,16 @@
 
     private double _thresholdHours = 8.0;
     private double _inactivityTimeoutMinutes = 5.0;
+
+    // ── Sync backing fields ───────────────────────────────────────────────
+    private string _syncUri = string.Empty;
+    private bool _syncEnabled;
+    private bool _syncConnecting;
+    private bool _syncInProgress;
+    private string? _syncError;
+    private bool _syncSuccess;
+    private SyncStatusResponse? _syncStatus;
+    private string? _syncLastTriggerResult;
 
     private Dictionary<string, string> _emailConfig = new()
     {
@@ -196,6 +341,10 @@
                 : 5.0;
 
             LoadChannelConfigs(prefs.NotificationChannelsJson);
+
+            // Load sync status
+            _syncEnabled = prefs.ExternalDbEnabled;
+            _syncStatus = await Tauri.SyncGetStatusAsync();
         }
         catch (Exception ex)
         {
@@ -288,6 +437,99 @@
         catch (Exception ex)
         {
             _saveError = ex.Message;
+        }
+    }
+
+    // ── Sync methods ──────────────────────────────────────────────────────
+
+    private async Task ConnectSyncAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_syncUri))
+        {
+            _syncError = "Enter a connection URI before connecting.";
+            return;
+        }
+
+        _syncConnecting = true;
+        _syncError      = null;
+        _syncSuccess    = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Tauri.SyncConfigureAsync(new SyncConfigureRequest(_syncUri, Enabled: true));
+            _syncEnabled = result.Connected;
+            _syncStatus  = await Tauri.SyncGetStatusAsync();
+            _syncSuccess = result.Connected;
+            if (!result.Connected)
+                _syncError = "Connection attempt did not succeed. Check the URI and network.";
+        }
+        catch (Exception ex)
+        {
+            _syncError = ex.Message;
+        }
+        finally
+        {
+            _syncConnecting = false;
+            StateHasChanged();
+            if (_syncSuccess)
+            {
+                await Task.Delay(2000);
+                _syncSuccess = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task DisableSyncAsync()
+    {
+        _syncConnecting = true;
+        _syncError      = null;
+        StateHasChanged();
+
+        try
+        {
+            await Tauri.SyncConfigureAsync(new SyncConfigureRequest(string.Empty, Enabled: false));
+            _syncEnabled = false;
+            _syncStatus  = await Tauri.SyncGetStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            _syncError = ex.Message;
+        }
+        finally
+        {
+            _syncConnecting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task TriggerSyncAsync()
+    {
+        _syncError = null;
+        _syncLastTriggerResult = null;
+        _syncInProgress = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Tauri.SyncTriggerAsync();
+            _syncStatus = await Tauri.SyncGetStatusAsync();
+            _syncLastTriggerResult = (result.SyncedRecords, result.Errors) switch
+            {
+                (0, 0) => "Sync complete — no new records.",
+                (0, var e) => $"{e} error{(e == 1 ? "" : "s")} prevented any records from syncing. See application logs for details.",
+                (var s, 0) => $"Synced {s:N0} record{(s == 1 ? "" : "s")}.",
+                (var s, var e) => $"Synced {s:N0} record{(s == 1 ? "" : "s")} — {e} error{(e == 1 ? "" : "s")} also occurred. See application logs for details.",
+            };
+        }
+        catch (Exception ex)
+        {
+            _syncError = ex.Message;
+        }
+        finally
+        {
+            _syncInProgress = false;
+            StateHasChanged();
         }
     }
 }

@@ -2,6 +2,7 @@ pub mod activity;
 pub mod hierarchy;
 pub mod idle;
 pub mod screenshot;
+pub mod sync;
 pub mod timer;
 
 use tauri::State;
@@ -10,11 +11,48 @@ use std::sync::Arc;
 use crate::models::UserPreferences;
 use crate::platform::PlatformHooks;
 
+/// Shared sync state updated by the SyncService background loop.
+#[derive(Default)]
+pub struct SyncState {
+    pub connected: bool,
+    pub last_sync_at: Option<String>,
+    pub last_sync_cursor: Option<String>, // ISO 8601 — scan modified_at >= this
+    pub last_error: Option<String>,
+    /// URI cached in memory after a successful sync_configure (or restored from keychain at
+    /// startup). Avoids a round-trip to the OS credential store on every sync tick.
+    pub cached_uri: Option<String>,
+}
+
 /// Application-wide shared state holding the DB connection and platform hooks.
 /// Wrapped in Mutex so Tauri commands (which run concurrently) get exclusive access.
 pub struct AppState {
     pub db: std::sync::Mutex<rusqlite::Connection>,
     pub platform: Arc<dyn PlatformHooks + Send + Sync>,
+    /// Shared sync state; updated by the SyncService background loop.
+    pub sync_state: Arc<std::sync::Mutex<SyncState>>,
+    /// Notify fired to wake the sync background loop for an immediate sync cycle.
+    pub sync_notify: Arc<tokio::sync::Notify>,
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sync queue helpers (shared across commands)
+// ─────────────────────────────────────────────────────────────
+
+/// Enqueue a delete operation in sync_queue so the SyncService can propagate it
+/// to the external Postgres DB. Called by client_delete / tag_delete.
+pub fn enqueue_delete(
+    conn: &rusqlite::Connection,
+    table_name: &str,
+    record_id: &str,
+) -> Result<(), String> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO sync_queue (table_name, record_id, operation, queued_at, attempts)
+         VALUES (?1, ?2, 'delete', ?3, 0)",
+        rusqlite::params![table_name, record_id, now],
+    )
+    .map_err(|e| format!("enqueue_delete failed: {e}"))?;
+    Ok(())
 }
 
 // ─────────────────────────────────────────────────────────────
