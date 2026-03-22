@@ -126,10 +126,10 @@ merge-reports:
   needs: test
   runs-on: ubuntu-latest
   steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # 6.3.0
       with:
-        node-version: 20
+        node-version: 24
         cache: 'npm'
     - run: npm ci
 
@@ -141,7 +141,7 @@ merge-reports:
 
     - run: npx playwright merge-reports --reporter=html ./all-blob-reports
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
       with:
         name: playwright-report
         path: playwright-report/
@@ -249,10 +249,10 @@ jobs:
       shard-count: ${{ steps.calc.outputs.count }}
       shard-matrix: ${{ steps.calc.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # 6.3.0
         with:
-          node-version: 20
+          node-version: 24
           cache: 'npm'
       - run: npm ci
       - id: calc
@@ -284,10 +284,10 @@ jobs:
       matrix:
         shard: ${{ fromJson(needs.determine-shards.outputs.shard-matrix) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # 6.3.0
         with:
-          node-version: 20
+          node-version: 24
           cache: 'npm'
       - run: npm ci
       - run: npx playwright install --with-deps
@@ -364,7 +364,7 @@ npx playwright test --shard=1/20  # Some shards will be empty
 
 ```yaml
 # Each shard
-- uses: actions/upload-artifact@v4
+- uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
   with:
     name: blob-report-${{ strategy.job-index }}  # unique per shard
     path: blob-report/

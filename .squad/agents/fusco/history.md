@@ -52,7 +52,7 @@ Extended the existing `ci.yml` created in T079 and added `release.yml`:
 
 **ci.yml additions:**
 - All Rust toolchain steps now specify `targets: x86_64-pc-windows-msvc`
-- Added `actions/cache@v4` for Cargo registry (`~/.cargo/registry`, `~/.cargo/git`) in lint, unit-tests, and build-portable jobs
+- Added `actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4` for Cargo registry (`~/.cargo/registry`, `~/.cargo/git`) in lint, unit-tests, and build-portable jobs
 - Added Cargo target dir cache (`src-tauri/target`) in build-portable job
 - Added `cargo check` step to lint job (before clippy)
 - Added `dotnet build src/Tracey.slnx` step to unit-tests job (explicit build check before `dotnet test --no-build`)

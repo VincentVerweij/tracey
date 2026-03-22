@@ -294,7 +294,7 @@ blob-report/              # Blob report for shard merging
 
 ```yaml
 # Upload HTML report (always -- useful even when tests pass)
-- uses: actions/upload-artifact@v4
+- uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
   if: ${{ !cancelled() }}
   with:
     name: playwright-report
@@ -302,7 +302,7 @@ blob-report/              # Blob report for shard merging
     retention-days: 14
 
 # Upload traces and screenshots (only on failure -- saves storage)
-- uses: actions/upload-artifact@v4
+- uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
   if: failure()
   with:
     name: test-traces

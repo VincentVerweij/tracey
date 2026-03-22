@@ -88,7 +88,7 @@ docker run --rm -v $(pwd)/reports:/app/playwright-report my-e2e-tests
 
 ```dockerfile
 # Dockerfile.playwright-chromium
-FROM node:20-slim
+FROM node:24-slim
 
 # Install only Chromium dependencies
 RUN npx playwright install --with-deps chromium
@@ -235,7 +235,7 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.52.0-noble
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - run: npm ci
       - run: npx playwright test
         env:

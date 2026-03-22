@@ -880,7 +880,7 @@ Replace the Cypress CI step with Playwright:
   run: npx playwright test
 
 - name: Upload Playwright Report
-  uses: actions/upload-artifact@v4
+  uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
   if: ${{ !cancelled() }}
   with:
     name: playwright-report
