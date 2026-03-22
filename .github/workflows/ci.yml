@@ -43,6 +43,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
 
+      - name: Publish Blazor WASM
+        run: >
+          dotnet publish src/Tracey.App
+          -c Release
+          -o src/Tracey.App/bin/Release/net10.0/publish
+
       - name: Rust check — cargo check
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
@@ -83,6 +89,12 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
+
+      - name: Publish Blazor WASM
+        run: >
+          dotnet publish src/Tracey.App
+          -c Release
+          -o src/Tracey.App/bin/Release/net10.0/publish
 
       - name: Rust unit tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
