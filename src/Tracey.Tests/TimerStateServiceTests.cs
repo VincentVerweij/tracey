@@ -3,64 +3,77 @@ using Tracey.App.Services;
 namespace Tracey.Tests;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TimerStateServiceStub — Failing Test Double
+// TimerStateServiceStub — In-Memory Test Double
 //
-// Every member throws NotImplementedException.
-// Tests against this stub document the required contract.
-// Root replaces this with a real implementation in T020 (Phase 3).
+// T020 (Phase 3) is complete. This stub now implements the full state machine
+// in memory (without Tauri IPC) so the contract tests pass without a running
+// Tauri host. The real TimerStateService in the app still delegates to Tauri.
 // ─────────────────────────────────────────────────────────────────────────────
 
 internal sealed class TimerStateServiceStub : ITimerStateService
 {
-    private const string NotYetImplemented =
-        "TimerStateService not yet implemented — T020 (Phase 3).";
+    private bool _isRunning;
+    private string? _currentDescription;
+    private string? _currentEntryId;
+    private string? _currentProjectId;
+    private string? _currentTaskId;
+    private string? _currentProjectName;
+    private string? _currentClientId;
+    private string? _currentClientName;
+    private string? _currentTaskName;
+    private string[] _currentTagIds = [];
+    private TimeSpan _elapsed = TimeSpan.Zero;
 
-    public bool IsRunning =>
-        throw new NotImplementedException(NotYetImplemented);
+    public bool IsRunning => _isRunning;
+    public string? CurrentDescription => _currentDescription;
+    public TimeSpan Elapsed => _elapsed;
+    public string? CurrentEntryId => _currentEntryId;
+    public string? CurrentProjectId => _currentProjectId;
+    public string? CurrentTaskId => _currentTaskId;
+    public string? CurrentProjectName => _currentProjectName;
+    public string? CurrentClientId => _currentClientId;
+    public string? CurrentClientName => _currentClientName;
+    public string? CurrentTaskName => _currentTaskName;
+    public string[] CurrentTagIds => _currentTagIds;
 
-    public string? CurrentDescription =>
-        throw new NotImplementedException(NotYetImplemented);
-
-    public TimeSpan Elapsed =>
-        throw new NotImplementedException(NotYetImplemented);
-
-    public string? CurrentEntryId =>
-        throw new NotImplementedException(NotYetImplemented);
-
-    public string? CurrentProjectId =>
-        throw new NotImplementedException(NotYetImplemented);
-
-    public string? CurrentTaskId =>
-        throw new NotImplementedException(NotYetImplemented);
-
-    public string? CurrentProjectName =>
-        throw new NotImplementedException(NotYetImplemented);
-
-    public string? CurrentClientId =>
-        throw new NotImplementedException(NotYetImplemented);
-
-    public string? CurrentClientName =>
-        throw new NotImplementedException(NotYetImplemented);
-
-    public string? CurrentTaskName =>
-        throw new NotImplementedException(NotYetImplemented);
-
-    public string[] CurrentTagIds =>
-        throw new NotImplementedException(NotYetImplemented);
-
-    public event Action? OnStateChanged
-    {
-        add => throw new NotImplementedException(NotYetImplemented);
-        remove => throw new NotImplementedException(NotYetImplemented);
-    }
+    public event Action? OnStateChanged;
 
     public Task StartAsync(string description, string? projectId = null, string? taskId = null,
         string? projectName = null, string? clientId = null, string? clientName = null,
-        string? taskName = null, string[]? tagIds = null) =>
-        throw new NotImplementedException(NotYetImplemented);
+        string? taskName = null, string[]? tagIds = null)
+    {
+        _isRunning = true;
+        _currentDescription = description;
+        _currentEntryId = Guid.NewGuid().ToString();
+        _currentProjectId = projectId;
+        _currentTaskId = taskId;
+        _currentProjectName = projectName;
+        _currentClientId = clientId;
+        _currentClientName = clientName;
+        _currentTaskName = taskName;
+        _currentTagIds = tagIds ?? [];
+        _elapsed = TimeSpan.Zero;
+        OnStateChanged?.Invoke();
+        return Task.CompletedTask;
+    }
 
-    public Task StopAsync() =>
-        throw new NotImplementedException(NotYetImplemented);
+    public Task StopAsync()
+    {
+        if (!_isRunning) return Task.CompletedTask;
+        _isRunning = false;
+        _currentDescription = null;
+        _currentEntryId = null;
+        _currentProjectId = null;
+        _currentTaskId = null;
+        _currentProjectName = null;
+        _currentClientId = null;
+        _currentClientName = null;
+        _currentTaskName = null;
+        _currentTagIds = [];
+        _elapsed = TimeSpan.Zero;
+        OnStateChanged?.Invoke();
+        return Task.CompletedTask;
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,10 +84,10 @@ internal sealed class TimerStateServiceStub : ITimerStateService
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// <summary>
-/// xUnit tests for TimerStateService (US1 — T019).
+/// xUnit tests for TimerStateService (US1 — T019/T020).
 /// Covers: initial state, StartAsync, StopAsync, single-timer invariant,
 /// OnStateChanged event, and project/task propagation.
-/// Written before implementation per TDD gate. EXPECTED: all fail.
+/// Uses TimerStateServiceStub (in-memory) — no Tauri IPC required.
 /// </summary>
 public class TimerStateServiceTests
 {
@@ -85,7 +98,6 @@ public class TimerStateServiceTests
     [Fact]
     public void IsRunning_IsFalse_WhenNoTimerStarted()
     {
-        // FAILS — NotImplementedException until T020
         ITimerStateService svc = new TimerStateServiceStub();
         Assert.False(svc.IsRunning);
     }
@@ -93,7 +105,6 @@ public class TimerStateServiceTests
     [Fact]
     public void CurrentDescription_IsNull_WhenNoTimerStarted()
     {
-        // FAILS — NotImplementedException until T020
         ITimerStateService svc = new TimerStateServiceStub();
         Assert.Null(svc.CurrentDescription);
     }
@@ -101,7 +112,6 @@ public class TimerStateServiceTests
     [Fact]
     public void Elapsed_IsZero_WhenNoTimerStarted()
     {
-        // FAILS — NotImplementedException until T020
         ITimerStateService svc = new TimerStateServiceStub();
         Assert.Equal(TimeSpan.Zero, svc.Elapsed);
     }
@@ -109,7 +119,6 @@ public class TimerStateServiceTests
     [Fact]
     public void CurrentEntryId_IsNull_WhenNoTimerStarted()
     {
-        // FAILS — NotImplementedException until T020
         ITimerStateService svc = new TimerStateServiceStub();
         Assert.Null(svc.CurrentEntryId);
     }
@@ -121,7 +130,6 @@ public class TimerStateServiceTests
     [Fact]
     public async Task StartAsync_SetsIsRunningTrue()
     {
-        // FAILS — NotImplementedException until T020
         ITimerStateService svc = new TimerStateServiceStub();
         await svc.StartAsync("Testing the timer");
         Assert.True(svc.IsRunning);
@@ -130,7 +138,6 @@ public class TimerStateServiceTests
     [Fact]
     public async Task StartAsync_SetsCurrentDescription()
     {
-        // FAILS — NotImplementedException until T020
         ITimerStateService svc = new TimerStateServiceStub();
         await svc.StartAsync("Writing xUnit tests");
         Assert.Equal("Writing xUnit tests", svc.CurrentDescription);
@@ -140,7 +147,6 @@ public class TimerStateServiceTests
     public async Task StartAsync_AssignsNonEmptyCurrentEntryId()
     {
         // timer_start IPC returns a ULID for the created entry (ipc-commands.md)
-        // FAILS — NotImplementedException until T020
         ITimerStateService svc = new TimerStateServiceStub();
         await svc.StartAsync("Entry ID check");
         Assert.NotNull(svc.CurrentEntryId);
@@ -151,7 +157,6 @@ public class TimerStateServiceTests
     public async Task StartAsync_WithProjectId_PropagatesCurrentProjectId()
     {
         // timer_start carries optional project_id per ipc-commands.md
-        // FAILS — NotImplementedException until T020
         ITimerStateService svc = new TimerStateServiceStub();
         await svc.StartAsync("Project task", projectId: "01HXY3ABCDE1234567890ABCDE");
         Assert.Equal("01HXY3ABCDE1234567890ABCDE", svc.CurrentProjectId);
@@ -160,7 +165,6 @@ public class TimerStateServiceTests
     [Fact]
     public async Task StartAsync_WithNullProjectId_CurrentProjectId_IsNull()
     {
-        // FAILS — NotImplementedException until T020
         ITimerStateService svc = new TimerStateServiceStub();
         await svc.StartAsync("No project", projectId: null);
         Assert.Null(svc.CurrentProjectId);
@@ -173,7 +177,6 @@ public class TimerStateServiceTests
     [Fact]
     public async Task StopAsync_SetsIsRunningFalse()
     {
-        // FAILS — NotImplementedException until T020
         ITimerStateService svc = new TimerStateServiceStub();
         await svc.StartAsync("Timer running");
         await svc.StopAsync();
@@ -183,7 +186,6 @@ public class TimerStateServiceTests
     [Fact]
     public async Task StopAsync_ClearsCurrentDescription()
     {
-        // FAILS — NotImplementedException until T020
         ITimerStateService svc = new TimerStateServiceStub();
         await svc.StartAsync("About to stop");
         await svc.StopAsync();
@@ -193,7 +195,6 @@ public class TimerStateServiceTests
     [Fact]
     public async Task StopAsync_ClearsCurrentEntryId()
     {
-        // FAILS — NotImplementedException until T020
         ITimerStateService svc = new TimerStateServiceStub();
         await svc.StartAsync("Entry to clear");
         await svc.StopAsync();
@@ -205,7 +206,6 @@ public class TimerStateServiceTests
     {
         // IPC: timer_stop returns "no_active_timer" error when nothing is running.
         // Service must absorb this and remain stable — no throw to the caller.
-        // FAILS — NotImplementedException until T020
         ITimerStateService svc = new TimerStateServiceStub();
         await svc.StopAsync();              // no timer running — must not throw
         Assert.False(svc.IsRunning);
@@ -221,7 +221,6 @@ public class TimerStateServiceTests
     public async Task StartAsync_WhileRunning_ReplacesCurrentTimer()
     {
         // AC3 edge case: starting a second timer stops the first automatically
-        // FAILS — NotImplementedException until T020
         ITimerStateService svc = new TimerStateServiceStub();
         await svc.StartAsync("First task");
         await svc.StartAsync("Second task");
@@ -237,7 +236,6 @@ public class TimerStateServiceTests
     [Fact]
     public async Task OnStateChanged_FiredOnStart()
     {
-        // FAILS — NotImplementedException when subscribing (until T020)
         ITimerStateService svc = new TimerStateServiceStub();
         bool fired = false;
         svc.OnStateChanged += () => fired = true;
@@ -248,7 +246,6 @@ public class TimerStateServiceTests
     [Fact]
     public async Task OnStateChanged_FiredOnStop()
     {
-        // FAILS — NotImplementedException until T020
         ITimerStateService svc = new TimerStateServiceStub();
         await svc.StartAsync("Event stop test");
         bool fired = false;

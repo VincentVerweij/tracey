@@ -1,0 +1,75 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "clippy (Rust)",
+      "type": "shell",
+      "command": "cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings",
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": "$rustc"
+    },
+    {
+      "label": "dotnet format (verify)",
+      "type": "shell",
+      "command": "dotnet format src/Tracey.App/Tracey.App.csproj --verify-no-changes",
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "dotnet format (fix)",
+      "type": "shell",
+      "command": "dotnet format src/Tracey.App/Tracey.App.csproj",
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "cargo test (Rust)",
+      "type": "shell",
+      "command": "cargo test --manifest-path src-tauri/Cargo.toml",
+      "group": {
+        "kind": "test",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": "$rustc"
+    },
+    {
+      "label": "dotnet test (.NET)",
+      "type": "shell",
+      "command": "dotnet test src/Tracey.Tests/Tracey.Tests.csproj",
+      "group": {
+        "kind": "test",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": "$msCompile"
+    }
+  ]
+}

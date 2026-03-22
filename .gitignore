@@ -230,6 +230,8 @@ browse.VC.db
 # Local settings folder for Visual Studio Code
 **/.vscode/**
 !**/.vscode/c_cpp_properties.json
+!**/.vscode/settings.json
+!**/.vscode/tasks.json
 
 ### MonoDevelop ###
 *.userprefs
