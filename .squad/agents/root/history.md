@@ -125,6 +125,12 @@
 - `Settings.razor`: Full Notifications section — threshold (hours), email fields (WASM warning), Telegram fields.
 - `Program.cs`: `AddHttpClient()`, two `AddSingleton<INotificationChannel>`, `AddHostedService<NotificationOrchestrationService>()`.
 
+### 2026-03-22: dotnet format — whitespace fixes + local dev integration
+
+- `dotnet format src/Tracey.App/Tracey.App.csproj` is the auto-fix command; `--verify-no-changes` is the CI gate
+- `.vscode/settings.json` enables `editor.formatOnSave` for C# to prevent future whitespace drift
+- These are WHITESPACE-only errors — dotnet format handles them automatically, no manual editing needed
+
 ---
 
 ## Archived Sessions (condensed)

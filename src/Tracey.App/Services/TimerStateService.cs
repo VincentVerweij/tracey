@@ -116,10 +116,10 @@ public class TimerStateService : ITimerStateService
                 _currentTaskId = active.TaskId;
                 // Restore display names from the enriched active-timer response
                 _currentProjectName = active.ProjectName;
-                _currentClientId    = active.ClientId;
-                _currentClientName  = active.ClientName;
-                _currentTaskName    = active.TaskName;
-                _currentTagIds      = active.TagIds;
+                _currentClientId = active.ClientId;
+                _currentClientName = active.ClientName;
+                _currentTaskName = active.TaskName;
+                _currentTagIds = active.TagIds;
                 _startedAt = active.StartedAt;
                 if (DateTimeOffset.TryParse(active.StartedAt, out var startOffset))
                 {

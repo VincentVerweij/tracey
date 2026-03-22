@@ -37,10 +37,10 @@ public class NotificationOrchestrationService
         TauriIpcService tauri,
         TauriEventService events)
     {
-        _channels   = channels;
+        _channels = channels;
         _timerState = timerState;
-        _tauri      = tauri;
-        _events     = events;
+        _tauri = tauri;
+        _events = events;
     }
 
     /// <summary>
@@ -150,10 +150,10 @@ public class NotificationOrchestrationService
                 : $"\"{_timerState.CurrentDescription}\"";
 
             var message = new NotificationMessage(
-                Title:       $"Timer Running for {h}h {m}m",
-                Body:        $"You have {desc} that has been running for {h} hours and {m} minutes.",
+                Title: $"Timer Running for {h}h {m}m",
+                Body: $"You have {desc} that has been running for {h} hours and {m} minutes.",
                 TriggeredAt: DateTimeOffset.UtcNow,
-                Duration:    elapsed);
+                Duration: elapsed);
 
             // Send via all enabled channels
             foreach (var channel in _channels)
@@ -181,7 +181,7 @@ public class NotificationOrchestrationService
                     // Raise the in-app event so UI can show a toast or indicator
                     _events.RaiseNotificationSent(new NotificationSentPayload(
                         ChannelId: channel.ChannelId,
-                        Message:   message.Title));
+                        Message: message.Title));
                 }
                 catch (NotSupportedException nse)
                 {
@@ -222,7 +222,7 @@ public class NotificationOrchestrationService
             {
                 map[entry.ChannelId] = new NotificationChannelSettings(
                     Enabled: entry.Enabled,
-                    Config:  entry.Config ?? new Dictionary<string, string>());
+                    Config: entry.Config ?? new Dictionary<string, string>());
             }
         }
         catch (JsonException ex)

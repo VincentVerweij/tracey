@@ -28,7 +28,7 @@ public class TelegramNotificationChannel : INotificationChannel
         Config: new Dictionary<string, string>
         {
             ["bot_token"] = "",
-            ["chat_id"]   = ""
+            ["chat_id"] = ""
         });
 
     /// <inheritdoc />
@@ -38,7 +38,7 @@ public class TelegramNotificationChannel : INotificationChannel
         CancellationToken cancellationToken = default)
     {
         var botToken = settings.Get("bot_token");
-        var chatId   = settings.Get("chat_id");
+        var chatId = settings.Get("chat_id");
 
         if (string.IsNullOrWhiteSpace(botToken))
             throw new InvalidOperationException("Telegram channel: bot_token is not configured.");
@@ -48,8 +48,8 @@ public class TelegramNotificationChannel : INotificationChannel
         var text = $"*{EscapeMarkdown(message.Title)}*\n{EscapeMarkdown(message.Body)}";
 
         var payload = new TelegramSendMessageRequest(
-            ChatId:    chatId,
-            Text:      text,
+            ChatId: chatId,
+            Text: text,
             ParseMode: "MarkdownV2");
 
         var http = _httpClientFactory.CreateClient();
@@ -90,6 +90,6 @@ public class TelegramNotificationChannel : INotificationChannel
 }
 
 file record TelegramSendMessageRequest(
-    [property: JsonPropertyName("chat_id")]    string ChatId,
-    [property: JsonPropertyName("text")]       string Text,
+    [property: JsonPropertyName("chat_id")] string ChatId,
+    [property: JsonPropertyName("text")] string Text,
     [property: JsonPropertyName("parse_mode")] string ParseMode);

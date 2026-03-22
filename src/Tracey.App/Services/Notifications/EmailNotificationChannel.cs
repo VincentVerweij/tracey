@@ -27,7 +27,7 @@ public class EmailNotificationChannel : INotificationChannel
             ["smtp_user"] = "",
             ["smtp_pass"] = "",
             ["smtp_from"] = "",
-            ["smtp_to"]   = ""
+            ["smtp_to"] = ""
         });
 
     /// <inheritdoc />

@@ -47,7 +47,7 @@ public class FuzzyMatchService
 
         var spread = (double)(lastMatch - firstMatch + 1);
         var spreadScore = q.Length / spread;          // 1.0 when all chars consecutive
-        var consScore   = (double)maxCons / q.Length; // fraction of max run
+        var consScore = (double)maxCons / q.Length; // fraction of max run
         var prefixBonus = c.StartsWith(q) ? 1.0 : 0.0;
 
         return Math.Min(1.0, (prefixBonus * 0.35) + (spreadScore * 0.40) + (consScore * 0.25));
