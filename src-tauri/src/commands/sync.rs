@@ -1,5 +1,5 @@
-/// T070 — sync_configure: validate URI, store in OS keychain, run migrations, enable sync
-/// T074 — sync_get_status, sync_trigger: status query and immediate sync trigger
+//! T070 — sync_configure: validate URI, store in OS keychain, run migrations, enable sync
+//! T074 — sync_get_status, sync_trigger: status query and immediate sync trigger
 
 use tauri::State;
 use serde::{Deserialize, Serialize};

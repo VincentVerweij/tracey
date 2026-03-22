@@ -1,6 +1,6 @@
-/// T071 — External DB schema migration runner (Postgres DDL from contracts/sync-api.md)
-/// T072 — SyncService background loop: upsert batches, 30-second interval, immediate trigger
-/// T073 — Offline resilience: queue persisted in SQLite; auto-replay on reconnect
+//! T071 — External DB schema migration runner (Postgres DDL from contracts/sync-api.md)
+//! T072 — SyncService background loop: upsert batches, 30-second interval, immediate trigger
+//! T073 — Offline resilience: queue persisted in SQLite; auto-replay on reconnect
 
 use chrono::Utc;
 use tauri::{AppHandle, Emitter, Manager};

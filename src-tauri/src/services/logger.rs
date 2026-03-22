@@ -76,23 +76,23 @@ fn redact_str(s: &str) -> String {
 #[macro_export]
 macro_rules! log_info {
     ($component:expr, $event:expr) => {
-        crate::services::logger::log_event("INFO", $component, $event, None)
+        $crate::services::logger::log_event("INFO", $component, $event, None)
     };
     ($component:expr, $event:expr, $detail:expr) => {
-        crate::services::logger::log_event("INFO", $component, $event, Some($detail))
+        $crate::services::logger::log_event("INFO", $component, $event, Some($detail))
     };
 }
 
 #[macro_export]
 macro_rules! log_warn {
     ($component:expr, $event:expr) => {
-        crate::services::logger::log_event("WARN", $component, $event, None)
+        $crate::services::logger::log_event("WARN", $component, $event, None)
     };
 }
 
 #[macro_export]
 macro_rules! log_err {
     ($component:expr, $event:expr, $detail:expr) => {
-        crate::services::logger::log_event("ERROR", $component, $event, Some($detail))
+        $crate::services::logger::log_event("ERROR", $component, $event, Some($detail))
     };
 }

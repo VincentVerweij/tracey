@@ -1,5 +1,5 @@
 use rusqlite::{Connection, Result as SqlResult};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 mod migrations;
 
@@ -74,7 +74,7 @@ pub fn is_writable(path: &std::path::Path) -> bool {
 
 /// Called once after migrations. Seeds the default `user_preferences` row and
 /// creates the screenshots directory on first launch. No-op if already seeded.
-fn seed_first_launch(conn: &Connection, db_path: &PathBuf) -> SqlResult<()> {
+fn seed_first_launch(conn: &Connection, db_path: &Path) -> SqlResult<()> {
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM user_preferences",
         [],

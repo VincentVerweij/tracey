@@ -1,11 +1,11 @@
-/// T081 backend — `data_delete_all` Tauri command
-///
-/// Wipes all local data tables (excluding `user_preferences`) and deletes all
-/// screenshot files from disk, then recreates the screenshots directory empty.
-/// Returns `{ "deleted_records": N }` where N is the total SQLite rows deleted.
-///
-/// File-system errors on screenshot deletion are logged as warnings but do NOT
-/// abort the operation — the DB delete count is returned regardless.
+//! T081 backend — `data_delete_all` Tauri command
+//!
+//! Wipes all local data tables (excluding `user_preferences`) and deletes all
+//! screenshot files from disk, then recreates the screenshots directory empty.
+//! Returns `{ "deleted_records": N }` where N is the total SQLite rows deleted.
+//!
+//! File-system errors on screenshot deletion are logged as warnings but do NOT
+//! abort the operation — the DB delete count is returned regardless.
 
 use tauri::State;
 use crate::commands::AppState;

@@ -78,13 +78,13 @@ fn capture_screen_jpeg() -> Result<Vec<u8>, String> {
             SRCCOPY,
         );
 
-        if blit_result.is_err() {
+        if let Err(e) = blit_result {
             // Clean up before returning error
             SelectObject(hdc_mem, hbm_old);
             let _ = DeleteObject(HGDIOBJ(hbm.0));
             let _ = DeleteDC(hdc_mem);
             ReleaseDC(hwnd, hdc_screen);
-            return Err(blit_result.unwrap_err().to_string());
+            return Err(e.to_string());
         }
 
         let bmi_size = std::mem::size_of::<BITMAPINFOHEADER>() as u32;

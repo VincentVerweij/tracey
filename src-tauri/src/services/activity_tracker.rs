@@ -1,11 +1,11 @@
-/// T082 — Window Activity Tracker
-/// Polls foreground window every 1 second.
-/// Applies process deny-list before any storage write.
-/// MutexGuard ALWAYS dropped before any .await point (inner block pattern).
-///
-/// T083 note: External sync of window_activity_records is already handled by
-/// `sync_service.rs` (queries `synced_at IS NULL` rows every 30 seconds).
-/// No separate flush loop is needed here.
+//! T082 — Window Activity Tracker
+//! Polls foreground window every 1 second.
+//! Applies process deny-list before any storage write.
+//! MutexGuard ALWAYS dropped before any .await point (inner block pattern).
+//!
+//! T083 note: External sync of window_activity_records is already handled by
+//! `sync_service.rs` (queries `synced_at IS NULL` rows every 30 seconds).
+//! No separate flush loop is needed here.
 
 use tauri::{AppHandle, Manager};
 use chrono::Utc;
