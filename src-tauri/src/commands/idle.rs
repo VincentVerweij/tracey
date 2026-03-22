@@ -71,14 +71,34 @@ struct RunningTimerInfo {
     tag_ids: Vec<String>,
 }
 
+/// Per-insert transactional context — device ID and timestamp shared across all
+/// inserts within a single request handler.
+struct WriteCtx {
+    device_id: String,
+    now: String,
+}
+
+/// Data for a new completed time entry (ended_at known).
+struct NewEntry<'a> {
+    id: &'a str,
+    description: &'a str,
+    project_id: Option<&'a str>,
+    task_id: Option<&'a str>,
+    started_at: &'a str,
+    ended_at: &'a str,
+    is_break: bool,
+}
+
 #[tauri::command]
 pub fn idle_resolve(
     state: State<'_, AppState>,
     request: IdleResolveRequest,
 ) -> Result<IdleResolveResponse, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let now = Utc::now().to_rfc3339();
-    let device_id = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".to_string());
+    let ctx = WriteCtx {
+        device_id: std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".to_string()),
+        now: Utc::now().to_rfc3339(),
+    };
 
     match request.resolution.as_str() {
         "keep" => {
@@ -87,28 +107,22 @@ pub fn idle_resolve(
         }
 
         "break" => {
-            let info = stop_running_timer_at(&conn, &request.idle_started_at, &now)?;
+            let info = stop_running_timer_at(&conn, &request.idle_started_at, ctx.now.as_str())?;
 
             // Insert a break entry for the idle period
             let break_id = Ulid::new().to_string();
-            insert_entry(
-                &conn,
-                &break_id,
-                "Break",
-                None,
-                None,
-                &request.idle_started_at,
-                &request.idle_ended_at,
-                true,
-                &device_id,
-                &now,
-            )?;
+            insert_entry(&conn, &NewEntry {
+                id: &break_id,
+                description: "Break",
+                project_id: None,
+                task_id: None,
+                started_at: &request.idle_started_at,
+                ended_at: &request.idle_ended_at,
+                is_break: true,
+            }, &ctx)?;
 
             let (resumed_entry_id, resumed_started_at) = if let Some(i) = info {
-                let rid = insert_running_entry(
-                    &conn, &i.description, i.project_id.as_deref(), i.task_id.as_deref(),
-                    &i.tag_ids, &request.idle_ended_at, &device_id, &now,
-                )?;
+                let rid = insert_running_entry(&conn, &i, &request.idle_ended_at, &ctx)?;
                 (Some(rid), Some(request.idle_ended_at.clone()))
             } else { (None, None) };
 
@@ -116,27 +130,21 @@ pub fn idle_resolve(
         }
 
         "meeting" => {
-            let info = stop_running_timer_at(&conn, &request.idle_started_at, &now)?;
+            let info = stop_running_timer_at(&conn, &request.idle_started_at, ctx.now.as_str())?;
 
             let meeting_id = Ulid::new().to_string();
-            insert_entry(
-                &conn,
-                &meeting_id,
-                "Meeting",
-                None,
-                None,
-                &request.idle_started_at,
-                &request.idle_ended_at,
-                false,
-                &device_id,
-                &now,
-            )?;
+            insert_entry(&conn, &NewEntry {
+                id: &meeting_id,
+                description: "Meeting",
+                project_id: None,
+                task_id: None,
+                started_at: &request.idle_started_at,
+                ended_at: &request.idle_ended_at,
+                is_break: false,
+            }, &ctx)?;
 
             let (resumed_entry_id, resumed_started_at) = if let Some(i) = info {
-                let rid = insert_running_entry(
-                    &conn, &i.description, i.project_id.as_deref(), i.task_id.as_deref(),
-                    &i.tag_ids, &request.idle_ended_at, &device_id, &now,
-                )?;
+                let rid = insert_running_entry(&conn, &i, &request.idle_ended_at, &ctx)?;
                 (Some(rid), Some(request.idle_ended_at.clone()))
             } else { (None, None) };
 
@@ -147,21 +155,18 @@ pub fn idle_resolve(
             let details = request.entry_details
                 .ok_or_else(|| "specify requires entry_details".to_string())?;
 
-            let info = stop_running_timer_at(&conn, &request.idle_started_at, &now)?;
+            let info = stop_running_timer_at(&conn, &request.idle_started_at, ctx.now.as_str())?;
 
             let entry_id = Ulid::new().to_string();
-            insert_entry(
-                &conn,
-                &entry_id,
-                &details.description,
-                details.project_id.as_deref(),
-                details.task_id.as_deref(),
-                &request.idle_started_at,
-                &request.idle_ended_at,
-                false,
-                &device_id,
-                &now,
-            )?;
+            insert_entry(&conn, &NewEntry {
+                id: &entry_id,
+                description: &details.description,
+                project_id: details.project_id.as_deref(),
+                task_id: details.task_id.as_deref(),
+                started_at: &request.idle_started_at,
+                ended_at: &request.idle_ended_at,
+                is_break: false,
+            }, &ctx)?;
 
             // Insert tag associations for the idle (specify) entry
             for tag_id in &details.tag_ids {
@@ -173,10 +178,7 @@ pub fn idle_resolve(
 
             // Resume the original pre-idle activity
             let (resumed_entry_id, resumed_started_at) = if let Some(i) = info {
-                let rid = insert_running_entry(
-                    &conn, &i.description, i.project_id.as_deref(), i.task_id.as_deref(),
-                    &i.tag_ids, &request.idle_ended_at, &device_id, &now,
-                )?;
+                let rid = insert_running_entry(&conn, &i, &request.idle_ended_at, &ctx)?;
                 (Some(rid), Some(request.idle_ended_at.clone()))
             } else { (None, None) };
 
@@ -231,23 +233,19 @@ fn stop_running_timer_at(
 /// Returns the new entry id.
 fn insert_running_entry(
     conn: &rusqlite::Connection,
-    description: &str,
-    project_id: Option<&str>,
-    task_id: Option<&str>,
-    tag_ids: &[String],
+    info: &RunningTimerInfo,
     started_at: &str,
-    device_id: &str,
-    now: &str,
+    ctx: &WriteCtx,
 ) -> Result<String, String> {
     let id = Ulid::new().to_string();
     conn.execute(
         "INSERT INTO time_entries \
             (id, description, project_id, task_id, started_at, ended_at, is_break, device_id, created_at, modified_at) \
          VALUES (?1, ?2, ?3, ?4, ?5, NULL, 0, ?6, ?7, ?8)",
-        params![id, description, project_id, task_id, started_at, device_id, now, now],
+        params![id, info.description, info.project_id.as_deref(), info.task_id.as_deref(), started_at, ctx.device_id, ctx.now, ctx.now],
     ).map_err(|e| format!("insert_running_entry failed: {}", e))?;
 
-    for tag_id in tag_ids {
+    for tag_id in &info.tag_ids {
         conn.execute(
             "INSERT INTO time_entry_tags (time_entry_id, tag_id) VALUES (?1, ?2)",
             params![id, tag_id],
@@ -261,21 +259,14 @@ fn insert_running_entry(
 /// Matches the column list in 001_initial_schema.sql exactly, including device_id.
 fn insert_entry(
     conn: &rusqlite::Connection,
-    id: &str,
-    description: &str,
-    project_id: Option<&str>,
-    task_id: Option<&str>,
-    started_at: &str,
-    ended_at: &str,
-    is_break: bool,
-    device_id: &str,
-    now: &str,
+    entry: &NewEntry<'_>,
+    ctx: &WriteCtx,
 ) -> Result<(), String> {
     conn.execute(
         "INSERT INTO time_entries \
             (id, description, project_id, task_id, started_at, ended_at, is_break, device_id, created_at, modified_at) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        params![id, description, project_id, task_id, started_at, ended_at, is_break, device_id, now, now],
+        params![entry.id, entry.description, entry.project_id, entry.task_id, entry.started_at, entry.ended_at, entry.is_break, ctx.device_id, ctx.now, ctx.now],
     ).map_err(|e| format!("insert failed: {}", e))?;
     Ok(())
 }

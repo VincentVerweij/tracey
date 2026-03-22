@@ -436,6 +436,9 @@ pub struct AutocompleteResponse {
     pub suggestions: Vec<AutocompleteSuggestion>,
 }
 
+/// (description, project_id, project_name, task_id, task_name)
+type EntryHistoryRow = (String, Option<String>, Option<String>, Option<String>, Option<String>);
+
 #[tauri::command]
 pub fn time_entry_autocomplete(
     state: State<'_, AppState>,
@@ -460,7 +463,7 @@ pub fn time_entry_autocomplete(
         )
         .map_err(|e| e.to_string())?;
 
-    let rows: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>)> =
+    let rows: Vec<EntryHistoryRow> =
         stmt.query_map(params![search_pattern, limit], |r| {
             Ok((
                 r.get::<_, String>(0)?,
@@ -478,7 +481,7 @@ pub fn time_entry_autocomplete(
 
     for (description, project_id, project_name, task_id, task_name) in rows {
         // Orphan detection: referenced project or task no longer exists
-        let project_orphaned = project_id.as_ref().map_or(false, |pid| {
+        let project_orphaned = project_id.as_ref().is_some_and(|pid| {
             conn.query_row(
                 "SELECT COUNT(*) FROM projects WHERE id = ?1",
                 params![pid],
@@ -487,7 +490,7 @@ pub fn time_entry_autocomplete(
             .unwrap_or(0)
                 == 0
         });
-        let task_orphaned = task_id.as_ref().map_or(false, |tid| {
+        let task_orphaned = task_id.as_ref().is_some_and(|tid| {
             conn.query_row(
                 "SELECT COUNT(*) FROM tasks WHERE id = ?1",
                 params![tid],

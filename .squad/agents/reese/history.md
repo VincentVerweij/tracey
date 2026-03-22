@@ -90,6 +90,12 @@
 
 **cargo check: PASS** — 16 dead_code warnings (all pre-existing), 0 errors.
 
+### 2026-03-22: WriteCtx/NewEntry struct refactor + local clippy (cargo check PASS)
+
+- Grouped insert parameters in `commands/idle.rs` via `WriteCtx` (device_id + now) and `NewEntry<'a>` (entry content) structs — removes clippy::too_many_arguments on `insert_running_entry` and `insert_entry`
+- `insert_running_entry` now accepts `&RunningTimerInfo` directly; no repeated `.as_deref()` at call sites
+- `.vscode/settings.json` with `rust-analyzer.check.command: "clippy"` mirrors the CI lint command locally; `.vscode/tasks.json` adds a manual `clippy (Rust)` build task
+
 ---
 
 ## Archived Sessions (condensed)
