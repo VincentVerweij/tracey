@@ -4,11 +4,9 @@ on:
   push:
     branches:
       - main
-      - 001-window-activity-tracker
   pull_request:
     branches:
       - main
-      - 001-window-activity-tracker
 
 jobs:
   # ─────────────────────────────────────────────
