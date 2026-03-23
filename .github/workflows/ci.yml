@@ -308,7 +308,7 @@ jobs:
         shell: pwsh
         run: |
           if (Test-Path "$env:RUNNER_TEMP\blazor-pid.txt") {
-            $pid = Get-Content "$env:RUNNER_TEMP\blazor-pid.txt"
-            Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
-            Write-Host "Dev server (PID $pid) stopped"
+            $blazorPid = Get-Content "$env:RUNNER_TEMP\blazor-pid.txt"
+            Stop-Process -Id $blazorPid -Force -ErrorAction SilentlyContinue
+            Write-Host "Dev server (PID $blazorPid) stopped"
           }
