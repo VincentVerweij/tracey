@@ -227,7 +227,6 @@ jobs:
 
   # ─────────────────────────────────────────────
   # Job 4: E2E Tests
-  # Only runs on push to main / 001-window-activity-tracker; skipped on PRs.
   # Tests drive Chromium against the Blazor WASM dev server at localhost:5000.
   # window.__TAURI__ is absent in this mode — IPC-dependent tests will fail;
   # continue-on-error: true is set until a tauri-driver CDP harness is wired
@@ -237,8 +236,6 @@ jobs:
     name: E2E Tests
     runs-on: windows-latest
     needs: build-portable
-    # Skip on pull_request events — e2e only gates direct branch pushes.
-    if: github.event_name == 'push'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
