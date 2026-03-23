@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { hasTauriAvailable } from './tauri-helpers';
 
 /**
  * US3 — Manage Clients, Projects, and Tasks
@@ -78,6 +79,12 @@ async function deleteProject(page: Page, projectId: string): Promise<void> {
 test.describe('US3 — Manage Clients, Projects, and Tasks', () => {
 
   test.describe.configure({ mode: 'serial' });
+
+  test.beforeEach(async ({ page }) => {
+    if (!(await hasTauriAvailable(page))) {
+      test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+    }
+  });
 
   // ───────────────────────────────────────────────────────────────────────────
   // AC1 — Navigate to Projects page

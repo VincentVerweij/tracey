@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { hasTauriAvailable } from './tauri-helpers';
 
 /**
  * US1 — Start Tracking Time on a Task
@@ -58,6 +59,12 @@ test.describe('US1 — Start Tracking Time on a Task', () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   test.describe('AC1 — Fuzzy Match Dropdown', () => {
+
+    test.beforeEach(async ({ page }) => {
+      if (!(await hasTauriAvailable(page))) {
+        test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+      }
+    });
 
     test('typing partial project name shows live fuzzy dropdown sorted by match strength', async ({ page }) => {
       // AC1: type project/task/description → live dropdown appears sorted by match strength
@@ -133,6 +140,12 @@ test.describe('US1 — Start Tracking Time on a Task', () => {
 
   test.describe('AC2 — Segment Confirmation (Tab / Enter)', () => {
 
+    test.beforeEach(async ({ page }) => {
+      if (!(await hasTauriAvailable(page))) {
+        test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+      }
+    });
+
     test('Tab on highlighted dropdown match confirms project segment and dismisses dropdown', async ({ page }) => {
       // AC2: Tab on match → segment confirmed, cursor moves to next
       await waitForApp(page);
@@ -169,6 +182,12 @@ test.describe('US1 — Start Tracking Time on a Task', () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   test.describe('AC3 — Timer Start and Auto-Stop', () => {
+
+    test.beforeEach(async ({ page }) => {
+      if (!(await hasTauriAvailable(page))) {
+        test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+      }
+    });
 
     test('pressing Enter on complete entry starts timer — elapsed display shows 0:00', async ({ page }) => {
       // AC3: complete entry → timer starts; role="timer" element appears
@@ -228,6 +247,12 @@ test.describe('US1 — Start Tracking Time on a Task', () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   test.describe('AC4 — Timer Stop and TimeEntry Persistence', () => {
+
+    test.beforeEach(async ({ page }) => {
+      if (!(await hasTauriAvailable(page))) {
+        test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+      }
+    });
 
     test('stopping the timer creates a TimeEntry visible in Timeline', async ({ page }) => {
       // AC4: stop → TimeEntry saved with correct start/end UTC datetimes
@@ -296,6 +321,12 @@ test.describe('US1 — Start Tracking Time on a Task', () => {
 
   test.describe('AC5 — Continue Past Entry', () => {
 
+    test.beforeEach(async ({ page }) => {
+      if (!(await hasTauriAvailable(page))) {
+        test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+      }
+    });
+
     test('clicking Continue on a past entry starts a new timer from current time', async ({ page }) => {
       // AC5: Continue → new timer starts using current time as start datetime
       await waitForApp(page);
@@ -356,6 +387,10 @@ test.describe('US1 — Start Tracking Time on a Task', () => {
     test('Ctrl+Space stops a running timer', async ({ page }) => {
       // Spec US1: timer running → Ctrl+Space stops it
       await waitForApp(page);
+      if (!(await hasTauriAvailable(page))) {
+        test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+        return;
+      }
 
       const quickEntry = page.getByRole('textbox', { name: /what are you working on/i });
       await quickEntry.fill('Keyboard shortcut stop test');
@@ -454,7 +489,7 @@ test.describe('T025a — Orphaned autocomplete suggestion', () => {
     // 3. The description still appears in autocomplete
     // 4. The suggestion shows an orphan warning indicator
 
-    await page.goto('/');
+    await waitForApp(page);
 
     // Step 1: Type in quick-entry and check autocomplete (assumes seeded data or prior test state)
     const quickEntry = page.getByRole('textbox', { name: /what are you working on/i });
@@ -483,7 +518,7 @@ test.describe('T025a — Orphaned autocomplete suggestion', () => {
   });
 
   test('selecting an orphaned suggestion still creates a new entry (without project/task)', async ({ page }) => {
-    await page.goto('/');
+    await waitForApp(page);
 
     const quickEntry = page.getByRole('textbox', { name: /what are you working on/i });
     await quickEntry.fill('Orphaned task review');
@@ -511,7 +546,7 @@ test.describe('T025a — Orphaned autocomplete suggestion', () => {
 test.describe('T029a — Scroll position preservation', () => {
 
   test('scroll position is preserved after navigating away and back', async ({ page }) => {
-    await page.goto('/');
+    await waitForApp(page);
 
     // Wait for entry list to load
     await page.waitForSelector('.time-entry-list', { timeout: 3000 }).catch(() => {
@@ -574,7 +609,7 @@ test.describe('T029a — Scroll position preservation', () => {
 test.describe('T030c — Inline edit auto-saves on blur', () => {
 
   test('clicking a time entry opens inline edit form', async ({ page }) => {
-    await page.goto('/');
+    await waitForApp(page);
 
     // Need at least one completed time entry
     const entryDesc = page.locator('.entry-description-btn').first();
@@ -593,7 +628,7 @@ test.describe('T030c — Inline edit auto-saves on blur', () => {
   });
 
   test('modifying description and tabbing out triggers auto-save without Save button', async ({ page }) => {
-    await page.goto('/');
+    await waitForApp(page);
 
     const entryDesc = page.locator('.entry-description-btn').first();
     if (!await entryDesc.isVisible()) {
@@ -622,7 +657,7 @@ test.describe('T030c — Inline edit auto-saves on blur', () => {
   });
 
   test('Cancel button discards changes without saving', async ({ page }) => {
-    await page.goto('/');
+    await waitForApp(page);
 
     const entryDesc = page.locator('.entry-description-btn').first();
     if (!await entryDesc.isVisible()) {
@@ -649,7 +684,7 @@ test.describe('T030c — Inline edit auto-saves on blur', () => {
   test('overlap error is shown inline when auto-save detects conflict', async ({ page }) => {
     // This test validates the overlap error UI
     // Verifying the error message appears when times overlap
-    await page.goto('/');
+    await waitForApp(page);
 
     // Click an entry to edit
     const entryDesc = page.locator('.entry-description-btn').first();

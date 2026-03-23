@@ -88,6 +88,19 @@ Added 3 tests to `idle-detection.spec.ts` (7 → 10 total). All three require ge
 
 TDD gate held: all tests written before implementation files existed.
 
+### 2026-03-23: Tauri availability guards — shared helper + three spec fixes
+
+Created `tests/e2e/specs/tauri-helpers.ts` with `hasTauriAvailable(page: Page): Promise<boolean>` — uses `page.evaluate(() => typeof (window as any).__TAURI_INTERNALS__ !== 'undefined')`.
+
+**Pattern applied to three spec files:**
+- **cloud-sync.spec.ts**: Added `test.beforeEach` guard inside AC2, AC3, AC4, AC5, AC6 describe blocks. Did NOT touch AC1 (UI), AC7 (UI), or the `sync_trigger` test that already passes via try/catch.
+- **idle-detection.spec.ts**: Added `test.beforeAll` (browser fixture) guard at top of the US2 describe — checks Tauri availability once per suite, closes context, calls `test.skip()` if unavailable. Kept `mode: 'serial'` and all tests unchanged.
+- **bug-fixes.spec.ts**: Added `test.beforeEach` guard to Bug 1+2, Bug 4, Bug 5 inner describes. For Bug 6, added both `beforeEach` guard AND an early-return guard in the existing `beforeAll` (prevents TypeError when `createClient` would call IPC without Tauri bridge).
+
+**Key lesson:** `beforeEach` alone is insufficient when a describe also has `beforeAll` that calls IPC — `beforeAll` runs before `beforeEach` can skip the test. Fix: guard both hooks. Use early `return` in `beforeAll` after the availability check; use `test.skip()` in `beforeEach` to mark tests as skipped.
+
+**Standard established (decision recorded):** Any new E2E test calling `window.__TAURI_INTERNALS__` MUST be inside a describe block with a `hasTauriAvailable` guard.
+
 ### 2026-03-21: T076 — Phase 11 US9 Portable Execution E2E Tests
 
 **portable.spec.ts** (Playwright, 4 tests): Created `tests/e2e/specs/portable.spec.ts` covering US9 behavioral guarantees.

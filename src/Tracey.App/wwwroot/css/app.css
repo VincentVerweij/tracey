@@ -385,3 +385,16 @@ code {
     color: #dc2626;
     margin: 0;
 }
+
+/* =========================================
+   WCAG AA Overrides
+   BlazorBlueprint Default variant uses #0d6efd background with dark text
+   (3.94:1 contrast — fails AA 4.5:1 for normal text).
+   Override specific toolbar buttons to use --tracey-accent-hover (#4f46e5)
+   which achieves 5.81:1 contrast with white text.
+   ========================================= */
+button[aria-label="Add client"] {
+    background-color: var(--tracey-accent-hover) !important;
+    color: #ffffff !important;
+    border-color: var(--tracey-accent-hover) !important;
+}

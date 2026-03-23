@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { hasTauriAvailable } from './tauri-helpers';
 
 /**
  * US9 — Run as Portable Application Without Admin Rights
@@ -79,6 +80,12 @@ test.afterEach(async ({ page }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('US9 — Portable Execution Behavioral Guarantees', () => {
+
+  test.beforeEach(async ({ page }) => {
+    if (!(await hasTauriAvailable(page))) {
+      test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+    }
+  });
 
   // ───────────────────────────────────────────────────────────────────────────
   // Test 1: First-launch initialization — preferences seeded with defaults

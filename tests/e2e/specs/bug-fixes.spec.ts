@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { hasTauriAvailable } from './tauri-helpers';
 
 /**
  * Bug Fix Regression Tests
@@ -68,6 +69,12 @@ test.describe('Bug Fix Regressions', () => {
   test.describe('Bug 1+2 — Projects load and save correctly', () => {
 
     let clientId: string | null = null;
+
+    test.beforeEach(async ({ page }) => {
+      if (!(await hasTauriAvailable(page))) {
+        test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+      }
+    });
 
     test.afterEach(async ({ page }) => {
       if (clientId) {
@@ -142,6 +149,12 @@ test.describe('Bug Fix Regressions', () => {
 
   test.describe('Bug 4 — Timer display counts up', () => {
 
+    test.beforeEach(async ({ page }) => {
+      if (!(await hasTauriAvailable(page))) {
+        test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+      }
+    });
+
     test('timer display increases each second after start', async ({ page }) => {
       // Bug 4: tracey://timer-tick events never reach HandleTimerTick because
       //        TauriEventService.Listen<T> is a TODO stub and InitializeAsync is never called.
@@ -177,6 +190,12 @@ test.describe('Bug Fix Regressions', () => {
   // ───────────────────────────────────────────────────────────────────────────
 
   test.describe('Bug 5 — Entry list refreshes after stop', () => {
+
+    test.beforeEach(async ({ page }) => {
+      if (!(await hasTauriAvailable(page))) {
+        test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+      }
+    });
 
     test('entry list refreshes immediately after stopping timer', async ({ page }) => {
       // Bug 5: TimeEntryList.LoadPage sets _loading = false inside finally{} but
@@ -218,9 +237,19 @@ test.describe('Bug Fix Regressions', () => {
     let clientAId: string;
     let clientBId: string;
 
+    test.beforeEach(async ({ page }) => {
+      if (!(await hasTauriAvailable(page))) {
+        test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+      }
+    });
+
     test.beforeAll(async ({ browser }) => {
       const page = await browser.newPage();
       await waitForApp(page);
+      if (!(await hasTauriAvailable(page))) {
+        await page.close();
+        return;
+      }
       // Two clients with completely different (non-overlapping) project names
       clientAId = await (async () => {
         const r = await page.evaluate(async ({ name, color }) =>

@@ -13,7 +13,7 @@
                        @bind:after="LoadClients" />
                 Show archived
             </label>
-            <BbButton Size="ButtonSize.Small"
+            <BbButton Variant="ButtonVariant.Default" Size="ButtonSize.Small"
                       OnClick="@(() => { _showAddClient = !_showAddClient; })"
                       AriaLabel="Add client">
                 + Add client
@@ -311,7 +311,7 @@
         try
         {
             var result = await Tauri.ClientListAsync(_showArchived);
-            _clients = [.. result.Clients];
+            _clients = result?.Clients is not null ? [.. result.Clients] : [];
             _projects.Clear();
             _expandedClients.Clear();
             _expandedProjects.Clear();
@@ -340,7 +340,7 @@
         try
         {
             var result = await Tauri.ProjectListAsync(clientId, _showArchived);
-            _projects[clientId] = [.. result.Projects];
+            _projects[clientId] = result?.Projects is not null ? [.. result.Projects] : [];
         }
         catch (Exception ex)
         {
@@ -366,7 +366,7 @@
         try
         {
             var result = await Tauri.TaskListAsync(projectId);
-            _tasks[projectId] = [.. result.Tasks];
+            _tasks[projectId] = result?.Tasks is not null ? [.. result.Tasks] : [];
         }
         catch (Exception ex)
         {

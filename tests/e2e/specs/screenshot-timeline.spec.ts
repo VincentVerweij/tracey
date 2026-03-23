@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { hasTauriAvailable } from './tauri-helpers';
 
 /**
  * US4 — Screenshot Timeline Review
@@ -101,6 +102,12 @@ async function hasScreenshotsAfterWait(page: Page, waitMs = 5000): Promise<boole
 test.describe('US4 — Screenshot Timeline', () => {
 
   test.describe.configure({ mode: 'serial' });
+
+  test.beforeEach(async ({ page }) => {
+    if (!(await hasTauriAvailable(page))) {
+      test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+    }
+  });
 
   // ───── Navigation ──────────────────────────────────────────────────────────
 

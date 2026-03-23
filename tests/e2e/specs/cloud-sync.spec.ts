@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { hasTauriAvailable } from './tauri-helpers';
 
 /**
  * US8 — Cloud Sync and Cross-Device Visibility
@@ -96,6 +97,12 @@ test.describe('US8 AC1 — Sync Settings Section', () => {
 
 test.describe('US8 AC2 — sync_get_status IPC', () => {
 
+  test.beforeEach(async ({ page }) => {
+    if (!(await hasTauriAvailable(page))) {
+      test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+    }
+  });
+
   test('sync_get_status returns a valid status object', async ({ page }) => {
     await waitForApp(page);
 
@@ -128,6 +135,12 @@ test.describe('US8 AC2 — sync_get_status IPC', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('US8 AC3 — sync_configure validation', () => {
+
+  test.beforeEach(async ({ page }) => {
+    if (!(await hasTauriAvailable(page))) {
+      test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+    }
+  });
 
   test('sync_configure rejects a non-postgres URI', async ({ page }) => {
     await waitForApp(page);
@@ -175,6 +188,12 @@ test.describe('US8 AC3 — sync_configure validation', () => {
 
 test.describe('US8 AC4 — Screenshots excluded from sync', () => {
 
+  test.beforeEach(async ({ page }) => {
+    if (!(await hasTauriAvailable(page))) {
+      test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+    }
+  });
+
   test('sync_get_status response contains no screenshot data', async ({ page }) => {
     await waitForApp(page);
 
@@ -216,6 +235,12 @@ test.describe('US8 AC4 — Screenshots excluded from sync', () => {
 
 test.describe('US8 AC5 — Offline resilience', () => {
 
+  test.beforeEach(async ({ page }) => {
+    if (!(await hasTauriAvailable(page))) {
+      test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+    }
+  });
+
   test('pending_queue_size increases after a local write when sync is disabled', async ({ page }) => {
     await waitForApp(page);
 
@@ -256,6 +281,12 @@ test.describe('US8 AC5 — Offline resilience', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('US8 AC6 — Cross-device timer fields on time_entries', () => {
+
+  test.beforeEach(async ({ page }) => {
+    if (!(await hasTauriAvailable(page))) {
+      test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+    }
+  });
 
   test('time entries include device_id field for cross-device identification', async ({ page }) => {
     await waitForApp(page);

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { hasTauriAvailable } from './tauri-helpers';
 
 /**
  * US5 — Keyboard-First Quick Entry with Fuzzy Matching
@@ -78,6 +79,12 @@ async function stopTimer(page: Page): Promise<void> {
 test.describe('US5 — Keyboard-First Quick Entry with Fuzzy Matching', () => {
   test.describe.configure({ mode: 'serial' });
 
+  test.beforeEach(async ({ page }) => {
+    if (!(await hasTauriAvailable(page))) {
+      test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+    }
+  });
+
   let client1Id: string;
   let client2Id: string;
   let project1Id: string;
@@ -89,6 +96,11 @@ test.describe('US5 — Keyboard-First Quick Entry with Fuzzy Matching', () => {
   test.beforeAll(async ({ browser }) => {
     const page = await browser.newPage();
     await waitForApp(page);
+
+    if (!(await hasTauriAvailable(page))) {
+      await page.close();
+      return; // No Tauri bridge — tests will be skipped by beforeEach guard
+    }
 
     // Client 1 with Project A + Task
     client1Id = await createClient(page, '__US5_Client1__');

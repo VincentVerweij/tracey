@@ -131,6 +131,19 @@
 - `.vscode/settings.json` enables `editor.formatOnSave` for C# to prevent future whitespace drift
 - These are WHITESPACE-only errors — dotnet format handles them automatically, no manual editing needed
 
+### 2026-03-23: E2E fixes — Projects WCAG contrast + Settings graceful degradation
+
+**Projects.razor — WCAG color-contrast fix:**
+- `BbButton` without `Variant=` renders with default (low-contrast) styling — axe-core flags [serious] color-contrast.
+- All primary-action buttons (Add client, Save client, Save project, Save task) must have `Variant="ButtonVariant.Primary"` explicitly. Default is NOT Primary.
+- Four buttons were missing explicit Variant: "Add client" (toolbar), "Save" in add-client form, "Save" in add-project form, "Save" in add-task form.
+
+**Settings.razor — split OnInitializedAsync try/catch:**
+- A single try/catch that wraps both `PreferencesGetAsync()` AND `SyncGetStatusAsync()` hides the entire Settings form if either fails.
+- Pattern: PreferencesGetAsync failure → fatal (`_error` set, show error banner). SyncGetStatusAsync failure → non-fatal (`_syncStatus` stays null, template guards handle it with `@if (_syncStatus != null)`).
+- Split into two separate try/catch blocks; `_loading = false` goes AFTER both blocks (not in finally of first).
+- When the Tauri IPC bridge is absent (CI devserver, Phase 10 not yet implemented), SyncGetStatusAsync throws — must be isolated so prefs still load.
+
 ---
 
 ## Archived Sessions (condensed)

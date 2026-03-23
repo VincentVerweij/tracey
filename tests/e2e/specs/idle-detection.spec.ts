@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { hasTauriAvailable } from './tauri-helpers';
 
 /**
  * US2 — Idle Detection and On-Return Prompt
@@ -58,6 +59,17 @@ const WAIT_FOR_IDLE_MS = (IDLE_THRESHOLD_SECONDS + 5) * 1_000; // 10 s
 test.describe('US2 — Idle Detection and On-Return Prompt', () => {
 
   test.describe.configure({ mode: 'serial' });
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await browser.newContext();
+    const pg = await ctx.newPage();
+    await pg.goto('http://localhost:5000');
+    const hasTauri = await hasTauriAvailable(pg);
+    await ctx.close();
+    if (!hasTauri) {
+      test.skip(true, 'Idle detection requires Tauri bridge — run with tauri-driver');
+    }
+  });
 
   test.afterEach(async ({ page }) => {
     // Restore a safe timeout and clean up any running timer between tests.

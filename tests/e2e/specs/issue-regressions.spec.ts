@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { hasTauriAvailable } from './tauri-helpers';
 
 /**
  * Regression tests for issues reported March 17, 2026:
@@ -80,6 +81,12 @@ async function stopTimer(page: Page): Promise<void> {
 
 test.describe('Issue Regressions — March 17 2026', () => {
   test.describe.configure({ mode: 'serial' });
+
+  test.beforeEach(async ({ page }) => {
+    if (!(await hasTauriAvailable(page))) {
+      test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+    }
+  });
 
   test.describe('Issue 3 — task_list camelCase arg', () => {
     let clientId: string;
@@ -179,15 +186,17 @@ test.describe('Issue Regressions — March 17 2026', () => {
       // Clean up both possible clients
       try { if (firstClientId) await deleteClient(page, firstClientId); } catch {}
       // Also try to delete any __ArchiveNameTest__ clients
-      const clients = await page.evaluate(async () => {
-        const result = await (window as any).__TAURI_INTERNALS__.invoke('client_list', { includeArchived: true });
-        return result.clients ?? [];
-      });
-      for (const c of clients) {
-        if (c.name === '__ArchiveNameTest__') {
-          await deleteClient(page, c.id);
+      try {
+        const clients = await page.evaluate(async () => {
+          const result = await (window as any).__TAURI_INTERNALS__.invoke('client_list', { includeArchived: true });
+          return result.clients ?? [];
+        });
+        for (const c of clients) {
+          if (c.name === '__ArchiveNameTest__') {
+            await deleteClient(page, c.id);
+          }
         }
-      }
+      } catch {}
     });
 
     test('can create new client with same name as archived client', async ({ page }) => {
