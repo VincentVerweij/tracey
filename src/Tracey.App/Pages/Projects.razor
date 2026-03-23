@@ -1,0 +1,585 @@
+@page "/projects"
+@inject TauriIpcService Tauri
+
+<PageTitle>Projects</PageTitle>
+
+<div class="projects-page">
+    <div class="projects-header">
+        <h1 class="page-title">Projects</h1>
+        <div class="projects-toolbar">
+            <label class="show-archived-label">
+                <input type="checkbox"
+                       @bind="_showArchived"
+                       @bind:after="LoadClients" />
+                Show archived
+            </label>
+            <BbButton Variant="ButtonVariant.Default" Size="ButtonSize.Small"
+                      OnClick="@(() => { _showAddClient = !_showAddClient; })"
+                      AriaLabel="Add client">
+                + Add client
+            </BbButton>
+        </div>
+    </div>
+
+    @if (_errorMessage != null)
+    {
+        <BbAlert Variant="AlertVariant.Danger" AccentBorder Dismissible
+                 OnDismiss="@(() => { _errorMessage = null; })">
+            <BbAlertTitle>Error</BbAlertTitle>
+            <BbAlertDescription>@_errorMessage</BbAlertDescription>
+        </BbAlert>
+    }
+
+    @if (_showAddClient)
+    {
+        <div class="add-client-form">
+            <h3>New Client</h3>
+            <div class="form-group">
+                <label for="new-client-name">Name</label>
+                <input id="new-client-name"
+                       type="text"
+                       @bind="_newClientName"
+                       placeholder="Client name"
+                       aria-label="Client name" />
+            </div>
+            <div class="form-group">
+                <label for="new-client-color">Color</label>
+                <input id="new-client-color"
+                       type="color"
+                       @bind="_newClientColor"
+                       aria-label="Client color" />
+            </div>
+            <div class="form-group">
+                <label for="new-client-logo">Logo path (optional)</label>
+                <input id="new-client-logo"
+                       type="text"
+                       @bind="_newClientLogoPath"
+                       placeholder="C:\path\to\logo.png"
+                       aria-label="Logo path" />
+            </div>
+            <div class="form-actions">
+                <BbButton OnClick="SaveNewClient" AriaLabel="Save client">Save</BbButton>
+                <BbButton Variant="ButtonVariant.Outline" OnClick="CancelAddClient" AriaLabel="Cancel add client">Cancel</BbButton>
+            </div>
+        </div>
+    }
+
+    @if (_loading)
+    {
+        <p class="loading-text">Loading…</p>
+    }
+    else if (_clients.Count == 0)
+    {
+        <p class="empty-state">No clients yet. Add your first client above.</p>
+    }
+    else
+    {
+        <div class="client-list">
+            @foreach (var client in _clients)
+            {
+                var isClientExpanded = _expandedClients.Contains(client.Id);
+                <BbCard Class="@($"client-card{(client.IsArchived ? " archived" : "")}")">
+
+                    <div class="client-header">
+                        <BbButton Variant="ButtonVariant.Ghost"
+                                  Size="ButtonSize.Small"
+                                  OnClick="() => ToggleClientExpand(client.Id)"
+                                  AriaLabel="@ExpandLabel(isClientExpanded, client.Name)"
+                                  Class="chevron-btn"
+                                  AdditionalAttributes="@(new Dictionary<string, object> { ["aria-expanded"] = isClientExpanded.ToString().ToLower() })">
+                            <span class="chevron @(isClientExpanded ? "open" : "")">&#8250;</span>
+                        </BbButton>
+                        <span class="color-swatch"
+                              style="background: @client.Color"
+                              aria-label="color swatch"></span>
+                        <span class="client-name">@client.Name</span>
+                        @if (client.IsArchived)
+                        {
+                            <span class="archive-badge">Archived</span>
+                        }
+                        <div class="client-actions">
+                            @if (client.IsArchived)
+                            {
+                                <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                          OnClick="() => UnarchiveClient(client.Id)"
+                                          AriaLabel="@($"Unarchive {client.Name}")">Unarchive</BbButton>
+                            }
+                            else
+                            {
+                                <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                          OnClick="() => ArchiveClient(client.Id)"
+                                          AriaLabel="@($"Archive {client.Name}")">Archive</BbButton>
+                            }
+                            <BbButton Variant="ButtonVariant.Destructive" Size="ButtonSize.Small"
+                                      OnClick="() => ConfirmDeleteClient(client)"
+                                      AriaLabel="@($"Delete {client.Name}")">Delete</BbButton>
+                        </div>
+                    </div>
+
+                    @if (_pendingDeleteClient?.Id == client.Id)
+                    {
+                        <div role="dialog"
+                             aria-label="@($"Confirm delete {client.Name}")"
+                             class="inline-confirm">
+                            <span class="warn-icon">⚠️</span>
+                            <p>All projects and tasks under <strong>@client.Name</strong> will be deleted. Time entries will be kept but unlinked.</p>
+                            <div class="form-actions">
+                                <BbButton Variant="ButtonVariant.Destructive"
+                                          OnClick="() => DeleteClient(client.Id)"
+                                          AriaLabel="@($"Confirm delete {client.Name}")">Delete client</BbButton>
+                                <BbButton Variant="ButtonVariant.Outline"
+                                          OnClick="@(() => { _pendingDeleteClient = null; })"
+                                          AriaLabel="Cancel delete">Cancel</BbButton>
+                            </div>
+                        </div>
+                    }
+
+                    @if (isClientExpanded)
+                    {
+                        <div class="project-list">
+                            @if (_projectsLoading.Contains(client.Id))
+                            {
+                                <p class="loading-text">Loading projects…</p>
+                            }
+                            else if (_projects.TryGetValue(client.Id, out var projects))
+                            {
+                                @if (projects.Count == 0)
+                                {
+                                    <p class="empty-state">No projects yet. Add one above.</p>
+                                }
+                                @foreach (var project in projects)
+                                {
+                                    var isProjectExpanded = _expandedProjects.Contains(project.Id);
+                                    <div class="project-row @(project.IsArchived ? "archived" : "")">
+
+                                        <div class="project-header">
+                                            <BbButton Variant="ButtonVariant.Ghost"
+                                                      Size="ButtonSize.Small"
+                                                      OnClick="() => ToggleProjectExpand(project.Id)"
+                                                      AriaLabel="@ExpandLabel(isProjectExpanded, project.Name)"
+                                                      Class="chevron-btn"
+                                                      AdditionalAttributes="@(new Dictionary<string, object> { ["aria-expanded"] = isProjectExpanded.ToString().ToLower() })">
+                                                <span class="chevron @(isProjectExpanded ? "open" : "")">&#8250;</span>
+                                            </BbButton>
+                                            <span class="project-name">@project.Name</span>
+                                            @if (project.IsArchived)
+                                            {
+                                                <span class="archive-badge">Archived</span>
+                                            }
+                                            <div class="project-actions">
+                                                @if (project.IsArchived)
+                                                {
+                                                    <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                                              OnClick="() => UnarchiveProject(project.Id, client.Id)"
+                                                              AriaLabel="@($"Unarchive {project.Name}")">Unarchive</BbButton>
+                                                }
+                                                else
+                                                {
+                                                    <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                                              OnClick="() => ArchiveProject(project.Id, client.Id)"
+                                                              AriaLabel="@($"Archive {project.Name}")">Archive</BbButton>
+                                                }
+                                                <BbButton Variant="ButtonVariant.Destructive" Size="ButtonSize.Small"
+                                                          OnClick="() => ConfirmDeleteProject(project)"
+                                                          AriaLabel="@($"Delete {project.Name}")">Delete</BbButton>
+                                            </div>
+                                        </div>
+
+                                        @if (_pendingDeleteProject?.Id == project.Id)
+                                        {
+                                            <div role="dialog"
+                                                 aria-label="@($"Confirm delete {project.Name}")"
+                                                 class="inline-confirm">
+                                                <span class="warn-icon">⚠️</span>
+                                                <p>All tasks under <strong>@project.Name</strong> will be deleted. Time entries will be kept but unlinked.</p>
+                                                <div class="form-actions">
+                                                    <BbButton Variant="ButtonVariant.Destructive"
+                                                              OnClick="() => DeleteProject(project.Id, client.Id)"
+                                                              AriaLabel="@($"Confirm delete {project.Name}")">Delete project</BbButton>
+                                                    <BbButton Variant="ButtonVariant.Outline"
+                                                              OnClick="@(() => { _pendingDeleteProject = null; })"
+                                                              AriaLabel="Cancel delete">Cancel</BbButton>
+                                                </div>
+                                            </div>
+                                        }
+
+                                        @if (isProjectExpanded)
+                                        {
+                                            <div class="task-list">
+                                                @if (_tasksLoading.Contains(project.Id))
+                                                {
+                                                    <p class="loading-text">Loading tasks…</p>
+                                                }
+                                                else if (_tasks.TryGetValue(project.Id, out var tasks))
+                                                {
+                                                    @if (tasks.Count == 0)
+                                                    {
+                                                        <p class="empty-state">No tasks yet. Add one above.</p>
+                                                    }
+                                                    @foreach (var task in tasks)
+                                                    {
+                                                        <div class="task-row">
+                                                            <span class="task-name">@task.Name</span>
+                                                            <BbButton Variant="ButtonVariant.Destructive" Size="ButtonSize.Small"
+                                                                      OnClick="() => DeleteTask(task.Id, project.Id)"
+                                                                      AriaLabel="@($"Delete task {task.Name}")">Delete</BbButton>
+                                                        </div>
+                                                    }
+                                                }
+                                                @if (_showAddTask.TryGetValue(project.Id, out var showTask) && showTask)
+                                                {
+                                                    <div class="add-task-form">
+                                                        <input type="text"
+                                                               @bind="_newTaskName[project.Id]"
+                                                               placeholder="Task name"
+                                                               aria-label="New task name for @project.Name" />
+                                                        <BbButton OnClick="() => SaveNewTask(project.Id)" AriaLabel="Save task">Save</BbButton>
+                                                        <BbButton Variant="ButtonVariant.Outline" OnClick="() => HideAddTask(project.Id)" AriaLabel="Cancel add task">Cancel</BbButton>
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                                              OnClick="() => ShowAddTask(project.Id)"
+                                                              AriaLabel="@($"Add task to {project.Name}")">+ Add task</BbButton>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            }
+
+                            @if (_showAddProject.TryGetValue(client.Id, out var showProject) && showProject)
+                            {
+                                <div class="add-project-form">
+                                    <input type="text"
+                                           @bind="_newProjectName[client.Id]"
+                                           placeholder="Project name"
+                                           aria-label="New project name for @client.Name" />
+                                    <BbButton OnClick="() => SaveNewProject(client.Id)" AriaLabel="Save project">Save</BbButton>
+                                    <BbButton Variant="ButtonVariant.Outline" OnClick="() => HideAddProject(client.Id)" AriaLabel="Cancel add project">Cancel</BbButton>
+                                </div>
+                            }
+                            else
+                            {
+                                <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                          OnClick="() => ShowAddProject(client.Id)"
+                                          AriaLabel="@($"Add project to {client.Name}")">+ Add project</BbButton>
+                            }
+                        </div>
+                    }
+                </BbCard>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<ClientItem> _clients = [];
+    private Dictionary<string, List<ProjectItem>> _projects = [];
+    private Dictionary<string, List<TaskItem>> _tasks = [];
+    private HashSet<string> _expandedClients = [];
+    private HashSet<string> _expandedProjects = [];
+    private HashSet<string> _projectsLoading = [];
+    private HashSet<string> _tasksLoading = [];
+    private Dictionary<string, bool> _showAddProject = [];
+    private Dictionary<string, bool> _showAddTask = [];
+    private Dictionary<string, string> _newProjectName = [];
+    private Dictionary<string, string> _newTaskName = [];
+
+    private bool _showAddClient;
+    private bool _showArchived;
+    private bool _loading;
+    private string? _errorMessage;
+
+    private string _newClientName = string.Empty;
+    private string _newClientColor = "#3b82f6";
+    private string _newClientLogoPath = string.Empty;
+
+    private ClientItem? _pendingDeleteClient;
+    private ProjectItem? _pendingDeleteProject;
+
+    private static string ExpandLabel(bool expanded, string name) =>
+        expanded ? $"Collapse {name}" : $"Expand {name}";
+
+    protected override async Task OnInitializedAsync() => await LoadClients();
+
+    private async Task LoadClients()
+    {
+        _loading = true;
+        _errorMessage = null;
+        try
+        {
+            var result = await Tauri.ClientListAsync(_showArchived);
+            _clients = result?.Clients is not null ? [.. result.Clients] : [];
+            _projects.Clear();
+            _expandedClients.Clear();
+            _expandedProjects.Clear();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load clients: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ToggleClientExpand(string clientId)
+    {
+        if (_expandedClients.Remove(clientId)) return;
+        _expandedClients.Add(clientId);
+        if (!_projects.ContainsKey(clientId))
+            await LoadProjects(clientId);
+    }
+
+    private async Task LoadProjects(string clientId)
+    {
+        _projectsLoading.Add(clientId);
+        try
+        {
+            var result = await Tauri.ProjectListAsync(clientId, _showArchived);
+            _projects[clientId] = result?.Projects is not null ? [.. result.Projects] : [];
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load projects: {ex.Message}";
+        }
+        finally
+        {
+            _projectsLoading.Remove(clientId);
+        }
+    }
+
+    private async Task ToggleProjectExpand(string projectId)
+    {
+        if (_expandedProjects.Remove(projectId)) return;
+        _expandedProjects.Add(projectId);
+        if (!_tasks.ContainsKey(projectId))
+            await LoadTasks(projectId);
+    }
+
+    private async Task LoadTasks(string projectId)
+    {
+        _tasksLoading.Add(projectId);
+        try
+        {
+            var result = await Tauri.TaskListAsync(projectId);
+            _tasks[projectId] = result?.Tasks is not null ? [.. result.Tasks] : [];
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load tasks: {ex.Message}";
+        }
+        finally
+        {
+            _tasksLoading.Remove(projectId);
+        }
+    }
+
+    private async Task SaveNewClient()
+    {
+        if (string.IsNullOrWhiteSpace(_newClientName))
+        {
+            _errorMessage = "Client name is required.";
+            return;
+        }
+        try
+        {
+            await Tauri.ClientCreateAsync(new ClientCreateRequest(
+                _newClientName.Trim(),
+                _newClientColor,
+                string.IsNullOrWhiteSpace(_newClientLogoPath) ? null : _newClientLogoPath.Trim()));
+            _showAddClient = false;
+            ResetNewClientForm();
+            await LoadClients();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to create client: {ex.Message}";
+        }
+    }
+
+    private void CancelAddClient()
+    {
+        _showAddClient = false;
+        ResetNewClientForm();
+    }
+
+    private void ResetNewClientForm()
+    {
+        _newClientName = string.Empty;
+        _newClientColor = "#3b82f6";
+        _newClientLogoPath = string.Empty;
+    }
+
+    private async Task ArchiveClient(string clientId)
+    {
+        try
+        {
+            await Tauri.ClientArchiveAsync(clientId);
+            await LoadClients();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to archive client: {ex.Message}";
+        }
+    }
+
+    private async Task UnarchiveClient(string clientId)
+    {
+        try
+        {
+            await Tauri.ClientUnarchiveAsync(clientId);
+            await LoadClients();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to unarchive client: {ex.Message}";
+        }
+    }
+
+    private void ConfirmDeleteClient(ClientItem client)
+    {
+        _pendingDeleteClient = client;
+        _pendingDeleteProject = null;
+    }
+
+    private async Task DeleteClient(string clientId)
+    {
+        try
+        {
+            await Tauri.ClientDeleteAsync(clientId);
+            _pendingDeleteClient = null;
+            await LoadClients();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to delete client: {ex.Message}";
+            _pendingDeleteClient = null;
+        }
+    }
+
+    private void ShowAddProject(string clientId)
+    {
+        _showAddProject[clientId] = true;
+        _newProjectName.TryAdd(clientId, string.Empty);
+    }
+
+    private void HideAddProject(string clientId) => _showAddProject[clientId] = false;
+
+    private async Task SaveNewProject(string clientId)
+    {
+        if (!_newProjectName.TryGetValue(clientId, out var name) || string.IsNullOrWhiteSpace(name))
+        {
+            _errorMessage = "Project name is required.";
+            return;
+        }
+        try
+        {
+            await Tauri.ProjectCreateAsync(new ProjectCreateRequest(name.Trim(), clientId));
+            _showAddProject[clientId] = false;
+            _newProjectName[clientId] = string.Empty;
+            _projects.Remove(clientId);
+            await LoadProjects(clientId);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to create project: {ex.Message}";
+        }
+    }
+
+    private async Task ArchiveProject(string projectId, string clientId)
+    {
+        try
+        {
+            await Tauri.ProjectArchiveAsync(projectId);
+            _projects.Remove(clientId);
+            await LoadProjects(clientId);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to archive project: {ex.Message}";
+        }
+    }
+
+    private async Task UnarchiveProject(string projectId, string clientId)
+    {
+        try
+        {
+            await Tauri.ProjectUnarchiveAsync(projectId);
+            _projects.Remove(clientId);
+            await LoadProjects(clientId);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to unarchive project: {ex.Message}";
+        }
+    }
+
+    private void ConfirmDeleteProject(ProjectItem project)
+    {
+        _pendingDeleteProject = project;
+        _pendingDeleteClient = null;
+    }
+
+    private async Task DeleteProject(string projectId, string clientId)
+    {
+        try
+        {
+            await Tauri.ProjectDeleteAsync(projectId);
+            _pendingDeleteProject = null;
+            _projects.Remove(clientId);
+            await LoadProjects(clientId);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to delete project: {ex.Message}";
+            _pendingDeleteProject = null;
+        }
+    }
+
+    private void ShowAddTask(string projectId)
+    {
+        _showAddTask[projectId] = true;
+        _newTaskName.TryAdd(projectId, string.Empty);
+    }
+
+    private void HideAddTask(string projectId) => _showAddTask[projectId] = false;
+
+    private async Task SaveNewTask(string projectId)
+    {
+        if (!_newTaskName.TryGetValue(projectId, out var name) || string.IsNullOrWhiteSpace(name))
+        {
+            _errorMessage = "Task name is required.";
+            return;
+        }
+        try
+        {
+            await Tauri.TaskCreateAsync(new TaskCreateRequest(name.Trim(), projectId));
+            _showAddTask[projectId] = false;
+            _newTaskName[projectId] = string.Empty;
+            _tasks.Remove(projectId);
+            await LoadTasks(projectId);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to create task: {ex.Message}";
+        }
+    }
+
+    private async Task DeleteTask(string taskId, string projectId)
+    {
+        try
+        {
+            await Tauri.TaskDeleteAsync(taskId);
+            _tasks.Remove(projectId);
+            await LoadTasks(projectId);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to delete task: {ex.Message}";
+        }
+    }
+}

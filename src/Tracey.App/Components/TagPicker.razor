@@ -1,0 +1,178 @@
+@inject TauriIpcService Tauri
+
+<div class="tpc">
+    @* ── Chips + trigger bar ── *@
+    <div class="tpc-bar" role="group" aria-label="Selected tags">
+        @foreach (var tagId in SelectedIds)
+        {
+            var tag = _allTags.FirstOrDefault(t => t.Id == tagId);
+            if (tag != null)
+            {
+                <span class="tpc-chip">
+                    @tag.Name
+                    <button type="button"
+                            class="tpc-chip-x"
+                            aria-label="@($"Remove {tag.Name}")"
+                            @onclick:stopPropagation
+                            @onclick="() => RemoveTag(tagId)">×</button>
+                </span>
+            }
+        }
+        @if (_allTags.Any(t => !SelectedIds.Contains(t.Id)))
+        {
+            <button type="button"
+                    class="tpc-trigger"
+                    aria-haspopup="listbox"
+                    aria-expanded="@_isOpen.ToString().ToLower()"
+                    @onclick="Open">
+                @(SelectedIds.Count == 0 ? "Add tags…" : "+")
+            </button>
+        }
+    </div>
+
+    @* ── Popover ── *@
+    @if (_isOpen)
+    {
+        <div class="tpc-backdrop" @onclick="Close"></div>
+        <div class="tpc-popover" role="dialog" aria-label="Pick tags">
+            <div class="tpc-search-wrap">
+                <input @ref="_searchRef"
+                       type="text"
+                       class="tpc-search"
+                       placeholder="Filter…"
+                       @bind="_filter"
+                       @bind:event="oninput"
+                       @onkeydown="HandleKeyDown"
+                       autocomplete="off"
+                       aria-label="Filter tags"
+                       aria-controls="tpc-list" />
+            </div>
+            @{
+                var visible = FilteredOptions();
+            }
+            @if (visible.Count == 0)
+            {
+                <p class="tpc-empty">
+                    @(_filter.Length > 0 ? "No tags match" : "All tags already selected")
+                </p>
+            }
+            else
+            {
+                <ul class="tpc-list" id="tpc-list" role="listbox">
+                    @for (int i = 0; i < visible.Count; i++)
+                    {
+                        var idx = i;
+                        var t = visible[i];
+                        <li class="tpc-option @(_focused == idx ? "tpc-option--focused" : "")"
+                            role="option"
+                            aria-selected="false"
+                            @onmouseenter="() => _focused = idx"
+                            @onclick="() => Pick(t.Id)">
+                            @t.Name
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<string> SelectedIds { get; set; } = new();
+    [Parameter] public EventCallback<List<string>> SelectedIdsChanged { get; set; }
+
+    private List<TagItem> _allTags = new();
+    private bool _isOpen;
+    private bool _shouldFocus;
+    private string _filter = string.Empty;
+    private int _focused;
+    private ElementReference _searchRef;
+
+    private List<TagItem> FilteredOptions() =>
+        _allTags
+            .Where(t => !SelectedIds.Contains(t.Id))
+            .Where(t => string.IsNullOrEmpty(_filter) ||
+                        t.Name.Contains(_filter, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var response = await Tauri.TagListAsync();
+            _allTags = response.Tags.ToList();
+        }
+        catch { }
+    }
+
+    private void Open()
+    {
+        if (_isOpen) return;
+        _isOpen = true;
+        _focused = 0;
+        _shouldFocus = true;
+    }
+
+    private void Close()
+    {
+        _isOpen = false;
+        _filter = string.Empty;
+        _focused = 0;
+    }
+
+    private async Task Pick(string tagId)
+    {
+        if (!SelectedIds.Contains(tagId))
+            await SelectedIdsChanged.InvokeAsync(SelectedIds.Append(tagId).ToList());
+        _filter = string.Empty;
+        _focused = 0;
+        _shouldFocus = true; // keep focus in search for rapid multi-select
+    }
+
+    private async Task RemoveTag(string tagId)
+    {
+        await SelectedIdsChanged.InvokeAsync(SelectedIds.Where(id => id != tagId).ToList());
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        var visible = FilteredOptions();
+        switch (e.Key)
+        {
+            case "Escape":
+                Close();
+                break;
+            case "ArrowDown":
+                _focused = Math.Min(_focused + 1, visible.Count - 1);
+                break;
+            case "ArrowUp":
+                _focused = Math.Max(_focused - 1, 0);
+                break;
+            case "Enter":
+                if (_focused >= 0 && _focused < visible.Count)
+                    await Pick(visible[_focused].Id);
+                break;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_shouldFocus)
+        {
+            _shouldFocus = false;
+            try { await _searchRef.FocusAsync(); } catch { }
+        }
+    }
+
+    /// Reload tag list when tags are created/deleted on the Tags page.
+    public async Task RefreshAsync()
+    {
+        try
+        {
+            var response = await Tauri.TagListAsync();
+            _allTags = response.Tags.ToList();
+            StateHasChanged();
+        }
+        catch { }
+    }
+}

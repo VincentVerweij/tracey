@@ -1,0 +1,780 @@
+@inject ITimerStateService Timer
+@inject TauriIpcService Tauri
+@inject FuzzyMatchService Fuzzy
+@implements IDisposable
+
+<div class="quick-entry-bar @(_slashMode != SlashMode.None ? "slash-active" : "")"
+     role="search">
+
+    <div class="entry-input-wrapper">
+        @if (Timer.IsRunning)
+        {
+            <span class="running-elapsed" role="timer" aria-live="polite" aria-atomic="true">
+                @Timer.Elapsed.ToString(@"hh\:mm\:ss")
+            </span>
+        }
+        @if (BreadcrumbPrefix.Length > 0)
+        {
+            <span class="entry-breadcrumb" aria-hidden="true">@BreadcrumbPrefix</span>
+        }
+        <input type="text"
+               @ref="_inputRef"
+               @bind="_inputText"
+               @bind:event="oninput"
+               @onkeydown="HandleKeyDown"
+               aria-label="@InputPlaceholder"
+               placeholder="@InputPlaceholder"
+               autocomplete="off"
+               class="entry-input @(Timer.IsRunning ? "is-running" : "")" />
+
+        @if (Timer.IsRunning)
+        {
+            <BbButton Variant="ButtonVariant.Destructive"
+                      Size="ButtonSize.Small"
+                      AriaLabel="Stop timer"
+                      OnClick="StopTimer">
+                Stop
+            </BbButton>
+        }
+    </div>
+
+    @* Client disambiguation dropdown — shown BEFORE project is resolved *@
+    @if (_disambiguationItems.Count > 1 && _resolvedProject is null)
+    {
+        <ul class="disambiguation-dropdown" role="listbox"
+            aria-label="Multiple clients have this project — pick one">
+            <li class="disambiguation-header" aria-hidden="true" role="presentation">
+                Multiple clients — choose one:
+            </li>
+            @for (int i = 0; i < _disambiguationItems.Count; i++)
+            {
+                var idx = i;
+                var item = _disambiguationItems[i];
+                <li class="disambiguation-item @(_disambigIndex == idx ? "disambiguation-item-selected" : "")"
+                    role="option"
+                    aria-selected="@(_disambigIndex == idx)"
+                    @onclick="() => ConfirmDisambiguation(idx)"
+                    tabindex="0">
+                    @item.ClientName
+                </li>
+            }
+        </ul>
+    }
+    @* Fuzzy project dropdown *@
+    else if (_slashMode == SlashMode.ProjectActive && _projectMatches.Count > 0 && _resolvedProject is null)
+    {
+        <ul class="fuzzy-dropdown" role="listbox" aria-label="Project matches">
+            @for (int i = 0; i < _projectMatches.Count; i++)
+            {
+                var idx = i;
+                var pm = _projectMatches[i];
+                <li class="fuzzy-item @(_dropdownIndex == idx ? "fuzzy-item-selected" : "")"
+                    role="option"
+                    aria-selected="@(_dropdownIndex == idx)"
+                    @onclick="() => ConfirmProject(idx)"
+                    tabindex="0">
+                    <span class="fuzzy-item-name">@RenderHighlighted(pm.ProjectName, _projectQuery)</span>
+                    <span class="fuzzy-item-meta">@pm.ClientName</span>
+                </li>
+            }
+        </ul>
+    }
+    @* Fuzzy task dropdown *@
+    else if (_slashMode == SlashMode.TaskActive && _taskMatches.Count > 0 && _resolvedTask is null)
+    {
+        <ul class="fuzzy-dropdown" role="listbox" aria-label="Task matches">
+            @for (int i = 0; i < _taskMatches.Count; i++)
+            {
+                var idx = i;
+                var tm = _taskMatches[i];
+                <li class="fuzzy-item @(_dropdownIndex == idx ? "fuzzy-item-selected" : "")"
+                    role="option"
+                    aria-selected="@(_dropdownIndex == idx)"
+                    @onclick="() => ConfirmTask(idx)"
+                    tabindex="0">
+                    <span class="fuzzy-item-name">@RenderHighlighted(tm.TaskName, _taskQuery)</span>
+                </li>
+            }
+        </ul>
+    }
+    @* History autocomplete — description-only mode *@
+    else if (_slashMode == SlashMode.None && _historySuggestions.Count > 0 && !Timer.IsRunning)
+    {
+        <ul class="autocomplete-dropdown" role="listbox" aria-label="Recent entries">
+            @foreach (var s in _historySuggestions)
+            {
+                <li role="option"
+                    class="suggestion-item @(s.IsOrphaned ? "is-orphaned" : "")"
+                    @onclick="() => SelectHistorySuggestion(s)"
+                    tabindex="0"
+                    @onkeydown="(e) => HandleSuggestionKey(e, s)">
+                    <span class="suggestion-description">@s.Description</span>
+                    @if (s.IsOrphaned)
+                    {
+                        <span class="orphan-warning"
+                              title="The linked project or task no longer exists"
+                              aria-label="Warning: project or task no longer exists">⚠</span>
+                    }
+                    else if (s.ProjectName != null)
+                    {
+                        <span class="suggestion-project">@s.ProjectName</span>
+                    }
+                </li>
+            }
+        </ul>
+    }
+
+    <div class="quick-entry-tags">
+        <TagPicker SelectedIds="_selectedTagIds"
+                   SelectedIdsChanged="HandleTagsChanged" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnTimerStarted { get; set; }
+    [Parameter] public EventCallback OnTimerStopped { get; set; }
+
+    // ─── Input state ───────────────────────────────────────────────────────
+
+    private string _inputText = string.Empty;
+    private ElementReference _inputRef;
+    private System.Timers.Timer? _debounceTimer;
+
+    // ─── Slash-mode state ──────────────────────────────────────────────────
+
+    private enum SlashMode { None, ProjectActive, TaskActive, Description }
+    private SlashMode _slashMode = SlashMode.None;
+
+    // Pre-slash client hint — typed before '/', stored as breadcrumb context
+    private string _clientHint = string.Empty;
+
+    // Live queries for each segment
+    private string _projectQuery = string.Empty;
+    private string _taskQuery    = string.Empty;
+
+    // Resolved/locked segments
+    private ProjectMatch? _resolvedProject;
+    private TaskMatch?    _resolvedTask;
+
+    // ─── Dropdown state ────────────────────────────────────────────────────
+
+    private List<ProjectMatch>          _projectMatches       = new();
+    private List<TaskMatch>             _taskMatches          = new();
+    private List<DisambiguationItem>    _disambiguationItems  = new();
+    private int _dropdownIndex   = -1; // project or task dropdown selection
+    private int _disambigIndex   = -1;
+
+    // ─── History autocomplete ─────────────────────────────────────────────
+
+    private List<AutocompleteSuggestion> _historySuggestions = new();
+
+    // ─── Tag selection ────────────────────────────────────────────────────
+
+    private List<string> _selectedTagIds = new();
+
+    // ─── Helpers ──────────────────────────────────────────────────────────
+
+    private record DisambiguationItem(string ClientId, string ClientName, string ProjectId, string ProjectName);
+
+    private string BreadcrumbPrefix => _slashMode switch
+    {
+        SlashMode.ProjectActive when _clientHint.Length > 0
+            => $"{_clientHint} /",
+        SlashMode.TaskActive when _resolvedProject is not null
+            => $"{_resolvedProject.ClientName} / {_resolvedProject.ProjectName} /",
+        SlashMode.Description when _resolvedProject is not null && _resolvedTask is not null
+            => $"{_resolvedProject.ClientName} / {_resolvedProject.ProjectName} / {_resolvedTask.TaskName} /",
+        SlashMode.Description when _resolvedProject is not null
+            => $"{_resolvedProject.ClientName} / {_resolvedProject.ProjectName} /",
+        _ => string.Empty
+    };
+
+    private string InputPlaceholder => _slashMode switch
+    {
+        SlashMode.ProjectActive => "Type project name…",
+        SlashMode.TaskActive    => "Type task name…",
+        SlashMode.Description   => "Describe what you're working on…",
+        _                       => "What are you working on?"
+    };
+
+    // ─── Lifecycle ────────────────────────────────────────────────────────
+
+    protected override void OnInitialized()
+    {
+        RestoreFromTimer();
+        Timer.OnStateChanged += HandleTimerStateChanged;
+    }
+
+    // Fires on every timer-tick AND on InitializeAsync completion.
+    // Re-syncs local fields in case OnInitialized ran before InitializeAsync finished (cold-boot race).
+    private void HandleTimerStateChanged()
+    {
+        RestoreFromTimer();
+        StateHasChanged();
+    }
+
+    private void RestoreFromTimer()
+    {
+        if (!Timer.IsRunning) return;
+
+        if (string.IsNullOrEmpty(_inputText))
+            _inputText = Timer.CurrentDescription ?? string.Empty;
+
+        if (_resolvedProject is null && Timer.CurrentProjectId != null && Timer.CurrentProjectName != null)
+        {
+            _resolvedProject = new ProjectMatch(
+                Timer.CurrentProjectId,
+                Timer.CurrentProjectName,
+                Timer.CurrentClientId ?? string.Empty,
+                Timer.CurrentClientName ?? string.Empty,
+                1.0);
+            _clientHint = Timer.CurrentClientName ?? string.Empty;
+
+            if (Timer.CurrentTaskId != null && Timer.CurrentTaskName != null)
+                _resolvedTask = new TaskMatch(Timer.CurrentTaskId, Timer.CurrentTaskName, 1.0);
+
+            _slashMode = SlashMode.Description;
+        }
+
+        // Restore tag selection from running entry
+        if (Timer.IsRunning && _selectedTagIds.Count == 0 && Timer.CurrentTagIds.Length > 0)
+            _selectedTagIds = Timer.CurrentTagIds.ToList();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            try { await _inputRef.FocusAsync(); } catch { }
+    }
+
+    // ─── Keyboard handler ─────────────────────────────────────────────────
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Enter":
+                if (_disambiguationItems.Count > 1 && _resolvedProject is null)
+                {
+                    await ConfirmDisambiguation(_disambigIndex < 0 ? 0 : _disambigIndex);
+                }
+                else if (_slashMode == SlashMode.ProjectActive && _projectMatches.Count > 0)
+                {
+                    await ConfirmProject(_dropdownIndex < 0 ? 0 : _dropdownIndex);
+                }
+                else if (_slashMode == SlashMode.TaskActive && _taskMatches.Count > 0)
+                {
+                    await ConfirmTask(_dropdownIndex < 0 ? 0 : _dropdownIndex);
+                }
+                else if (!string.IsNullOrWhiteSpace(GetDescription()) ||
+                         _slashMode == SlashMode.Description)
+                {
+                    await StartTimer();
+                }
+                break;
+
+            case "Tab":
+                if (_disambiguationItems.Count > 1 && _resolvedProject is null)
+                    await ConfirmDisambiguation(_disambigIndex < 0 ? 0 : _disambigIndex);
+                else if (_slashMode == SlashMode.ProjectActive && _projectMatches.Count > 0)
+                    await ConfirmProject(_dropdownIndex < 0 ? 0 : _dropdownIndex);
+                else if (_slashMode == SlashMode.TaskActive && _taskMatches.Count > 0)
+                    await ConfirmTask(_dropdownIndex < 0 ? 0 : _dropdownIndex);
+                break;
+
+            case "/":
+                // Transition None→ProjectActive: store what was typed as the client hint,
+                // then clear the input so the user can type the project name cleanly.
+                if (_slashMode == SlashMode.None && _inputText.TrimEnd('/').Length > 0)
+                {
+                    _clientHint   = _inputText.TrimEnd('/');
+                    _inputText    = string.Empty;
+                    _projectQuery = string.Empty;
+                    _slashMode    = SlashMode.ProjectActive;
+                    _historySuggestions.Clear();
+                    await LoadProjectMatches();
+                }
+                // When already in ProjectActive, strip literal '/' the user typed
+                else if (_slashMode == SlashMode.ProjectActive)
+                {
+                    _inputText = _inputText.TrimEnd('/');
+                    StateHasChanged();
+                }
+                // Queue debounce so residual oninput gets reconciled
+                TriggerDebounced();
+                break;
+
+            case "Backspace" when _inputText.Length == 0:
+                // Navigate backwards through the slash segments
+                if (_slashMode == SlashMode.ProjectActive)
+                {
+                    // Back to None: restore client hint text as editable input
+                    _inputText    = _clientHint;
+                    _clientHint   = string.Empty;
+                    _projectQuery = string.Empty;
+                    _projectMatches.Clear();
+                    _disambiguationItems.Clear();
+                    _slashMode    = SlashMode.None;
+                    await LoadHistorySuggestions(_inputText);
+                    StateHasChanged();
+                }
+                else if (_slashMode == SlashMode.TaskActive)
+                {
+                    // Back to ProjectActive: restore project name as editable input
+                    _clientHint      = _resolvedProject!.ClientName;
+                    _inputText       = _resolvedProject!.ProjectName;
+                    _projectQuery    = _resolvedProject!.ProjectName;
+                    _resolvedProject = null;
+                    _taskMatches.Clear();
+                    _slashMode       = SlashMode.ProjectActive;
+                    await LoadProjectMatches();
+                }
+                else if (_slashMode == SlashMode.Description)
+                {
+                    // Back to TaskActive: restore task name (or empty) as editable input
+                    _inputText    = _resolvedTask?.TaskName ?? string.Empty;
+                    _taskQuery    = _inputText;
+                    _resolvedTask = null;
+                    _slashMode    = SlashMode.TaskActive;
+                    await LoadTaskMatches();
+                }
+                break;
+
+            case "ArrowDown":
+                MoveDropdown(+1);
+                break;
+
+            case "ArrowUp":
+                MoveDropdown(-1);
+                break;
+
+            case "Escape":
+                ClearDropdowns();
+                break;
+
+            case " " when e.CtrlKey:
+                await ToggleTimer();
+                break;
+
+            default:
+                TriggerDebounced();
+                break;
+        }
+    }
+
+    private void MoveDropdown(int delta)
+    {
+        if (_disambiguationItems.Count > 1)
+        {
+            _disambigIndex = Math.Clamp(_disambigIndex + delta, 0, _disambiguationItems.Count - 1);
+        }
+        else if (_slashMode == SlashMode.ProjectActive && _projectMatches.Count > 0)
+        {
+            _dropdownIndex = Math.Clamp(_dropdownIndex + delta, 0, _projectMatches.Count - 1);
+        }
+        else if (_slashMode == SlashMode.TaskActive && _taskMatches.Count > 0)
+        {
+            _dropdownIndex = Math.Clamp(_dropdownIndex + delta, 0, _taskMatches.Count - 1);
+        }
+        StateHasChanged();
+    }
+
+    // ─── Debounced input handling ──────────────────────────────────────────
+
+    private void TriggerDebounced()
+    {
+        _debounceTimer?.Dispose();
+        _debounceTimer = new System.Timers.Timer(150);
+        _debounceTimer.Elapsed += async (_, _) =>
+        {
+            _debounceTimer?.Dispose();
+            await InvokeAsync(HandleInputChanged);
+        };
+        _debounceTimer.AutoReset = false;
+        _debounceTimer.Start();
+    }
+
+    private async Task HandleInputChanged()
+    {
+        var text = _inputText;
+
+        if (_slashMode == SlashMode.None)
+        {
+            var slashIdx = text.IndexOf('/');
+            if (slashIdx >= 0 && _resolvedProject is null)
+            {
+                _clientHint   = text[..slashIdx].Trim();
+                _inputText    = string.Empty;  // clear input — user types project next
+                _projectQuery = string.Empty;
+                _slashMode    = SlashMode.ProjectActive;
+                _historySuggestions.Clear();
+                await LoadProjectMatches();
+            }
+            else
+            {
+                _projectQuery = string.Empty;
+                await LoadHistorySuggestions(text);
+            }
+        }
+        else if (_slashMode == SlashMode.ProjectActive && _resolvedProject is null)
+        {
+            // Strip any trailing slash — no auto-confirm, user must choose from dropdown
+            var slashIdx = text.IndexOf('/');
+            if (slashIdx >= 0)
+            {
+                _projectQuery = text[..slashIdx].Trim();
+                _inputText    = _projectQuery;
+                await LoadProjectMatches();
+                StateHasChanged();
+                return;
+            }
+            _projectQuery  = text;
+            _dropdownIndex = -1;
+            await LoadProjectMatches();
+        }
+        else if (_slashMode == SlashMode.TaskActive && _resolvedTask is null)
+        {
+            // Strip any trailing slash — no auto-confirm, user must choose from dropdown
+            var slashIdx = text.IndexOf('/');
+            if (slashIdx >= 0)
+            {
+                _taskQuery = text[..slashIdx].Trim();
+                _inputText = _taskQuery;
+                await LoadTaskMatches();
+                StateHasChanged();
+                return;
+            }
+            _taskQuery = text;
+            _dropdownIndex = -1;
+            await LoadTaskMatches();
+        }
+        // Description mode: no dropdowns needed
+
+        StateHasChanged();
+    }
+
+    // ─── Data loading ──────────────────────────────────────────────────────
+
+    private async Task LoadProjectMatches()
+    {
+        // When no project query typed yet, use the client hint to surface that client's
+        // projects. When both are set, project query filters within the client context.
+        var rustQuery = _projectQuery.Length > 0 ? _projectQuery : _clientHint;
+        if (rustQuery.Length == 0) { _projectMatches.Clear(); StateHasChanged(); return; }
+        try
+        {
+            var result = await Tauri.FuzzyMatchProjectsAsync(rustQuery, 30);
+            _projectMatches = result.Matches
+                .Select(m =>
+                {
+                    bool hasHint  = _clientHint.Length > 0;
+                    bool hasQuery = _projectQuery.Length > 0;
+
+                    var clientScore  = hasHint  ? Fuzzy.Score(_clientHint,  m.ClientName)  : 0.5;
+                    var projectScore = hasQuery
+                        ? Math.Max(Fuzzy.Score(_projectQuery, m.ProjectName),
+                                   Fuzzy.Score(_projectQuery, m.ClientName))
+                        : 1.0;
+
+                    // Client hint acts as a hard filter: projects from clients that don't
+                    // match the hint at all (clientScore == 0) are excluded entirely.
+                    // Non-zero clientScore scales the project score proportionally.
+                    double score = hasHint
+                        ? projectScore * clientScore
+                        : projectScore;
+
+                    return (Item: m, Score: score);
+                })
+                .Where(x => x.Score > 0)
+                .OrderByDescending(x => x.Score)
+                .Take(8)
+                .Select(x => x.Item)
+                .ToList();
+            CheckDisambiguation();
+        }
+        catch { _projectMatches.Clear(); }
+        StateHasChanged();
+    }
+
+    private void CheckDisambiguation()
+    {
+        if (_projectMatches.Count == 0) { _disambiguationItems.Clear(); return; }
+        var topName = _projectMatches[0].ProjectName;
+        var sameNameMatches = _projectMatches.Where(m =>
+            string.Equals(m.ProjectName, topName, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (sameNameMatches.Count > 1)
+        {
+            _disambiguationItems = sameNameMatches
+                .Select(m => new DisambiguationItem(m.ClientId, m.ClientName, m.ProjectId, m.ProjectName))
+                .ToList();
+            _disambigIndex = 0;
+        }
+        else
+        {
+            _disambiguationItems.Clear();
+            _disambigIndex = -1;
+        }
+    }
+
+    private async Task LoadTaskMatches()
+    {
+        if (_resolvedProject is null) { _taskMatches.Clear(); return; }
+        try
+        {
+            var result = await Tauri.FuzzyMatchTasksAsync(_resolvedProject.ProjectId, _taskQuery, 20);
+            var scored = Fuzzy.RankMatches(_taskQuery,
+                result.Matches, m => m.TaskName, maxResults: 8).ToList();
+            _taskMatches = scored.Select(x => x.Item).ToList();
+        }
+        catch { _taskMatches.Clear(); }
+        StateHasChanged();
+    }
+
+    private async Task LoadHistorySuggestions(string text)
+    {
+        if (text.Length < 2) { _historySuggestions.Clear(); StateHasChanged(); return; }
+        try
+        {
+            var result = await Tauri.TimeEntryAutocompleteAsync(new TimeEntryAutocompleteRequest(text, 10));
+            _historySuggestions = result.Suggestions.ToList();
+        }
+        catch { _historySuggestions.Clear(); }
+        StateHasChanged();
+    }
+
+    // ─── Segment confirmation ─────────────────────────────────────────────
+
+    private async Task ConfirmProject(int idx)
+    {
+        if (idx < 0 || idx >= _projectMatches.Count) return;
+        _resolvedProject = _projectMatches[idx];
+        _projectMatches.Clear();
+        _disambiguationItems.Clear();
+        _dropdownIndex = -1;
+        _inputText = string.Empty;
+        _taskQuery = string.Empty;
+        _slashMode = SlashMode.TaskActive;
+        await LoadTaskMatches();
+        StateHasChanged();
+        try { await _inputRef.FocusAsync(); } catch { }
+    }
+
+    private async Task ConfirmDisambiguation(int idx)
+    {
+        if (idx < 0 || idx >= _disambiguationItems.Count) return;
+        var choice = _disambiguationItems[idx];
+        _resolvedProject = new ProjectMatch(choice.ProjectId, choice.ProjectName, choice.ClientId, choice.ClientName, 1.0);
+        _disambiguationItems.Clear();
+        _projectMatches.Clear();
+        _dropdownIndex = -1;
+        _inputText = string.Empty;
+        _taskQuery = string.Empty;
+        _slashMode = SlashMode.TaskActive;
+        await LoadTaskMatches();
+        StateHasChanged();
+        try { await _inputRef.FocusAsync(); } catch { }
+    }
+
+    private async Task ConfirmTask(int idx)
+    {
+        if (idx < 0 || idx >= _taskMatches.Count) return;
+        _resolvedTask = _taskMatches[idx];
+        _taskMatches.Clear();
+        _dropdownIndex = -1;
+        _inputText = string.Empty;
+        _slashMode = SlashMode.Description;
+        StateHasChanged();
+        try { await _inputRef.FocusAsync(); } catch { }
+    }
+
+    private void ClearProject()
+    {
+        _resolvedProject = null;
+        _resolvedTask = null;
+        _projectMatches.Clear();
+        _taskMatches.Clear();
+        _disambiguationItems.Clear();
+        _clientHint   = string.Empty;
+        _projectQuery = string.Empty;
+        _taskQuery    = string.Empty;
+        _inputText    = string.Empty;
+        _slashMode    = SlashMode.None;
+        StateHasChanged();
+    }
+
+    private void ClearTask()
+    {
+        _resolvedTask = null;
+        _taskMatches.Clear();
+        _taskQuery = string.Empty;
+        _inputText = string.Empty;
+        _slashMode = SlashMode.TaskActive;
+        InvokeAsync(async () => { await LoadTaskMatches(); StateHasChanged(); });
+    }
+
+    private void ClearDropdowns()
+    {
+        _projectMatches.Clear();
+        _taskMatches.Clear();
+        _disambiguationItems.Clear();
+        _historySuggestions.Clear();
+        _dropdownIndex = -1;
+        _disambigIndex = -1;
+        StateHasChanged();
+    }
+
+    // ─── Timer actions ────────────────────────────────────────────────────
+
+    private string GetDescription() => _inputText.Trim();
+
+    private async Task StartTimer()
+    {
+        if (Timer.IsRunning) return; // guard against repeated Enter presses
+        var description = GetDescription();
+        // Allow empty description when project/task already resolved via slash notation
+        if (string.IsNullOrWhiteSpace(description) && _slashMode != SlashMode.Description) return;
+
+        _historySuggestions.Clear();
+        ClearDropdowns();
+
+        await Timer.StartAsync(
+            description,
+            _resolvedProject?.ProjectId,
+            _resolvedTask?.TaskId,
+            _resolvedProject?.ProjectName,
+            _resolvedProject?.ClientId,
+            _resolvedProject?.ClientName,
+            _resolvedTask?.TaskName,
+            _selectedTagIds.ToArray());
+
+        await OnTimerStarted.InvokeAsync();
+    }
+
+    private async Task StopTimer()
+    {
+        await Timer.StopAsync();
+        ResetAll();
+        await OnTimerStopped.InvokeAsync();
+    }
+
+    private async Task HandleTagsChanged(List<string> newTagIds)
+    {
+        _selectedTagIds = newTagIds;
+        StateHasChanged();
+
+        // If a timer is running, persist the tag change immediately to the running entry
+        if (Timer.IsRunning && Timer.CurrentEntryId != null)
+        {
+            try { await Tauri.TimeEntryUpdateTagsAsync(Timer.CurrentEntryId, newTagIds.ToArray()); }
+            catch { /* best-effort: tag update failure is non-fatal */ }
+        }
+    }
+
+    private async Task ToggleTimer()
+    {
+        if (Timer.IsRunning) await StopTimer();
+        else if (!string.IsNullOrWhiteSpace(GetDescription())) await StartTimer();
+        else try { await _inputRef.FocusAsync(); } catch { }
+    }
+
+    private void ResetAll()
+    {
+        _inputText    = string.Empty;
+        _slashMode    = SlashMode.None;
+        _clientHint   = string.Empty;
+        _resolvedProject = null;
+        _resolvedTask    = null;
+        _projectQuery = string.Empty;
+        _taskQuery    = string.Empty;
+        _selectedTagIds = new();
+        ClearDropdowns();
+    }
+
+    // ─── History autocomplete ─────────────────────────────────────────────
+
+    private async Task SelectHistorySuggestion(AutocompleteSuggestion s)
+    {
+        _inputText = s.Description;
+        _historySuggestions.Clear();
+
+        if (!s.IsOrphaned && s.ProjectId != null)
+        {
+            try
+            {
+                var result = await Tauri.FuzzyMatchProjectsAsync(s.ProjectName ?? string.Empty, 5);
+                var match = result.Matches.FirstOrDefault(m => m.ProjectId == s.ProjectId);
+                if (match != null)
+                {
+                    _resolvedProject = match;
+                    _slashMode = SlashMode.Description;
+                    if (s.TaskId != null)
+                    {
+                        var taskResult = await Tauri.FuzzyMatchTasksAsync(s.ProjectId, string.Empty, 50);
+                        var taskMatch = taskResult.Matches.FirstOrDefault(t => t.TaskId == s.TaskId);
+                        if (taskMatch != null) _resolvedTask = taskMatch;
+                    }
+                }
+            }
+            catch { /* ignore — fall back to description only */ }
+        }
+
+        await StartTimer();
+    }
+
+    private async Task HandleSuggestionKey(KeyboardEventArgs e, AutocompleteSuggestion s)
+    {
+        if (e.Key == "Enter" || e.Key == " ")
+            await SelectHistorySuggestion(s);
+    }
+
+    // ─── Highlight rendering ──────────────────────────────────────────────
+
+    private RenderFragment RenderHighlighted(string name, string query)
+    {
+        var mask = Fuzzy.MatchMask(query, name);
+        return builder =>
+        {
+            var seq = 0;
+            var inHighlight = false;
+            var span_start = 0;
+
+            for (int i = 0; i <= name.Length; i++)
+            {
+                var hi = i < name.Length && mask[i];
+                if (hi && !inHighlight)
+                {
+                    if (i > span_start)
+                    {
+                        builder.OpenElement(seq++, "span");
+                        builder.AddContent(seq++, name[span_start..i]);
+                        builder.CloseElement();
+                    }
+                    builder.OpenElement(seq++, "span");
+                    builder.AddAttribute(seq++, "class", "match-char");
+                    inHighlight = true;
+                    span_start = i;
+                }
+                else if (!hi && inHighlight)
+                {
+                    builder.AddContent(seq++, name[span_start..i]);
+                    builder.CloseElement();
+                    inHighlight = false;
+                    span_start = i;
+                }
+            }
+            if (span_start < name.Length)
+            {
+                builder.OpenElement(seq++, "span");
+                builder.AddContent(seq++, name[span_start..]);
+                builder.CloseElement();
+            }
+        };
+    }
+
+    public void Dispose()
+    {
+        Timer.OnStateChanged -= HandleTimerStateChanged;
+        _debounceTimer?.Dispose();
+    }
+}

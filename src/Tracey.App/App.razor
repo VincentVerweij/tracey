@@ -1,0 +1,28 @@
+﻿@inject TauriEventService Events
+@inject ITimerStateService TimerService
+@inject NotificationOrchestrationService Notifications
+
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <p role="alert">Page not found.</p>
+    </NotFound>
+</Router>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        // Subscribe to Rust-side events once on app startup.
+        // Full callback routing requires the JS shim (see decisions inbox).
+        await Events.InitializeAsync();
+        // Wire timer-tick payloads to TimerStateService
+        if (TimerService is TimerStateService ts)
+            Events.OnTimerTick += p => ts.HandleTimerTick(p.ElapsedSeconds);
+        // Start notification polling loop (Blazor WASM explicit-init pattern)
+        Notifications.Initialize();
+    }
+}

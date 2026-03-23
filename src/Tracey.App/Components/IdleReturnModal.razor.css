@@ -1,0 +1,131 @@
+/* =========================================
+   IdleReturnModal — Idle return prompt
+   ========================================= */
+
+/* 2x2 grid of option cards */
+.idle-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+}
+
+.idle-option-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+    padding: 0.875rem 1rem;
+    background: var(--tracey-surface);
+    border: 1px solid var(--tracey-border);
+    border-radius: var(--tracey-radius);
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    width: 100%;
+    font-family: inherit;
+}
+
+.idle-option-btn:hover {
+    border-color: var(--tracey-accent);
+    box-shadow: 0 0 0 1px var(--tracey-accent);
+}
+
+.idle-option-btn:focus-visible {
+    outline: 2px solid var(--tracey-accent);
+    outline-offset: 2px;
+}
+
+.option-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--tracey-text);
+}
+
+.option-hint {
+    font-size: 0.775rem;
+    color: var(--tracey-text-muted);
+    line-height: 1.4;
+}
+
+/* Specify form */
+.specify-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+}
+
+.specify-form label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--tracey-text);
+}
+
+.specify-form input {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--tracey-border);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    color: var(--tracey-text);
+    background: var(--tracey-surface);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.specify-form input:focus {
+    outline: none;
+    border-color: var(--tracey-accent);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+.specify-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* =========================================
+   Overlay backdrop + modal card
+   ========================================= */
+
+.idle-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.idle-modal {
+    width: 420px;
+    max-width: 90vw;
+    padding: 1.5rem;
+    background: var(--tracey-surface, #ffffff);
+    border: 1px solid var(--tracey-border, #e2e8f0);
+    border-radius: var(--tracey-radius, 8px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.10);
+}
+
+.idle-modal-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    margin-bottom: 1rem;
+}
+
+.idle-modal-title {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--tracey-text, #111827);
+    line-height: 1.4;
+}
+
+.idle-modal-description {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--tracey-text-muted, #6b7280);
+    line-height: 1.5;
+}

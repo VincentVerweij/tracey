@@ -1,0 +1,901 @@
+@page "/settings"
+@using Tracey.App.Services
+@using Tracey.App.Services.Notifications
+@using BlazorBlueprint.Components
+@using System.Text.Json
+@inject TauriIpcService Tauri
+@inject IEnumerable<INotificationChannel> NotificationChannels
+
+<PageTitle>Settings — Tracey</PageTitle>
+
+<div class="settings-page">
+    <header class="settings-header">
+        <h1 class="page-title">Settings</h1>
+        <p class="page-subtitle">Manage how Tracey tracks time, syncs, and notifies you.</p>
+    </header>
+
+    @if (_loading)
+    {
+        <div class="settings-loading">
+            <span class="settings-loading-spinner" aria-hidden="true"></span>
+            <span>Loading…</span>
+        </div>
+    }
+
+    else
+    {        <!-- ── General ────────────────────────────────────────────────────────────── -->
+        <section class="settings-card">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">⚙</span>
+                <div>
+                    <h2 class="settings-card-title">General</h2>
+                    <p class="settings-card-desc">Timezone and display preferences.</p>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-row">
+                    <label for="timezone-select" class="settings-label">Timezone</label>
+                    <div class="settings-control-group">
+                        <select id="timezone-select"
+                                class="settings-input settings-select"
+                                @bind="_timezone"
+                                @bind:after="SaveTimezoneAsync">
+                            @foreach (var tz in _ianaTimezones)
+                            {
+                                <option value="@tz">@tz</option>
+                            }
+                        </select>
+                        <span class="settings-hint">Used to display timestamps in your local time.</span>
+                    </div>
+                </div>
+                <div class="settings-row">
+                    <label for="page-size-input" class="settings-label">
+                        Page size
+                        <span class="settings-label-unit">entries</span>
+                    </label>
+                    <div class="settings-control-group">
+                        <input id="page-size-input"
+                               type="number"
+                               class="settings-input settings-input-short"
+                               min="5" max="200" step="5"
+                               @bind="_pageSize"
+                               @bind:after="SavePageSizeAsync" />
+                        <span class="settings-hint">Number of time entries shown per page in the timer list.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- ── Inactivity Detection ──────────────────────────────────── -->
+        <section class="settings-card">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">🕐</span>
+                <div>
+                    <h2 class="settings-card-title">Idle Detection</h2>
+                    <p class="settings-card-desc">Tracks when you go idle and prompts you on return.</p>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-row">
+                    <label for="inactivity-input" class="settings-label">
+                        Timeout
+                        <span class="settings-label-unit">minutes</span>
+                    </label>
+                    <div class="settings-control-group">
+                        <input id="inactivity-input"
+                               type="number"
+                               class="settings-input settings-input-short"
+                               min="0.5"
+                               max="60"
+                               step="0.5"
+                               @bind="_inactivityTimeoutMinutes"
+                               @bind:after="SaveInactivityAsync" />
+                        <span class="settings-hint">After this many minutes without input, the on-return prompt appears when a timer is running.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- ── Screenshots ────────────────────────────────────────────────────────── -->
+        <section class="settings-card">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">📸</span>
+                <div>
+                    <h2 class="settings-card-title">Screenshots</h2>
+                    <p class="settings-card-desc">Periodic captures stored locally on your device — never synced.</p>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-row">
+                    <label for="screenshot-interval-input" class="settings-label">
+                        Interval
+                        <span class="settings-label-unit">minutes</span>
+                    </label>
+                    <div class="settings-control-group">
+                        <input id="screenshot-interval-input"
+                               type="number"
+                               class="settings-input settings-input-short"
+                               min="1" max="60" step="1"
+                               @bind="_screenshotIntervalMinutes"
+                               @bind:after="SaveScreenshotIntervalAsync" />
+                        <span class="settings-hint">Capture a screenshot every N minutes while active.</span>
+                    </div>
+                </div>
+                <div class="settings-row">
+                    <label for="screenshot-retention-input" class="settings-label">
+                        Keep for
+                        <span class="settings-label-unit">days</span>
+                    </label>
+                    <div class="settings-control-group">
+                        <input id="screenshot-retention-input"
+                               type="number"
+                               class="settings-input settings-input-short"
+                               min="1" max="365" step="1"
+                               @bind="_screenshotRetentionDays"
+                               @bind:after="SaveScreenshotRetentionAsync" />
+                        <span class="settings-hint">Screenshots older than this are automatically deleted.</span>
+                    </div>
+                </div>
+                <div class="settings-row settings-row-stacked">
+                    <label for="screenshot-folder-input" class="settings-label">Storage folder</label>
+                    <div class="settings-control-group">
+                        <input id="screenshot-folder-input"
+                               type="text"
+                               class="settings-input settings-input-path"
+                               placeholder="Default: screenshots/ next to tracey.exe"
+                               @bind="_screenshotStoragePath"
+                               @bind:after="SaveScreenshotStorageAsync" />
+                        <span class="settings-hint">Leave blank to use the default location next to the application.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── Process Deny List ────────────────────────────────────────────────── -->
+        <section class="settings-card">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">🚫</span>
+                <div>
+                    <h2 class="settings-card-title">Process Deny List</h2>
+                    <p class="settings-card-desc">Window titles and process names containing these patterns won't be tracked.</p>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-deny-add-row">
+                    <input type="text"
+                           class="settings-input"
+                           placeholder="e.g. keepass, 1password, signal"
+                           @bind="_denyListInput"
+                           @onkeydown="HandleDenyKeyDownAsync" />
+                    <button class="t-btn t-btn-secondary t-btn-sm"
+                            @onclick="AddDenyEntryAsync">Add</button>
+                </div>
+                @if (_denyList.Count == 0)
+                {
+                    <p class="settings-hint settings-deny-empty">No patterns configured. Add process names to prevent them from being tracked.</p>
+                }
+                else
+                {
+                    <ul class="settings-deny-list">
+                        @foreach (var entry in _denyList)
+                        {
+                            <li class="settings-deny-item">
+                                <span class="settings-deny-name">@entry</span>
+                                <button class="settings-deny-remove t-btn t-btn-secondary t-btn-sm"
+                                        aria-label="Remove @entry"
+                                        @onclick='() => RemoveDenyEntryAsync(entry)'>×</button>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </section>
+        <!-- ── Cloud Sync ────────────────────────────────────────────── -->
+        <section class="settings-card">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">☁</span>
+                <div>
+                    <h2 class="settings-card-title">Cloud Sync</h2>
+                    <p class="settings-card-desc">Sync entries, projects, and tags across devices via a shared database. Screenshots stay local.</p>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-row settings-row-stacked">
+                    <label for="sync-uri-input" class="settings-label">
+                        Connection URI
+                    </label>
+                    <div class="settings-control-group">
+                        <div class="settings-uri-row">
+                            <input id="sync-uri-input"
+                                   type="password"
+                                   class="settings-input settings-input-uri"
+                                   placeholder="postgresql://user:password@host:5432/dbname"
+                                   autocomplete="off"
+                                   @bind="_syncUri" />
+                            <button class="settings-btn settings-btn-primary"
+                                    disabled="@_syncConnecting"
+                                    @onclick="ConnectSyncAsync">
+                                @(_syncConnecting ? "Connecting…" : "Connect")
+                            </button>
+                            @if (_syncEnabled)
+                            {
+                                <button class="settings-btn settings-btn-ghost-danger"
+                                        disabled="@_syncConnecting"
+                                        @onclick="DisableSyncAsync">
+                                    Disconnect
+                                </button>
+                            }
+                        </div>
+                        <span class="settings-hint">Stored securely in the OS credential store — never written to disk.</span>
+                    </div>
+                </div>
+
+                @if (_syncError != null)
+                {
+                    <div class="settings-inline-error" role="alert">
+                        <span class="settings-error-icon">⚠</span>
+                        @_syncError
+                    </div>
+                }
+                @if (_syncSuccess)
+                {
+                    <div class="settings-inline-ok" role="status">
+                        <span>✓</span> Connected and syncing.
+                    </div>
+                }
+
+                @if (_syncStatus != null)
+                {
+                    <div class="settings-sync-pill @(_syncStatus.Connected ? "sync-pill-connected" : _syncEnabled ? "sync-pill-error" : "sync-pill-off")">
+                        <span class="sync-dot"></span>
+                        @if (_syncStatus.Connected)
+                        {
+                            <span>Connected</span>
+                            @if (_syncStatus.PendingQueueSize > 0)
+                            {
+                                <span class="sync-queue-badge">@_syncStatus.PendingQueueSize pending</span>
+                            }
+                            @if (_syncStatus.LastSyncAt != null)
+                            {
+                                <span class="sync-last-at">Last sync: @_syncStatus.LastSyncAt</span>
+                            }
+                            <button class="settings-btn settings-btn-ghost-muted settings-btn-sm"
+                                    disabled="@_syncInProgress"
+                                    @onclick="TriggerSyncAsync">
+                                @if (_syncInProgress)
+                                {
+                                    <span class="sync-btn-spinner" aria-hidden="true"></span>
+                                    <span>Syncing…</span>
+                                }
+                                else
+                                {
+                                    <span>Sync now</span>
+                                }
+                            </button>
+                        }
+                        else if (_syncEnabled)
+                        {
+                            <span>Disconnected@(_syncStatus.LastError != null ? $" — {_syncStatus.LastError}" : "")</span>
+                        }
+                        else
+                        {
+                            <span>Not configured</span>
+                        }
+                    </div>
+
+                    @if (_syncLastTriggerResult != null)
+                    {
+                        var isError = _syncLastTriggerResult.Contains("error");
+                        <div class="@(isError ? "settings-inline-error" : "settings-inline-ok")" role="status">
+                            <span>@(isError ? "⚠" : "✓")</span> @_syncLastTriggerResult
+                        </div>
+                    }
+                }
+            </div>
+        </section>
+
+        <!-- ── Notifications ─────────────────────────────────────────── -->
+        <section class="settings-card">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">🔔</span>
+                <div>
+                    <h2 class="settings-card-title">Notifications</h2>
+                    <p class="settings-card-desc">Alert yourself when a timer runs longer than expected.</p>
+                </div>
+            </div>
+            <div class="settings-card-body">
+
+                <!-- Threshold -->
+                <div class="settings-row">
+                    <label for="threshold-input" class="settings-label">
+                        Threshold
+                        <span class="settings-label-unit">hours</span>
+                    </label>
+                    <div class="settings-control-group">
+                        <input id="threshold-input"
+                               type="number"
+                               class="settings-input settings-input-short"
+                               min="0.5"
+                               max="24"
+                               step="0.5"
+                               @bind="_thresholdHours"
+                               @bind:after="SaveThresholdAsync" />
+                        <span class="settings-hint">Notify when the active timer exceeds this duration. Default: 8 hours.</span>
+                    </div>
+                </div>
+
+                <hr class="settings-divider" />
+
+                <!-- Email channel -->
+                <div class="settings-channel">
+                    <div class="settings-channel-header">
+                        <span class="settings-channel-name">Email (SMTP)</span>
+                        <span class="settings-channel-badge settings-channel-badge-soon">Coming soon</span>
+                    </div>
+                    <p class="settings-hint">Email notifications require the Tauri desktop process for SMTP delivery. Configure now; coming in a future update.</p>
+                    <div class="settings-channel-fields">
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label" for="smtp-host-input">SMTP host</label>
+                            <input id="smtp-host-input" type="text" class="settings-input" placeholder="smtp.example.com"
+                                   aria-label="SMTP host"
+                                   @bind='_emailConfig["smtp_host"]' @bind:after="SaveChannelConfigsAsync" />
+                        </div>
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label" for="smtp-port-input">SMTP port</label>
+                            <input id="smtp-port-input" type="number" class="settings-input settings-input-short" placeholder="587"
+                                   aria-label="SMTP port"
+                                   @bind='_emailConfig["smtp_port"]' @bind:after="SaveChannelConfigsAsync" />
+                        </div>
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label">Username</label>
+                            <input type="text" class="settings-input" autocomplete="username"
+                                   aria-label="SMTP username"
+                                   @bind='_emailConfig["smtp_user"]' @bind:after="SaveChannelConfigsAsync" />
+                        </div>
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label">Password</label>
+                            <input type="password" class="settings-input" autocomplete="current-password"
+                                   aria-label="SMTP password"
+                                   @bind='_emailConfig["smtp_pass"]' @bind:after="SaveChannelConfigsAsync" />
+                        </div>
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label">From</label>
+                            <input type="email" class="settings-input"
+                                   aria-label="From address"
+                                   @bind='_emailConfig["smtp_from"]' @bind:after="SaveChannelConfigsAsync" />
+                        </div>
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label">To</label>
+                            <input type="email" class="settings-input"
+                                   aria-label="To address"
+                                   @bind='_emailConfig["smtp_to"]' @bind:after="SaveChannelConfigsAsync" />
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="settings-divider" />
+
+                <!-- Telegram channel -->
+                <div class="settings-channel">
+                    <div class="settings-channel-header">
+                        <span class="settings-channel-name">Telegram</span>
+                        <label class="settings-toggle" style="position:relative;">
+                            <input type="checkbox"
+                                   class="settings-toggle-input"
+                                   @bind="_telegramEnabled"
+                                   @bind:after="SaveChannelConfigsAsync"
+                                   aria-label="Enable Telegram notifications" />
+                            <span class="settings-toggle-track">
+                                <span class="settings-toggle-thumb"></span>
+                            </span>
+                            <span class="settings-toggle-label">@(_telegramEnabled ? "Enabled" : "Disabled")</span>
+                        </label>
+                    </div>
+                    <div class="settings-channel-fields">
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label">Bot token</label>
+                            <div class="settings-control-group">
+                                <input type="password" class="settings-input"
+                                       placeholder="123456:ABCdef…"
+                                       autocomplete="off"
+                                       aria-label="Bot token"
+                                       @bind='_telegramConfig["bot_token"]' @bind:after="SaveChannelConfigsAsync" />
+                                <span class="settings-hint">Obtain from @@BotFather on Telegram.</span>
+                            </div>
+                        </div>
+                        <div class="settings-row settings-row-inline">
+                            <label class="settings-label">Chat ID</label>
+                            <div class="settings-control-group">
+                                <input type="text" class="settings-input"
+                                       placeholder="-1001234567890"
+                                       aria-label="Chat ID"
+                                       @bind='_telegramConfig["chat_id"]' @bind:after="SaveChannelConfigsAsync" />
+                                <span class="settings-hint">Your personal chat ID, or a group/channel ID (negative number for groups).</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @if (_saveError != null)
+                {
+                    <div class="settings-inline-error" role="alert">
+                        <span class="settings-error-icon">⚠</span>
+                        @_saveError
+                    </div>
+                }
+                @if (_saveSuccess)
+                {
+                    <div class="settings-inline-ok" role="status">
+                        <span>✓</span> Settings saved.
+                    </div>
+                }
+            </div>
+        </section>
+
+        <!-- ── Danger Zone ────────────────────────────────────────────────────────────── -->
+        <section class="settings-card settings-card-danger">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">⚠</span>
+                <div>
+                    <h2 class="settings-card-title settings-card-title-danger">Danger Zone</h2>
+                    <p class="settings-card-desc">These actions cannot be undone.</p>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                @if (_deleteSuccess != null)
+                {
+                    <div class="settings-inline-ok" role="status"><span>✓</span> @_deleteSuccess</div>
+                }
+                @if (!_showDeleteConfirm)
+                {
+                    <div class="settings-danger-row">
+                        <div>
+                            <strong class="settings-danger-action-title">Delete all data</strong>
+                            <p class="settings-hint">Removes all time entries, clients, projects, tasks, tags, screenshots, and activity records. Your settings are preserved.</p>
+                        </div>
+                        <button class="t-btn t-btn-danger" @onclick="RequestDeleteAll">Delete all data</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="settings-delete-confirm" role="alertdialog" aria-label="Confirm delete all data">
+                        <p class="settings-delete-confirm-message">
+                            <strong>Are you sure?</strong> This will permanently delete all time entries, clients, projects, tasks, tags, screenshots, and activity records. This cannot be undone.
+                        </p>
+                        @if (_deleteError != null)
+                        {
+                            <p class="t-inline-error" role="alert">@_deleteError</p>
+                        }
+                        <div class="settings-delete-confirm-actions">
+                            <button class="t-btn t-btn-danger"
+                                    disabled="@_deleting"
+                                    @onclick="ConfirmDeleteAllAsync">
+                                @(_deleting ? "Deleting…" : "Yes, delete everything")
+                            </button>
+                            <button class="t-btn t-btn-secondary"
+                                    disabled="@_deleting"
+                                    @onclick="CancelDeleteAll">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    private bool _loading = true;
+    private string? _saveError;
+    private bool _saveSuccess;
+
+    private double _thresholdHours = 8.0;
+    private double _inactivityTimeoutMinutes = 5.0;
+    // ── General ───────────────────────────────────────────────────────────────────
+    private string _timezone = "Europe/Amsterdam";
+    private int _pageSize = 25;
+
+    // ── Screenshots ─────────────────────────────────────────────────────────────
+    private int _screenshotIntervalMinutes = 5;
+    private int _screenshotRetentionDays = 30;
+    private string _screenshotStoragePath = "";
+
+    // ── Process Deny List ─────────────────────────────────────────────────────
+    private List<string> _denyList = new();
+    private string _denyListInput = "";
+
+    // ── Danger Zone ─────────────────────────────────────────────────────────────
+    private bool _showDeleteConfirm;
+    private bool _deleting;
+    private string? _deleteError;
+    private string? _deleteSuccess;
+
+    private static readonly string[] _ianaTimezones =
+    [
+        "Africa/Abidjan", "Africa/Cairo", "Africa/Johannesburg", "Africa/Lagos", "Africa/Nairobi",
+        "America/Anchorage", "America/Buenos_Aires", "America/Chicago", "America/Denver",
+        "America/Los_Angeles", "America/Mexico_City", "America/New_York", "America/Sao_Paulo", "America/Toronto",
+        "Asia/Bangkok", "Asia/Dubai", "Asia/Hong_Kong", "Asia/Jakarta", "Asia/Karachi",
+        "Asia/Kolkata", "Asia/Seoul", "Asia/Shanghai", "Asia/Singapore", "Asia/Tokyo",
+        "Asia/Yangon", "Atlantic/Azores", "Australia/Brisbane", "Australia/Melbourne", "Australia/Perth", "Australia/Sydney",
+        "Europe/Amsterdam", "Europe/Athens", "Europe/Berlin", "Europe/Brussels", "Europe/Budapest",
+        "Europe/Copenhagen", "Europe/Dublin", "Europe/Helsinki", "Europe/Istanbul", "Europe/Kiev",
+        "Europe/Lisbon", "Europe/London", "Europe/Madrid", "Europe/Moscow", "Europe/Oslo",
+        "Europe/Paris", "Europe/Prague", "Europe/Rome", "Europe/Stockholm", "Europe/Vienna", "Europe/Warsaw", "Europe/Zurich",
+        "Pacific/Auckland", "Pacific/Honolulu", "Pacific/Tahiti", "UTC"
+    ];
+    // ── Sync backing fields ───────────────────────────────────────────────
+    private string _syncUri = string.Empty;
+    private bool _syncEnabled;
+    private bool _syncConnecting;
+    private bool _syncInProgress;
+    private string? _syncError;
+    private bool _syncSuccess;
+    private SyncStatusResponse? _syncStatus;
+    private string? _syncLastTriggerResult;
+
+    private Dictionary<string, string> _emailConfig = new()
+    {
+        ["smtp_host"] = "", ["smtp_port"] = "587",
+        ["smtp_user"] = "", ["smtp_pass"] = "",
+        ["smtp_from"] = "", ["smtp_to"]   = ""
+    };
+
+    private Dictionary<string, string> _telegramConfig = new()
+    {
+        ["bot_token"] = "", ["chat_id"] = ""
+    };
+    private bool _telegramEnabled;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var prefs = await Tauri.PreferencesGetAsync();
+            _thresholdHours = prefs.TimerNotificationThresholdHours > 0
+                ? prefs.TimerNotificationThresholdHours
+                : 8.0;
+            _inactivityTimeoutMinutes = prefs.InactivityTimeoutSeconds > 0
+                ? prefs.InactivityTimeoutSeconds / 60.0
+                : 5.0;
+
+            LoadChannelConfigs(prefs.NotificationChannelsJson);
+
+            // Load sync status
+            _syncEnabled = prefs.ExternalDbEnabled;
+
+            // ── General ─────────────────────────────────────────────────────
+            _timezone = string.IsNullOrEmpty(prefs.Timezone) ? "Europe/Amsterdam" : prefs.Timezone;
+            _pageSize = (int)(prefs.EntriesPerPage > 0 ? prefs.EntriesPerPage : 25);
+
+            // ── Screenshots ──────────────────────────────────────────────────
+            _screenshotIntervalMinutes = (int)(prefs.ScreenshotIntervalSeconds > 0 ? prefs.ScreenshotIntervalSeconds / 60 : 5);
+            _screenshotRetentionDays   = (int)(prefs.ScreenshotRetentionDays   > 0 ? prefs.ScreenshotRetentionDays   : 30);
+            _screenshotStoragePath     = prefs.ScreenshotStoragePath ?? "";
+
+            // ── Process Deny List ────────────────────────────────────────────
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<List<string>>(prefs.ProcessDenyListJson);
+                _denyList = parsed ?? new();
+            }
+            catch { _denyList = new(); }
+        }
+        catch
+        {
+            // Tauri bridge unavailable (devserver / E2E testing mode).
+            // All fields retain their declared defaults. Form still renders.
+        }
+
+        // Sync status is non-fatal — Phase 10 commands may not be implemented yet
+        try
+        {
+            _syncStatus = await Tauri.SyncGetStatusAsync();
+        }
+        catch
+        {
+            // sync_get_status not yet available — _syncStatus stays null
+            // Template guards with @if (_syncStatus != null) — safe to leave null
+        }
+
+        _loading = false;
+    }
+
+    private void LoadChannelConfigs(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return;
+        try
+        {
+            var entries = JsonSerializer.Deserialize<List<NotificationChannelConfigEntry>>(
+                json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (entries == null) return;
+            foreach (var entry in entries)
+            {
+                switch (entry.ChannelId)
+                {
+                    case "email":
+                        foreach (var kv in entry.Config)
+                            _emailConfig[kv.Key] = kv.Value;
+                        break;
+                    case "telegram":
+                        _telegramEnabled = entry.Enabled;
+                        foreach (var kv in entry.Config)
+                            _telegramConfig[kv.Key] = kv.Value;
+                        break;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Corrupt prefs — leave defaults in place
+        }
+    }
+
+    private Task SaveThresholdAsync() => SaveAsync();
+    private Task SaveChannelConfigsAsync() => SaveAsync();
+
+    private async Task SaveInactivityAsync()
+    {
+        _saveError   = null;
+        _saveSuccess = false;
+        try
+        {
+            await Tauri.PreferencesUpdateAsync(new PreferencesUpdateRequest(
+                InactivityTimeoutSeconds: (long)(_inactivityTimeoutMinutes * 60)));
+            _saveSuccess = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _saveSuccess = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _saveError   = null;
+        _saveSuccess = false;
+        try
+        {
+            var channelEntries = new List<NotificationChannelConfigEntry>
+            {
+                new("email",    Enabled: false,           Config: new Dictionary<string, string>(_emailConfig)),
+                new("telegram", Enabled: _telegramEnabled, Config: new Dictionary<string, string>(_telegramConfig))
+            };
+            var channelsJson = JsonSerializer.Serialize(channelEntries);
+
+            await Tauri.PreferencesUpdateAsync(new PreferencesUpdateRequest(
+                TimerNotificationThresholdHours: _thresholdHours,
+                NotificationChannelsJson:        channelsJson));
+
+            _saveSuccess = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _saveSuccess = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
+    }
+
+    // ── General & Screenshots save methods ───────────────────────────────
+
+    private Task SaveTimezoneAsync() => SaveGeneralAsync();
+    private Task SavePageSizeAsync() => SaveGeneralAsync();
+
+    private async Task SaveGeneralAsync()
+    {
+        _saveError   = null;
+        _saveSuccess = false;
+        try
+        {
+            await Tauri.PreferencesUpdateAsync(new PreferencesUpdateRequest(
+                Timezone:      _timezone,
+                EntriesPerPage: (long)_pageSize));
+            _saveSuccess = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _saveSuccess = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
+    }
+
+    private Task SaveScreenshotIntervalAsync() => SaveScreenshotsAsync();
+    private Task SaveScreenshotRetentionAsync() => SaveScreenshotsAsync();
+    private Task SaveScreenshotStorageAsync()   => SaveScreenshotsAsync();
+
+    private async Task SaveScreenshotsAsync()
+    {
+        _saveError   = null;
+        _saveSuccess = false;
+        try
+        {
+            await Tauri.PreferencesUpdateAsync(new PreferencesUpdateRequest(
+                ScreenshotIntervalSeconds: (long)(_screenshotIntervalMinutes * 60),
+                ScreenshotRetentionDays:   (long)_screenshotRetentionDays,
+                ScreenshotStoragePath:     _screenshotStoragePath));
+            _saveSuccess = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _saveSuccess = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
+    }
+
+    // ── Deny list methods ─────────────────────────────────────────────────
+
+    private async Task AddDenyEntryAsync()
+    {
+        var entry = _denyListInput.Trim();
+        if (string.IsNullOrEmpty(entry) || _denyList.Contains(entry, StringComparer.OrdinalIgnoreCase))
+        {
+            _denyListInput = "";
+            return;
+        }
+        _denyList.Add(entry);
+        _denyListInput = "";
+        await SaveDenyListAsync();
+    }
+
+    private async Task RemoveDenyEntryAsync(string entry)
+    {
+        _denyList.Remove(entry);
+        await SaveDenyListAsync();
+    }
+
+    private async Task SaveDenyListAsync()
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(_denyList);
+            await Tauri.PreferencesUpdateAsync(new PreferencesUpdateRequest(ProcessDenyListJson: json));
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
+    }
+
+    private async Task HandleDenyKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddDenyEntryAsync();
+    }
+
+    // ── Danger Zone methods ───────────────────────────────────────────────
+
+    private void RequestDeleteAll() => _showDeleteConfirm = true;
+    private void CancelDeleteAll() { _showDeleteConfirm = false; _deleteError = null; }
+
+    private async Task ConfirmDeleteAllAsync()
+    {
+        _deleting = true;
+        _deleteError = null;
+        StateHasChanged();
+        try
+        {
+            var result = await Tauri.DataDeleteAllAsync();
+            _showDeleteConfirm = false;
+            _deleteSuccess = $"All data deleted ({result.DeletedRecords:N0} records removed). App ready to start fresh.";
+            StateHasChanged();
+            await Task.Delay(5000);
+            _deleteSuccess = null;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _deleteError = ex.Message;
+        }
+        finally
+        {
+            _deleting = false;
+            StateHasChanged();
+        }
+    }
+
+    // ── Sync methods ──────────────────────────────────────────────────────
+
+    private async Task ConnectSyncAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_syncUri))
+        {
+            _syncError = "Enter a connection URI before connecting.";
+            return;
+        }
+
+        _syncConnecting = true;
+        _syncError      = null;
+        _syncSuccess    = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Tauri.SyncConfigureAsync(new SyncConfigureRequest(_syncUri, Enabled: true));
+            _syncEnabled = result.Connected;
+            _syncStatus  = await Tauri.SyncGetStatusAsync();
+            _syncSuccess = result.Connected;
+            if (!result.Connected)
+                _syncError = "Connection attempt did not succeed. Check the URI and network.";
+        }
+        catch (Exception ex)
+        {
+            _syncError = ex.Message;
+        }
+        finally
+        {
+            _syncConnecting = false;
+            StateHasChanged();
+            if (_syncSuccess)
+            {
+                await Task.Delay(2000);
+                _syncSuccess = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task DisableSyncAsync()
+    {
+        _syncConnecting = true;
+        _syncError      = null;
+        StateHasChanged();
+
+        try
+        {
+            await Tauri.SyncConfigureAsync(new SyncConfigureRequest(string.Empty, Enabled: false));
+            _syncEnabled = false;
+            _syncStatus  = await Tauri.SyncGetStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            _syncError = ex.Message;
+        }
+        finally
+        {
+            _syncConnecting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task TriggerSyncAsync()
+    {
+        _syncError = null;
+        _syncLastTriggerResult = null;
+        _syncInProgress = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Tauri.SyncTriggerAsync();
+            _syncStatus = await Tauri.SyncGetStatusAsync();
+            _syncLastTriggerResult = (result.SyncedRecords, result.Errors) switch
+            {
+                (0, 0) => "Sync complete — no new records.",
+                (0, var e) => $"{e} error{(e == 1 ? "" : "s")} prevented any records from syncing. See application logs for details.",
+                (var s, 0) => $"Synced {s:N0} record{(s == 1 ? "" : "s")}.",
+                (var s, var e) => $"Synced {s:N0} record{(s == 1 ? "" : "s")} — {e} error{(e == 1 ? "" : "s")} also occurred. See application logs for details.",
+            };
+        }
+        catch (Exception ex)
+        {
+            _syncError = ex.Message;
+        }
+        finally
+        {
+            _syncInProgress = false;
+            StateHasChanged();
+        }
+    }
+}

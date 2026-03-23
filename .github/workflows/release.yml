@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Build portable exe and publish as a GitHub Release.
+  # Triggers on semver tags: v1.0.0, v0.3.1, etc.
+  # ─────────────────────────────────────────────────────────────────────────
+  release:
+    name: Build & Release
+    runs-on: windows-latest
+    permissions:
+      contents: write   # required to create GitHub Releases and upload assets
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # 1.93.1
+        with:
+          toolchain: 1.93.1
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache Cargo registry
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache Rust build artifacts
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: src-tauri/target
+          key: ${{ runner.os }}-cargo-target-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-release-
+
+      # Publish Blazor WASM first — satisfies the frontendDist path in
+      # tauri.conf.json that the binary loads on startup.
+      - name: Publish Blazor WASM
+        run: >
+          dotnet publish src/Tracey.App
+          -c Release
+          -o src/Tracey.App/bin/Release/net10.0/publish
+
+      # cargo build --release is used instead of `cargo tauri build` to avoid
+      # requiring the Tauri CLI in CI.  The Blazor publish above produces the
+      # frontendDist content; the resulting binary is identical.
+      # See .squad/decisions/inbox/fusco-ci-pipeline.md for full rationale.
+      - name: Build release binary (x86_64-pc-windows-msvc)
+        run: >
+          cargo build
+          --manifest-path src-tauri/Cargo.toml
+          --release
+          --target x86_64-pc-windows-msvc
+
+      - name: Verify release exe
+        shell: pwsh
+        run: |
+          $exePath = "src-tauri/target/x86_64-pc-windows-msvc/release/tracey.exe"
+          if (-not (Test-Path $exePath)) {
+            Write-Error "Release exe not found at $exePath"
+            exit 1
+          }
+          $size = (Get-Item $exePath).Length
+          Write-Host "tracey.exe ready — $([math]::Round($size/1MB, 1)) MB"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Tracey ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: src-tauri/target/x86_64-pc-windows-msvc/release/tracey.exe
+          body: |
+            ## Tracey ${{ github.ref_name }}
+
+            Portable Windows executable — no installer required.
+
+            ### Installation
+            1. Download `tracey.exe`
+            2. Place it in any folder
+            3. Run it — no admin rights needed
+
+            The SQLite database (`tracey.db`) is created beside the exe on first launch.

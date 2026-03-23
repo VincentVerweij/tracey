@@ -1,0 +1,79 @@
+@page "/dashboard"
+@page "/"
+@inject ITimerStateService Timer
+@inject TauriEventService Events
+@implements IDisposable
+
+<PageTitle>Tracey</PageTitle>
+
+<div class="dashboard">
+    <div class="dashboard-header">
+        <h1 class="page-title">Today</h1>
+        <span class="page-date">@DateTime.Now.ToString("dddd, MMMM d")</span>
+    </div>
+    <QuickEntryBar OnTimerStarted="RefreshList" OnTimerStopped="RefreshList" />
+    <TimeEntryList @ref="_entryList" OnTimerStarted="HandleEntryListTimerStarted" />
+</div>
+
+<IdleReturnModal @ref="_idleModal" OnResolved="HandleIdleResolved" />
+
+@code {
+    private TimeEntryList? _entryList;
+    private IdleReturnModal? _idleModal;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Console.WriteLine("[Dashboard] OnInitializedAsync — subscribing to OnIdleDetected");
+        Events.OnIdleDetected += HandleIdleDetected;
+        if (Timer is TimerStateService ts)
+            await ts.InitializeAsync();
+        Console.WriteLine("[Dashboard] OnInitializedAsync — complete");
+    }
+
+    private void HandleIdleDetected(IdleDetectedPayload payload)
+    {
+        Console.WriteLine($"[Dashboard] HandleIdleDetected: IdleSince={payload.IdleSince} HadActiveTimer={payload.HadActiveTimer}");
+        if (!payload.HadActiveTimer)
+        {
+            Console.WriteLine("[Dashboard] Suppressing modal — HadActiveTimer is false");
+            return;
+        }
+
+        Console.WriteLine("[Dashboard] Calling _idleModal.Show()");
+        var idleSince = payload.IdleSince;
+        InvokeAsync(() =>
+        {
+            var refState = _idleModal == null ? "NULL — ref not set" : "ok";
+            Console.WriteLine($"[Dashboard] InvokeAsync executing: _idleModal is {refState}");
+            _idleModal?.Show(idleSince);
+            StateHasChanged();
+        });
+    }
+
+    private async Task HandleIdleResolved()
+    {
+        // Re-sync timer state so QuickEntryBar reflects the resumed timer.
+        if (Timer is TimerStateService ts)
+            await ts.InitializeAsync();
+        await RefreshList();
+    }
+
+    private async Task HandleEntryListTimerStarted()
+    {
+        // Re-sync TimerStateService from Rust so QuickEntryBar reflects the new running timer
+        // immediately, without waiting for a navigation round-trip.
+        if (Timer is TimerStateService ts)
+            await ts.InitializeAsync();
+    }
+
+    private async Task RefreshList()
+    {
+        if (_entryList != null)
+            await _entryList.LoadPage(1);
+    }
+
+    public void Dispose()
+    {
+        Events.OnIdleDetected -= HandleIdleDetected;
+    }
+}

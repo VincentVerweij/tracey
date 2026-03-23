@@ -1,0 +1,604 @@
+@inject TauriIpcService Tauri
+@inject FuzzyMatchService Fuzzy
+@inject IJSRuntime JS
+
+<div class="time-entry-list" @ref="_listRef">
+    @if (_loading)
+    {
+        <p class="loading-indicator" aria-live="polite">Loading entries…</p>
+    }
+    else if (_entries.Count == 0)
+    {
+        <p class="empty-state">No time entries yet. Start a timer to begin tracking.</p>
+    }
+    else
+    {
+        @* Completed entries grouped by date *@
+        @foreach (var group in _groupedEntries)
+        {
+            <section class="date-group">
+                <h2 class="date-header">@FormatDate(group.Key)</h2>
+                <ul class="entry-list" role="list">
+                    @foreach (var entry in group.Value)
+                    {
+                        <li class="entry-row @(_editingId == entry.Id ? "is-editing" : "")"
+                            role="listitem">
+                            @if (_editingId == entry.Id)
+                            {
+                                <div class="entry-edit-form" role="form" aria-label="Edit time entry">
+                                    <div class="edit-field">
+                                        <label for="desc-@entry.Id">Description</label>
+                                        <input id="desc-@entry.Id"
+                                               type="text"
+                                               @bind="_editDescription"
+                                               @bind:event="oninput"
+                                               aria-label="Entry description"
+                                               @onblur="() => AutoSave(entry)" />
+                                    </div>
+
+                                    @* Project / Task assignment *@
+                                    <div class="edit-field">
+                                        <label>Project / Task</label>
+                                        <div class="edit-assignment">
+                                            @if (_editProjectId != null)
+                                            {
+                                                <span class="edit-chip edit-chip-project">
+                                                    @_editClientName / @_editProjectName
+                                                    <button type="button" @onclick="ClearEditProject" aria-label="Remove project">✕</button>
+                                                </span>
+                                                @if (_editTaskId != null)
+                                                {
+                                                    <span class="edit-chip edit-chip-task">
+                                                        @_editTaskName
+                                                        <button type="button" @onclick="ClearEditTask" aria-label="Remove task">✕</button>
+                                                    </span>
+                                                }
+                                                else if (!_editTaskSearchActive)
+                                                {
+                                                    <button type="button" class="edit-add-link" @onclick="() => { _editTaskSearchActive = true; StateHasChanged(); }">+ task</button>
+                                                }
+                                            }
+                                            else if (!_editProjectSearchActive)
+                                            {
+                                                <button type="button" class="edit-add-link" @onclick="() => { _editProjectSearchActive = true; StateHasChanged(); }">+ project</button>
+                                            }
+                                        </div>
+
+                                        @if (_editProjectSearchActive && _editProjectId == null)
+                                        {
+                                            <div class="edit-search-wrapper">
+                                                <input type="text"
+                                                       placeholder="Search project…"
+                                                       value="@_editProjectQuery"
+                                                       @oninput="OnEditProjectInput"
+                                                       @onkeydown="HandleEditProjectKey"
+                                                       class="edit-search-input"
+                                                       aria-label="Search project" />
+                                                @if (_editProjectMatches.Count > 0)
+                                                {
+                                                    <ul class="edit-dropdown" role="listbox">
+                                                        @for (int pi = 0; pi < _editProjectMatches.Count; pi++)
+                                                        {
+                                                            var pidx = pi;
+                                                            var pm = _editProjectMatches[pi];
+                                                            <li class="edit-dropdown-item" role="option"
+                                                                @onclick="() => ConfirmEditProject(pidx)">
+                                                                @pm.ProjectName
+                                                                <span class="edit-dropdown-meta">@pm.ClientName</span>
+                                                            </li>
+                                                        }
+                                                    </ul>
+                                                }
+                                            </div>
+                                        }
+
+                                        @if (_editTaskSearchActive && _editProjectId != null && _editTaskId == null)
+                                        {
+                                            <div class="edit-search-wrapper">
+                                                <input type="text"
+                                                       placeholder="Search task…"
+                                                       value="@_editTaskQuery"
+                                                       @oninput="OnEditTaskInput"
+                                                       @onkeydown="HandleEditTaskKey"
+                                                       class="edit-search-input"
+                                                       aria-label="Search task" />
+                                                @if (_editTaskMatches.Count > 0)
+                                                {
+                                                    <ul class="edit-dropdown" role="listbox">
+                                                        @for (int ti = 0; ti < _editTaskMatches.Count; ti++)
+                                                        {
+                                                            var tidx = ti;
+                                                            var tm = _editTaskMatches[ti];
+                                                            <li class="edit-dropdown-item" role="option"
+                                                                @onclick="() => ConfirmEditTask(tidx)">
+                                                                @tm.TaskName
+                                                            </li>
+                                                        }
+                                                    </ul>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+
+                                    @* Tag assignment *@
+                                    <div class="edit-field">
+                                        <label>Tags</label>
+                                        <TagPicker SelectedIds="_editTagIds"
+                                                   SelectedIdsChanged="ids => { _editTagIds = ids; StateHasChanged(); }" />
+                                    </div>
+
+                                    <div class="edit-times">
+                                        <div class="edit-field">
+                                            <label for="start-@entry.Id">Start</label>
+                                            <input id="start-@entry.Id"
+                                                   type="datetime-local"
+                                                   @bind="_editStarted"
+                                                   @onblur="() => AutoSave(entry)"
+                                                   aria-label="Start time" />
+                                        </div>
+                                        <div class="edit-field">
+                                            <label for="end-@entry.Id">End</label>
+                                            <input id="end-@entry.Id"
+                                                   type="datetime-local"
+                                                   @bind="_editEnded"
+                                                   @onblur="() => AutoSave(entry)"
+                                                   aria-label="End time" />
+                                        </div>
+                                    </div>
+                                    @if (_editError != null)
+                                    {
+                                        <p class="edit-error" role="alert">@_editError</p>
+                                    }
+                                    <div class="edit-actions">
+                                        <BbButton Variant="ButtonVariant.Outline"
+                                                  Size="ButtonSize.Small"
+                                                  AriaLabel="Save changes"
+                                                  OnClick="() => AutoSave(entry)">
+                                            Save
+                                        </BbButton>
+                                        <BbButton Variant="ButtonVariant.Ghost"
+                                                  Size="ButtonSize.Small"
+                                                  AriaLabel="Cancel edit"
+                                                  OnClick="CancelEdit">
+                                            Cancel
+                                        </BbButton>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <button type="button"
+                                        class="entry-description-btn @(string.IsNullOrEmpty(entry.Description) ? "entry-description-empty" : "")"
+                                        @onclick="() => StartInlineEdit(entry)"
+                                        aria-label="@(string.IsNullOrEmpty(entry.Description) ? "Add description (click to edit)" : $"{entry.Description} (click to edit)")">
+                                    @(string.IsNullOrEmpty(entry.Description) ? "(no description)" : entry.Description)
+                                </button>
+                                <span class="entry-times">
+                                    @FormatTime(entry.StartedAt) – @FormatTime(entry.EndedAt)
+                                </span>
+                                @if (entry.ProjectName != null)
+                                {
+                                    <span class="entry-project">
+                                        @entry.ClientName / @entry.ProjectName@(entry.TaskName != null ? $" ‣ {entry.TaskName}" : "")
+                                    </span>
+                                }
+                                <BbButton Variant="ButtonVariant.Outline"
+                                          Size="ButtonSize.Small"
+                                          AriaLabel="@($"Continue: {entry.Description}")"
+                                          OnClick="() => ContinueEntry(entry.Id)">
+                                    Continue
+                                </BbButton>
+                                <BbButton Variant="ButtonVariant.Ghost"
+                                          Size="ButtonSize.Small"
+                                          AriaLabel="Delete entry"
+                                          OnClick="() => { _pendingDeleteId = entry.Id; StateHasChanged(); }">
+                                    ✕
+                                </BbButton>
+                            }
+                            @if (_pendingDeleteId == entry.Id)
+                            {
+                                <div role="dialog"
+                                     aria-label="Confirm delete time entry"
+                                     class="entry-inline-confirm">
+                                    <p>Delete this entry?</p>
+                                    <div class="entry-inline-confirm-actions">
+                                        <BbButton Variant="ButtonVariant.Destructive"
+                                                  Size="ButtonSize.Small"
+                                                  AriaLabel="Confirm delete"
+                                                  OnClick="() => ConfirmDeleteEntry(entry.Id)">
+                                            Delete
+                                        </BbButton>
+                                        <BbButton Variant="ButtonVariant.Ghost"
+                                                  Size="ButtonSize.Small"
+                                                  AriaLabel="Cancel delete"
+                                                  OnClick="() => { _pendingDeleteId = null; StateHasChanged(); }">
+                                            Cancel
+                                        </BbButton>
+                                    </div>
+                                </div>
+                            }
+                        </li>
+                    }
+                </ul>
+            </section>
+        }
+
+        @if (_hasMore)
+        {
+            <div class="load-more-wrapper">
+                <BbButton Variant="ButtonVariant.Outline"
+                          OnClick="LoadMore"
+                          AriaLabel="Load more entries">
+                    Load more
+                </BbButton>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback OnTimerStarted { get; set; }
+
+    private bool _loading = true;
+    private List<TimeEntryItem> _entries = new();
+    private Dictionary<string, List<TimeEntryItem>> _groupedEntries = new();
+    private bool _hasMore = false;
+    private int _currentPage = 1;
+    private string? _editingId;
+    private string? _pendingDeleteId;
+    private ElementReference _listRef;
+
+    // Inline edit fields
+    private string _editDescription = string.Empty;
+    private DateTime _editStarted;
+    private DateTime _editEnded;
+    private string? _editError;
+    private bool _isSaving = false;
+
+    // Tag edit state
+    private List<string> _editTagIds = new();
+
+    // Project / task edit state
+    private string? _editProjectId;
+    private string? _editProjectName;
+    private string? _editClientName;
+    private string? _editTaskId;
+    private string? _editTaskName;
+    private string _editProjectQuery = string.Empty;
+    private string _editTaskQuery = string.Empty;
+    private List<ProjectMatch> _editProjectMatches = new();
+    private List<TaskMatch> _editTaskMatches = new();
+    private bool _editProjectSearchActive = false;
+    private bool _editTaskSearchActive = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPage(1);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await RestoreScrollPosition();
+        }
+    }
+
+    public async Task LoadPage(int page)
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Tauri.TimeEntryListAsync(new TimeEntryListRequest(page, 25));
+            if (page == 1) _entries.Clear();
+            _entries.AddRange(result.Entries);
+            _hasMore = result.HasMore;
+            _currentPage = page;
+            RebuildGroups();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[TimeEntryList] Load failed: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void RebuildGroups()
+    {
+        _groupedEntries = _entries
+            .GroupBy(e => DateOnly.Parse(e.StartedAt[..10]))
+            .OrderByDescending(g => g.Key)
+            .ToDictionary(
+                g => g.Key.ToString("yyyy-MM-dd"),
+                g => g.ToList()
+            );
+    }
+
+    private async Task LoadMore() => await LoadPage(_currentPage + 1);
+
+    private async Task ContinueEntry(string entryId)
+    {
+        try
+        {
+            await Tauri.TimeEntryContinueAsync(entryId);
+            await OnTimerStarted.InvokeAsync();
+            await LoadPage(1);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[TimeEntryList] Continue failed: {ex.Message}");
+        }
+    }
+
+    private async Task ConfirmDeleteEntry(string entryId)
+    {
+        _pendingDeleteId = null;
+        await DeleteEntry(entryId);
+    }
+
+    private async Task DeleteEntry(string entryId)
+    {
+        try
+        {
+            await Tauri.TimeEntryDeleteAsync(entryId);
+            // Remove from local list immediately for responsiveness
+            foreach (var group in _groupedEntries)
+                group.Value.RemoveAll(e => e.Id == entryId);
+            _entries.RemoveAll(e => e.Id == entryId);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[TimeEntryList] Delete failed: {ex.Message}");
+        }
+    }
+
+    private void StartInlineEdit(TimeEntryItem entry)
+    {
+        _editingId = entry.Id;
+        _editDescription = entry.Description;
+        _editProjectId = entry.ProjectId;
+        _editProjectName = entry.ProjectName;
+        _editClientName = entry.ClientName;
+        _editTaskId = entry.TaskId;
+        _editTaskName = entry.TaskName;
+        _editTagIds = entry.TagIds.ToList();
+        _editProjectQuery = string.Empty;
+        _editTaskQuery = string.Empty;
+        _editProjectMatches = new();
+        _editTaskMatches = new();
+        _editProjectSearchActive = false;
+        _editTaskSearchActive = false;
+        _editStarted = DateTime.TryParse(entry.StartedAt, null,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var s)
+            ? s.ToLocalTime() : DateTime.Now;
+        _editEnded = DateTime.TryParse(entry.EndedAt, null,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var e)
+            ? e.ToLocalTime() : DateTime.Now;
+        _editError = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _editError = null;
+        _editTagIds = new();
+        _editProjectSearchActive = false;
+        _editTaskSearchActive = false;
+    }
+
+    private async Task AutoSave(TimeEntryItem entry)
+    {
+        if (_isSaving) return;
+        if (_editingId != entry.Id) return;
+        _isSaving = true;
+        _editError = null;
+
+        try
+        {
+            var startUtc = _editStarted.ToUniversalTime().ToString("o");
+            var endUtc = _editEnded.ToUniversalTime().ToString("o");
+
+            await Tauri.TimeEntryUpdateAsync(new TimeEntryUpdateRequest(
+                entry.Id,
+                _editDescription,
+                _editProjectId,   // actual desired value: preserves, clears, or changes project
+                _editTaskId,      // actual desired value: preserves, clears, or changes task
+                _editTagIds.ToArray(),  // pass updated tag selection
+                startUtc,
+                endUtc,
+                false   // force = false; if overlap, show error
+            ));
+
+            _editingId = null;
+            await LoadPage(1);
+        }
+        catch (Exception ex) when (ex.Message.Contains("overlap_detected"))
+        {
+            _editError = "This time overlaps with another entry. Adjust the times or cancel.";
+        }
+        catch (Exception ex) when (ex.Message.Contains("invalid_time_range"))
+        {
+            _editError = "End time must be after start time.";
+        }
+        catch (Exception ex)
+        {
+            _editError = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    // ─── Project / task edit helpers ────────────────────────────────────────
+
+    private async Task OnEditProjectInput(ChangeEventArgs e)
+    {
+        _editProjectQuery = e.Value?.ToString() ?? string.Empty;
+        if (_editProjectQuery.Length >= 1)
+        {
+            try
+            {
+                var result = await Tauri.FuzzyMatchProjectsAsync(_editProjectQuery, 20);
+                _editProjectMatches = result.Matches
+                    .Select(m => (Item: m, Score: Math.Max(
+                        Fuzzy.Score(_editProjectQuery, m.ProjectName),
+                        Fuzzy.Score(_editProjectQuery, m.ClientName))))
+                    .Where(x => x.Score > 0)
+                    .OrderByDescending(x => x.Score)
+                    .Take(6)
+                    .Select(x => x.Item)
+                    .ToList();
+            }
+            catch { _editProjectMatches.Clear(); }
+        }
+        else
+        {
+            _editProjectMatches.Clear();
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnEditTaskInput(ChangeEventArgs e)
+    {
+        _editTaskQuery = e.Value?.ToString() ?? string.Empty;
+        if (_editProjectId != null)
+        {
+            try
+            {
+                var result = await Tauri.FuzzyMatchTasksAsync(_editProjectId, _editTaskQuery, 20);
+                _editTaskMatches = result.Matches
+                    .Select(m => (Item: m, Score: string.IsNullOrEmpty(_editTaskQuery)
+                        ? 1.0
+                        : Fuzzy.Score(_editTaskQuery, m.TaskName)))
+                    .Where(x => x.Score > 0)
+                    .OrderByDescending(x => x.Score)
+                    .Take(6)
+                    .Select(x => x.Item)
+                    .ToList();
+            }
+            catch { _editTaskMatches.Clear(); }
+        }
+        StateHasChanged();
+    }
+
+    private void ConfirmEditProject(int idx)
+    {
+        if (idx < 0 || idx >= _editProjectMatches.Count) return;
+        var m = _editProjectMatches[idx];
+        _editProjectId = m.ProjectId;
+        _editProjectName = m.ProjectName;
+        _editClientName = m.ClientName;
+        _editProjectMatches.Clear();
+        _editProjectSearchActive = false;
+        _editProjectQuery = string.Empty;
+        // Clear task when project changes
+        _editTaskId = null;
+        _editTaskName = null;
+        StateHasChanged();
+    }
+
+    private void ConfirmEditTask(int idx)
+    {
+        if (idx < 0 || idx >= _editTaskMatches.Count) return;
+        var t = _editTaskMatches[idx];
+        _editTaskId = t.TaskId;
+        _editTaskName = t.TaskName;
+        _editTaskMatches.Clear();
+        _editTaskSearchActive = false;
+        _editTaskQuery = string.Empty;
+        StateHasChanged();
+    }
+
+    private void ClearEditProject()
+    {
+        _editProjectId = null;
+        _editProjectName = null;
+        _editClientName = null;
+        _editTaskId = null;
+        _editTaskName = null;
+        _editProjectQuery = string.Empty;
+        _editTaskQuery = string.Empty;
+        _editProjectMatches.Clear();
+        _editTaskMatches.Clear();
+        _editProjectSearchActive = false;
+        _editTaskSearchActive = false;
+        StateHasChanged();
+    }
+
+    private void ClearEditTask()
+    {
+        _editTaskId = null;
+        _editTaskName = null;
+        _editTaskQuery = string.Empty;
+        _editTaskMatches.Clear();
+        _editTaskSearchActive = false;
+        StateHasChanged();
+    }
+
+    private void HandleEditProjectKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && _editProjectMatches.Count > 0)
+            ConfirmEditProject(0);
+        else if (e.Key == "Escape")
+        {
+            _editProjectSearchActive = false;
+            _editProjectMatches.Clear();
+            StateHasChanged();
+        }
+    }
+
+    private void HandleEditTaskKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && _editTaskMatches.Count > 0)
+            ConfirmEditTask(0);
+        else if (e.Key == "Escape")
+        {
+            _editTaskSearchActive = false;
+            _editTaskMatches.Clear();
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveScrollPosition()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("sessionStorage.setItem",
+                "tracey.entry-list.scroll", "0");
+        }
+        catch { }
+    }
+
+    private async Task RestoreScrollPosition()
+    {
+        try
+        {
+            await JS.InvokeAsync<string>("sessionStorage.getItem", "tracey.entry-list.scroll");
+            // Scroll restoration via JS — stub for T029a compliance intent
+        }
+        catch { }
+    }
+
+    private static string FormatDate(string isoDate) =>
+        DateOnly.TryParse(isoDate, out var d)
+            ? d.ToString("dddd, MMMM d")
+            : isoDate;
+
+    private static string FormatTime(string? isoUtc)
+    {
+        if (isoUtc is null) return string.Empty;
+        if (DateTime.TryParse(isoUtc, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+            return dt.ToLocalTime().ToString("HH:mm");
+        return isoUtc;
+    }
+
+}

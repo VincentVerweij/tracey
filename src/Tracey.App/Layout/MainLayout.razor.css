@@ -1,0 +1,99 @@
+/* =========================================
+   Tracey Shell — Layout
+   ========================================= */
+
+.tracey-shell {
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* =========================================
+   Sidebar
+   ========================================= */
+
+.sidebar {
+    width: 240px;
+    height: 100vh;
+    background-color: var(--tracey-sidebar-bg);
+    background-image: none;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.sidebar-brand {
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 1.25rem;
+    padding: 1.5rem 1.25rem 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    letter-spacing: -0.01em;
+    user-select: none;
+}
+
+.nav-list {
+    list-style: none;
+    margin: 0.75rem 0 0;
+    padding: 0 0.75rem;
+    flex: 1;
+}
+
+.nav-list li {
+    margin-bottom: 0.125rem;
+}
+
+/* Target NavLink anchor elements — ::deep pierces scoped boundary */
+.nav-list ::deep a {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    color: var(--tracey-sidebar-text);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 450;
+    transition: background-color 0.15s ease;
+    position: relative;
+}
+
+.nav-list ::deep a:hover {
+    background-color: var(--tracey-sidebar-hover);
+    color: #ffffff;
+    text-decoration: none;
+}
+
+.nav-list ::deep a.active {
+    background-color: var(--tracey-sidebar-active);
+    color: #ffffff;
+    font-weight: 500;
+}
+
+.nav-list ::deep a.active::before {
+    content: '';
+    position: absolute;
+    left: -0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    background-color: var(--tracey-accent);
+    border-radius: 0 3px 3px 0;
+}
+
+/* =========================================
+   Main Content
+   ========================================= */
+
+.main-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2rem;
+    background-color: var(--tracey-surface-alt);
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+

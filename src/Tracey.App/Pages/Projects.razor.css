@@ -1,0 +1,273 @@
+/* =========================================
+   Projects — Card-based hierarchy
+   ========================================= */
+
+.projects-page {
+}
+
+.projects-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+}
+
+.projects-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.show-archived-label {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.875rem;
+    color: var(--tracey-text-muted);
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Client card */
+.client-card {
+    margin-bottom: 0.75rem !important;
+}
+
+.client-card.archived {
+    opacity: 0.65;
+}
+
+.client-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 0.75rem;
+}
+
+.color-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.client-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--tracey-text);
+    flex: 1;
+}
+
+.archive-badge {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--tracey-text-muted);
+    background: var(--tracey-border);
+    padding: 0.15em 0.5em;
+    border-radius: 99px;
+}
+
+.client-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: auto;
+}
+
+/* Animated chevron */
+.chevron-btn {
+    padding: 0 !important;
+    width: 1.75rem !important;
+    height: 1.75rem !important;
+    min-width: unset !important;
+}
+
+.chevron {
+    display: inline-block;
+    transition: transform 0.2s ease;
+    font-size: 1.2rem;
+    line-height: 1;
+    color: var(--tracey-text-muted);
+}
+
+.chevron.open {
+    transform: rotate(90deg);
+}
+
+/* Project list */
+.project-list {
+    padding: 0.375rem 0.75rem 0.75rem 2rem;
+    border-top: 1px solid var(--tracey-border);
+}
+
+.project-row {
+    margin-bottom: 0.125rem;
+}
+
+.project-row.archived .project-name {
+    opacity: 0.6;
+}
+
+.project-header {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0;
+}
+
+.project-name {
+    flex: 1;
+    font-size: 0.875rem;
+    color: var(--tracey-text);
+}
+
+.project-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+/* Task list */
+.task-list {
+    padding-left: 2rem;
+    padding-top: 0.125rem;
+    padding-bottom: 0.375rem;
+}
+
+.task-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.2rem 0;
+    gap: 0.5rem;
+}
+
+.task-name {
+    font-size: 0.8rem;
+    color: var(--tracey-text-muted);
+    flex: 1;
+}
+
+/* Inline confirm (delete warning card) */
+.inline-confirm {
+    background: #fef9c3;
+    border: 1px solid #fbbf24;
+    border-radius: var(--tracey-radius);
+    padding: 0.875rem 1rem;
+    margin: 0 0.75rem 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.warn-icon {
+    font-size: 1.25rem;
+    line-height: 1;
+}
+
+.inline-confirm p {
+    margin: 0;
+    font-size: 0.875rem;
+    color: #78350f;
+}
+
+/* Add forms */
+.add-client-form {
+    background: var(--tracey-surface);
+    border: 1px solid var(--tracey-border);
+    border-radius: var(--tracey-radius);
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    box-shadow: var(--tracey-shadow);
+}
+
+.add-client-form h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+    color: var(--tracey-text);
+}
+
+.add-project-form,
+.add-task-form {
+    display: flex;
+    align-items: center;
+    flex-direction: row;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    margin: 0.375rem 0 0.25rem;
+    background: var(--tracey-surface-alt);
+    border: 1px dashed var(--tracey-border);
+    border-radius: 6px;
+}
+
+.add-project-form input,
+.add-task-form input {
+    flex: 1;
+    border: 1px solid var(--tracey-border);
+    border-radius: 6px;
+    padding: 0.35rem 0.625rem;
+    font-size: 0.875rem;
+    font-family: inherit;
+    background: var(--tracey-surface);
+    color: var(--tracey-text);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.add-project-form input:focus,
+.add-task-form input:focus {
+    outline: none;
+    border-color: var(--tracey-accent);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.form-group label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--tracey-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.form-group input {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--tracey-border);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    color: var(--tracey-text);
+    background: var(--tracey-surface);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: var(--tracey-accent);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+.form-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.empty-state,
+.loading-text {
+    color: var(--tracey-text-muted);
+    font-size: 0.875rem;
+    padding: 0.75rem 0;
+    margin: 0;
+}

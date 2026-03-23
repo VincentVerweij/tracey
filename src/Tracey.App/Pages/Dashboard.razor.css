@@ -1,0 +1,21 @@
+/* =========================================
+   Dashboard — Page layout
+   ========================================= */
+
+.dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.dashboard-header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+}
+
+.page-date {
+    font-size: 0.9rem;
+    color: var(--tracey-text-muted);
+    font-weight: 400;
+}

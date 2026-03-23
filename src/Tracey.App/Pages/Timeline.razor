@@ -1,0 +1,381 @@
+@page "/timeline"
+@inject TauriIpcService Tauri
+@inject TauriEventService Events
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Timeline — Tracey</PageTitle>
+
+<div class="timeline-page">
+    @if (_errorMessage is not null)
+    {
+        <div role="alert" class="t-error-banner">
+            <span>@_errorMessage</span>
+            <button @onclick="DismissError" aria-label="Dismiss error">✕</button>
+        </div>
+    }
+
+    <div class="timeline-header">
+        <h1 class="page-title">Timeline</h1>
+        <div class="timeline-controls">
+            <input type="date"
+                   @bind="_dateFilter"
+                   @bind:after="LoadScreenshots"
+                   aria-label="Filter by date" />
+            <button @onclick="RunCleanup" class="t-btn t-btn-ghost" aria-label="Clean up expired screenshots">
+                Clean up
+            </button>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="t-loading-text" aria-live="polite">Loading…</div>
+    }
+    else if (_screenshots.Count == 0)
+    {
+        <div class="empty-state-illustration" aria-label="No screenshots yet">
+            <span class="empty-state-emoji">📅</span>
+            <p class="empty-state-message">No screenshots for this day.</p>
+            <p class="empty-state-hint">Screenshots are captured automatically while Tracey is running.</p>
+        </div>
+    }
+    else
+    {
+        <div class="timeline-day-bar"
+             aria-label="24-hour timeline for @_dateFilter.ToString("yyyy-MM-dd")">
+            @if (_zoomHours < 23.9)
+            {
+                <div class="timeline-zoom-indicator" aria-live="polite">
+                    <span class="zoom-level-text">@FormatZoomLevel()</span>
+                    <button class="zoom-reset-btn" @onclick="ResetZoom" title="Reset to full day view" aria-label="Reset zoom">↺ full day</button>
+                </div>
+            }
+            <div class="timeline-bar-inner"
+                 @onmousemove="HandleBarMouseMove"
+                 @onmouseleave="HandleBarMouseLeave"
+                 @onclick="HandleBarClick"
+                 @onwheel="HandleBarWheel"
+                 @onwheel:preventDefault="true"
+                 @ondblclick="ResetZoom"
+                 data-zoom="@_zoomHours.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)">
+
+                @* Hour markers — only render hours within the current zoom window *@
+                @for (int h = 0; h <= 23; h++)
+                {
+                    var hPct = (h - _viewStartHours) / _zoomHours * 100.0;
+                    if (hPct < -2 || hPct > 102) continue;
+                    var hour = h;
+                    <div class="timeline-hour-marker"
+                         style="left: @hPct.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%"
+                         aria-hidden="true">
+                        <span class="hour-label">@hour.ToString("D2")</span>
+                    </div>
+                }
+
+                @* Screenshot dots *@
+                @foreach (var s in _screenshots)
+                {
+                    var dotPct = TimeToPercent(s.CapturedAt);
+                    <button class="timeline-screenshot-dot @(_selected?.Id == s.Id ? "timeline-dot-selected" : "")"
+                            style="left: @dotPct.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%"
+                            @onclick:stopPropagation="true"
+                            @onclick="() => SelectScreenshot(s)"
+                            aria-label="Screenshot at @FormatTime(s.CapturedAt) — @s.WindowTitle"
+                            data-testid="screenshot-item"
+                            title="@FormatTime(s.CapturedAt) · @s.WindowTitle">
+                    </button>
+                }
+
+                @* Hover indicator *@
+                @if (_hoverTimeLabel is not null)
+                {
+                    <div class="timeline-hover-indicator"
+                         style="left: @_hoverPct.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%"
+                         aria-hidden="true">
+                        <span class="hover-time-label">@_hoverTimeLabel</span>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* Preview area *@
+        <div class="timeline-preview-area">
+            @if (_selected is not null)
+            {
+                <div class="preview-header">
+                    <span class="preview-time">@FormatTime(_selected.CapturedAt)</span>
+                    <span class="preview-trigger" data-testid="trigger-badge">@FormatTrigger(_selected.Trigger)</span>
+                    <span class="preview-process">@_selected.ProcessName</span>
+                    <span class="preview-title preview-title-text">@_selected.WindowTitle</span>
+                    <button @onclick="ClosePreview" class="preview-close" aria-label="Close preview">✕</button>
+                </div>
+                <img src="@_selectedImageUrl"
+                     alt="Screenshot from @FormatTime(_selected.CapturedAt)"
+                     class="screenshot-img"
+                     @onerror="HandleImageError" />
+            }
+            else if (_hoverNearest is not null)
+            {
+                <div class="preview-header preview-header-hover">
+                    <span class="preview-time">@FormatTime(_hoverNearest.CapturedAt)</span>
+                    <span class="preview-process">@_hoverNearest.ProcessName</span>
+                    <span class="preview-title preview-title-text">@_hoverNearest.WindowTitle</span>
+                </div>
+                <img src="@_hoverImageUrl"
+                     alt="Screenshot from @FormatTime(_hoverNearest.CapturedAt)"
+                     class="screenshot-img screenshot-img-hover" />
+            }
+            else
+            {
+                <div class="preview-placeholder">
+                    <span>Hover or click a dot to preview</span>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<ScreenshotItem> _screenshots = new();
+    private ScreenshotItem? _selected;
+    private ScreenshotItem? _hoverNearest;
+    private string _selectedImageUrl = string.Empty;
+    private string _hoverImageUrl = string.Empty;
+    private bool _isLoading;
+    private string? _errorMessage;
+    private DateOnly _dateFilter = DateOnly.FromDateTime(DateTime.Today);
+    private double _hoverPct = 0;
+    private string? _hoverTimeLabel;
+
+    // Zoom state
+    private double _zoomHours = 24.0;    // hours visible in the window (24 = full day)
+    private double _viewStartHours = 0.0; // hours from midnight where view starts
+
+    protected override async Task OnInitializedAsync()
+    {
+        Events.OnScreenshotCaptured += HandleScreenshotCaptured;
+        Events.OnError += HandleError;
+        await LoadScreenshots();
+    }
+
+    private async Task LoadScreenshots()
+    {
+        _isLoading = true;
+        _selected = null;
+        _selectedImageUrl = string.Empty;
+        _hoverNearest = null;
+        _hoverImageUrl = string.Empty;
+        StateHasChanged();
+        try
+        {
+            var from = _dateFilter.ToDateTime(TimeOnly.MinValue).ToUniversalTime().ToString("o");
+            var to = _dateFilter.ToDateTime(TimeOnly.MaxValue).ToUniversalTime().ToString("o");
+            var result = await Tauri.ScreenshotListAsync(from, to);
+            _screenshots = (result ?? Array.Empty<ScreenshotItem>()).ToList();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load screenshots: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task RunCleanup()
+    {
+        try
+        {
+            await Tauri.ScreenshotDeleteExpiredAsync();
+            _errorMessage = null;
+            await LoadScreenshots();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Cleanup failed: {ex.Message}";
+        }
+    }
+
+    private async Task SelectScreenshot(ScreenshotItem s)
+    {
+        if (_selected?.Id == s.Id)
+        {
+            _selected = null;
+            _selectedImageUrl = string.Empty;
+        }
+        else
+        {
+            _selected = s;
+            _selectedImageUrl = await GetImgSrcAsync(s.FilePath);
+        }
+    }
+
+    private void ClosePreview()
+    {
+        _selected = null;
+        _selectedImageUrl = string.Empty;
+    }
+
+    private void DismissError() => _errorMessage = null;
+
+    private void HandleScreenshotCaptured(ScreenshotCapturedPayload payload)
+    {
+        // Auto-reload when a new screenshot is captured for today's date
+        if (payload.CapturedAt.StartsWith(_dateFilter.ToString("yyyy-MM-dd"), StringComparison.OrdinalIgnoreCase)
+            || DateOnly.FromDateTime(DateTime.Today) == _dateFilter)
+        {
+            InvokeAsync(LoadScreenshots);
+        }
+    }
+
+    private void HandleError(ErrorPayload payload)
+    {
+        _errorMessage = $"Screenshot error: {payload.Error}";
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleImageError()
+    {
+        _errorMessage = "Could not load screenshot image — file may have been moved or deleted.";
+    }
+
+    private async Task HandleBarMouseMove(MouseEventArgs e)
+    {
+        var pct = await GetMousePercentAsync(e.OffsetX);
+        _hoverPct = pct;
+
+        var actualHours = _viewStartHours + pct / 100.0 * _zoomHours;
+        var h = (int)actualHours;
+        var m = (int)((actualHours - h) * 60);
+        _hoverTimeLabel = $"{h:D2}:{m:D2}";
+
+        _hoverNearest = FindNearestScreenshot(pct);
+        if (_hoverNearest != null && _hoverNearest.Id != (_selected?.Id ?? ""))
+        {
+            _hoverImageUrl = await GetImgSrcAsync(_hoverNearest.FilePath);
+        }
+    }
+
+    private void HandleBarMouseLeave()
+    {
+        _hoverTimeLabel = null;
+        _hoverNearest = null;
+        _hoverImageUrl = string.Empty;
+        _hoverPct = 0;
+    }
+
+    private async Task HandleBarClick(MouseEventArgs e)
+    {
+        var pct = await GetMousePercentAsync(e.OffsetX);
+        var nearest = FindNearestScreenshot(pct);
+        if (nearest != null)
+            await SelectScreenshot(nearest);
+    }
+
+    private ScreenshotItem? FindNearestScreenshot(double pct)
+    {
+        if (_screenshots.Count == 0) return null;
+        return _screenshots
+            .OrderBy(s => Math.Abs(TimeToPercent(s.CapturedAt) - pct))
+            .FirstOrDefault();
+    }
+
+    private async Task<double> GetMousePercentAsync(double offsetX)
+    {
+        try
+        {
+            var width = await JS.InvokeAsync<double>("eval", "document.querySelector('.timeline-bar-inner')?.clientWidth ?? 800");
+            return Math.Clamp(offsetX / Math.Max(width, 1) * 100.0, 0, 100);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private async Task<string> GetImgSrcAsync(string filePath)
+    {
+        try
+        {
+            return await JS.InvokeAsync<string>("traceyBridge.convertFileSrc", filePath);
+        }
+        catch
+        {
+            // Fallback manual conversion
+            var normalized = filePath.Replace('\\', '/').TrimStart('/');
+            if (normalized.Length > 1 && normalized[1] == ':')
+                normalized = normalized[0] + "%3A" + normalized[2..];
+            return $"https://asset.localhost/{normalized}";
+        }
+    }
+
+    private double TimeToPercent(string utcIso)
+    {
+        if (DateTime.TryParse(utcIso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+        {
+            var local = dt.ToLocalTime();
+            var hours = local.Hour + local.Minute / 60.0 + local.Second / 3600.0;
+            return (hours - _viewStartHours) / _zoomHours * 100.0;
+        }
+        return 0;
+    }
+
+    private static string FormatTime(string utcIso)
+    {
+        if (DateTime.TryParse(utcIso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+            return dt.ToLocalTime().ToString("HH:mm:ss");
+        return utcIso;
+    }
+
+    private static string FormatTrigger(string trigger) => trigger switch
+    {
+        "interval"      => "⏱ Interval",
+        "window_change" => "🔄 Window change",
+        "manual"        => "📸 Manual",
+        _               => trigger
+    };
+
+    private async Task HandleBarWheel(WheelEventArgs e)
+    {
+        // DeltaY > 0 = scroll down = zoom out; DeltaY < 0 = scroll up = zoom in
+        var factor = e.DeltaY > 0 ? 1.5 : (1.0 / 1.5);
+        var newZoom = Math.Clamp(_zoomHours * factor, 0.5, 24.0);
+        if (Math.Abs(newZoom - _zoomHours) < 0.001) return;
+
+        // Get mouse position as fraction [0,1] within bar
+        var rawPct = await GetMousePercentAsync(e.OffsetX);
+        // Mouse is at this hour in the current view
+        var mouseHours = _viewStartHours + rawPct / 100.0 * _zoomHours;
+
+        // Anchor zoom around mouse position
+        _viewStartHours = mouseHours - (rawPct / 100.0 * newZoom);
+        _zoomHours = newZoom;
+
+        // Clamp so we don't scroll past midnight
+        _viewStartHours = Math.Clamp(_viewStartHours, 0.0, Math.Max(0.0, 24.0 - _zoomHours));
+        StateHasChanged();
+    }
+
+    private void ResetZoom()
+    {
+        _zoomHours = 24.0;
+        _viewStartHours = 0.0;
+        StateHasChanged();
+    }
+
+    private string FormatZoomLevel()
+    {
+        if (_zoomHours < 1) return $"{(int)(_zoomHours * 60)}min window";
+        if (_zoomHours < 1.5) return "1h window";
+        return $"{_zoomHours:F0}h window";
+    }
+
+    public void Dispose()
+    {
+        Events.OnScreenshotCaptured -= HandleScreenshotCaptured;
+        Events.OnError -= HandleError;
+    }
+}
+

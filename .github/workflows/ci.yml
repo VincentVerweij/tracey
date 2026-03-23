@@ -1,0 +1,314 @@
+name: Tracey CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Job 1: Lint
+  # ─────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # 1.93.1
+        with:
+          toolchain: 1.93.1
+          components: clippy
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache Cargo registry
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Publish Blazor WASM
+        run: >
+          dotnet publish src/Tracey.App
+          -c Release
+          -o src/Tracey.App/bin/Release/net10.0/publish
+
+      - name: Rust check — cargo check
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Rust lint — cargo clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+
+      - name: .NET lint — dotnet format verify
+        run: dotnet format src/Tracey.App/Tracey.App.csproj --verify-no-changes
+
+  # ─────────────────────────────────────────────
+  # Job 2: Unit Tests + CVE Audit
+  # ─────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests
+    runs-on: windows-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # 1.93.1
+        with:
+          toolchain: 1.93.1
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache Cargo registry
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Publish Blazor WASM
+        run: >
+          dotnet publish src/Tracey.App
+          -c Release
+          -o src/Tracey.App/bin/Release/net10.0/publish
+
+      - name: Rust unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: .NET build check
+        run: dotnet build src/Tracey.slnx
+
+      - name: .NET unit tests
+        run: >
+          dotnet test src/Tracey.Tests/Tracey.Tests.csproj
+          --no-build
+          --logger "trx;LogFileName=test-results.trx"
+
+      - name: Upload .NET test results
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: dotnet-test-results
+          path: src/Tracey.Tests/**/test-results.trx
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: CVE audit — cargo audit
+        run: cargo audit --file src-tauri/Cargo.lock
+
+  # ─────────────────────────────────────────────
+  # Job 3: Build Portable Exe  (T079)
+  # ─────────────────────────────────────────────
+  build-portable:
+    name: Build Portable Exe
+    runs-on: windows-latest
+    needs: unit-tests
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # 1.93.1
+        with:
+          toolchain: 1.93.1
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache Cargo registry
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache Rust build artifacts
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: src-tauri/target
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-
+
+      # Blazor WASM must be published before cargo build so frontendDist is populated.
+      - name: Publish Blazor WASM
+        run: >
+          dotnet publish src/Tracey.App
+          -c Release
+          -o src/Tracey.App/bin/Release/net10.0/publish
+
+      - name: Build Tauri binary (release)
+        # cargo build --release is used instead of `cargo tauri build` to avoid
+        # requiring the Tauri CLI in CI.  The Blazor publish above satisfies the
+        # frontendDist requirement used at runtime.
+        run: cargo build --manifest-path src-tauri/Cargo.toml --release
+
+      - name: Verify exe exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "src-tauri/target/release/tracey.exe")) {
+            Write-Error "tracey.exe was not produced by the release build"
+            exit 1
+          }
+          Write-Host "tracey.exe found — build PASSED"
+
+      # ── Portable verification ──────────────────────────────────────────────
+      # Copy the exe to a temporary directory (simulating "run from any folder")
+      # and verify it starts cleanly and writes tracey.db to the exe directory
+      # (not to AppData), confirming the portable path-resolution logic (T078).
+      - name: Portable execution check
+        shell: pwsh
+        run: |
+          $tmpDir = Join-Path $env:TEMP "tracey-portable-test-$(New-Guid)"
+          New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+          Copy-Item "src-tauri/target/release/tracey.exe" "$tmpDir/"
+
+          Write-Host "Starting tracey.exe from $tmpDir ..."
+          $proc = Start-Process `
+            -FilePath "$tmpDir/tracey.exe" `
+            -WorkingDirectory $tmpDir `
+            -PassThru
+
+          # Give the app up to 3 seconds to initialise and write its DB.
+          Start-Sleep -Seconds 3
+
+          if ($proc.HasExited -and $proc.ExitCode -ne 0) {
+            Write-Error "tracey.exe exited early with code $($proc.ExitCode)"
+            exit 1
+          }
+
+          # Portable check: tracey.db must appear beside the exe, not in AppData.
+          if (Test-Path "$tmpDir/tracey.db") {
+            Write-Host "tracey.db created in exe directory — portable check PASSED"
+          } else {
+            Write-Error "tracey.db NOT found in exe directory — portable check FAILED"
+            if (-not $proc.HasExited) { $proc.Kill() }
+            exit 1
+          }
+
+          $proc.Kill()
+          Write-Host "Portable verification complete"
+
+      - name: Upload portable exe artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: tracey-portable-exe
+          path: src-tauri/target/release/tracey.exe
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────
+  # Job 4: E2E Tests
+  # Tests drive Chromium against the Blazor WASM dev server at localhost:5000.
+  # window.__TAURI__ is absent in this mode — IPC-dependent tests will fail;
+  # continue-on-error: true is set until a tauri-driver CDP harness is wired
+  # (pending `[features] test = []` + Tauri WebDriver in Cargo.toml).
+  # ─────────────────────────────────────────────
+  e2e-tests:
+    name: E2E Tests
+    runs-on: windows-latest
+    needs: build-portable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # 6.3.0
+        with:
+          node-version: '24'
+
+      - name: Setup .NET 10 (Blazor dev server)
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install E2E dependencies
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+
+      # Start the Blazor WASM dev server in the background so Playwright can
+      # reach http://localhost:5000.  The server is stopped in the cleanup step.
+      - name: Start Blazor dev server
+        shell: pwsh
+        run: |
+          $proc = Start-Process dotnet `
+            -ArgumentList "run --project src/Tracey.App --urls http://localhost:5000" `
+            -WorkingDirectory $env:GITHUB_WORKSPACE `
+            -PassThru
+          $proc.Id | Out-File "$env:RUNNER_TEMP\blazor-pid.txt"
+          Write-Host "Blazor dev server starting (PID $($proc.Id))..."
+          # Poll until the server responds or timeout after 120 s
+          $timeout = 120; $elapsed = 0
+          while ($elapsed -lt $timeout) {
+            Start-Sleep -Seconds 3
+            $elapsed += 3
+            try {
+              Invoke-WebRequest -Uri 'http://localhost:5000' -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop | Out-Null
+              Write-Host "Dev server ready ($elapsed s)"
+              break
+            } catch {
+              Write-Host "Waiting... ($elapsed s)"
+            }
+          }
+          if ($elapsed -ge $timeout) {
+            Write-Error "Blazor dev server did not respond within ${timeout}s"
+            exit 1
+          }
+
+      # continue-on-error: true — tests that invoke Tauri IPC will fail in
+      # pure-devserver mode (no window.__TAURI__). Tracked for full fix once
+      # the `test` Cargo feature and tauri-driver harness are implemented.
+      - name: Run Playwright E2E tests
+        continue-on-error: true
+        working-directory: tests/e2e
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report/
+          if-no-files-found: ignore
+
+      - name: Stop Blazor dev server
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path "$env:RUNNER_TEMP\blazor-pid.txt") {
+            $blazorPid = Get-Content "$env:RUNNER_TEMP\blazor-pid.txt"
+            Stop-Process -Id $blazorPid -Force -ErrorAction SilentlyContinue
+            Write-Host "Dev server (PID $blazorPid) stopped"
+          }

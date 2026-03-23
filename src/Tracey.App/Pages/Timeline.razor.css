@@ -1,0 +1,305 @@
+/* ─── Page layout ─────────────────────────────────────────── */
+.timeline-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    flex: 1;
+    min-height: 0;
+}
+
+.timeline-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.timeline-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.timeline-controls input[type="date"] {
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--tracey-border);
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.875rem;
+    background: var(--tracey-surface);
+    color: var(--tracey-text);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.timeline-controls input[type="date"]:focus {
+    outline: none;
+    border-color: var(--tracey-accent);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+/* ─── Error banner ────────────────────────────────────────── */
+/* Error banner now uses global .t-error-banner */
+/* Loading state now uses global .t-loading-text */
+
+/* ─── Empty / loading states ──────────────────────────────── */
+
+.empty-state-illustration {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 3rem;
+    color: var(--tracey-text-muted, #6b7280);
+}
+.empty-state-emoji { font-size: 3rem; }
+.empty-state-message {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--tracey-text);
+}
+.empty-state-hint { font-size: 0.85rem; }
+
+/* ─── 24h Timeline bar ─────────────────────────────────────── */
+.timeline-day-bar {
+    background: var(--tracey-surface);
+    border: 1px solid var(--tracey-border);
+    border-radius: var(--tracey-radius);
+    overflow: hidden;
+}
+
+.timeline-bar-inner {
+    position: relative;
+    height: 80px;
+    cursor: ns-resize;
+    background: linear-gradient(to bottom, #1e1e2e 0%, #16213e 100%);
+    user-select: none;
+    overflow: hidden;
+}
+
+/* ─── Hour markers ─────────────────────────────────────────── */
+.timeline-hour-marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    pointer-events: none;
+    transform: translateX(-50%);
+}
+
+.hour-label {
+    position: absolute;
+    top: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.6rem;
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    color: rgba(255, 255, 255, 0.35);
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+/* Show only every 4th hour label at small widths to avoid crowding */
+/* Hour labels for 0, 6, 12, 18 always visible; others hidden via nth-child */
+/* Note: these are nth-child selectors on .timeline-hour-marker */
+.timeline-hour-marker:nth-child(n+2):not(:nth-child(6n+1)) .hour-label {
+    display: none;
+}
+
+/* ─── Screenshot dots ──────────────────────────────────────── */
+.timeline-screenshot-dot {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--tracey-accent, #6366f1);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+    transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.1s ease;
+    z-index: 2;
+    padding: 0;
+}
+
+.timeline-screenshot-dot:hover {
+    transform: translate(-50%, -50%) scale(1.4);
+    background: #818cf8;
+    box-shadow: 0 0 8px 2px rgba(99, 102, 241, 0.5);
+}
+
+.timeline-screenshot-dot:focus-visible {
+    outline: 2px solid white;
+    outline-offset: 2px;
+}
+
+.timeline-screenshot-dot.timeline-dot-selected {
+    background: #ffffff;
+    box-shadow: 0 0 0 3px var(--tracey-accent, #6366f1), 0 0 12px 4px rgba(99, 102, 241, 0.6);
+    transform: translate(-50%, -50%) scale(1.6);
+    z-index: 3;
+}
+
+/* ─── Hover indicator ──────────────────────────────────────── */
+.timeline-hover-indicator {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.7);
+    pointer-events: none;
+    transform: translateX(-50%);
+    z-index: 4;
+}
+
+.hover-time-label {
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.75);
+    color: #fff;
+    font-size: 0.7rem;
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    padding: 1px 5px;
+    border-radius: 3px;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+/* ─── Preview area ─────────────────────────────────────────── */
+.timeline-preview-area {
+    background: var(--tracey-surface);
+    border: 1px solid var(--tracey-border);
+    border-radius: var(--tracey-radius);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex: 1;
+    min-height: 0;
+}
+
+.preview-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--tracey-border);
+    background: var(--tracey-surface);
+    flex-wrap: wrap;
+}
+
+.preview-header-hover {
+    opacity: 0.8;
+}
+
+.preview-time {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--tracey-accent, #6366f1);
+    flex-shrink: 0;
+}
+
+.preview-trigger {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 9999px;
+    background: rgba(99, 102, 241, 0.12);
+    color: var(--tracey-accent, #6366f1);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.preview-process {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--tracey-text);
+    flex-shrink: 0;
+}
+
+.preview-title-text {
+    font-size: 0.8rem;
+    color: var(--tracey-text-muted, #6b7280);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.preview-close {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--tracey-border);
+    border-radius: var(--tracey-radius);
+    padding: 0.2rem 0.6rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--tracey-text-muted, #6b7280);
+    flex-shrink: 0;
+    transition: background 0.1s;
+}
+.preview-close:hover { background: var(--tracey-surface-alt, #f3f4f6); }
+
+.screenshot-img {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    object-fit: contain;
+    background: #0d0d1a;
+    display: block;
+}
+
+.screenshot-img-hover {
+    opacity: 0.85;
+}
+
+.preview-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    color: var(--tracey-text-muted, #6b7280);
+    font-size: 0.875rem;
+    padding: 3rem;
+    text-align: center;
+}
+
+/* ─── Zoom indicator ───────────────────────────────────────── */
+.timeline-zoom-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    background: var(--tracey-surface);
+    border-bottom: 1px solid var(--tracey-border);
+    font-size: 0.75rem;
+    color: var(--tracey-text-muted, #6b7280);
+}
+
+.zoom-level-text {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.03em;
+}
+
+.zoom-reset-btn {
+    background: none;
+    border: 1px solid var(--tracey-border);
+    border-radius: var(--tracey-radius);
+    color: var(--tracey-text-muted, #6b7280);
+    cursor: pointer;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.4rem;
+    line-height: 1.4;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.zoom-reset-btn:hover {
+    background: var(--tracey-accent, #6366f1);
+    color: #ffffff;
+    border-color: var(--tracey-accent, #6366f1);
+}
