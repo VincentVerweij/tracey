@@ -77,5 +77,9 @@
         return 'https://asset.localhost/' + encoded;
     }
 
-    window.traceyBridge = { initializeTauriBridge, disposeTauriBridge, convertFileSrc };
+    function getTimelineBarWidth() {
+        return document.querySelector('.timeline-bar-inner')?.clientWidth ?? 800;
+    }
+
+    window.traceyBridge = { initializeTauriBridge, disposeTauriBridge, convertFileSrc, getTimelineBarWidth };
 })();
