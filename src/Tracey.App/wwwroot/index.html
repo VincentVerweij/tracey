@@ -28,10 +28,74 @@
     </div>
 
     <div id="blazor-error-ui">
-        An unhandled error has occurred.
+        <span>An unhandled error has occurred.</span>
         <a href="." class="reload">Reload</a>
         <span class="dismiss">🗙</span>
+        <details class="blazor-error-details">
+            <summary>Show error details (useful for bug reports)</summary>
+            <pre id="blazor-error-message">No details captured yet.</pre>
+            <button class="blazor-error-copy"
+                onclick="(function(){var t=document.getElementById('blazor-error-message');if(t){navigator.clipboard.writeText(t.textContent).then(function(){var b=document.querySelector('.blazor-error-copy');b.textContent='Copied!';setTimeout(function(){b.textContent='Copy to clipboard'},2000)}).catch(function(){})}})()">Copy to clipboard</button>
+        </details>
     </div>
+    <script>
+        // Capture unhandled errors from the Blazor WASM runtime and surface them
+        // in #blazor-error-message so users can copy and report them without DevTools.
+        (function () {
+            'use strict';
+            var _buf = [];
+
+            function _append(msg) {
+                if (!msg || !msg.trim()) return;
+                _buf.push(msg.trim());
+                _flush();
+            }
+
+            function _flush() {
+                var el = document.getElementById('blazor-error-message');
+                if (el && _buf.length > 0) {
+                    el.textContent = _buf.join('\n\n---\n\n');
+                }
+            }
+
+            // Plain JS errors (including those thrown by the WASM runtime)
+            window.addEventListener('error', function (e) {
+                var parts = ['Error: ' + e.message];
+                if (e.filename) parts.push('At: ' + e.filename + ':' + e.lineno + ':' + e.colno);
+                if (e.error && e.error.stack) parts.push(e.error.stack);
+                _append(parts.join('\n'));
+            });
+
+            // Unhandled Promise rejections (most Blazor async errors end up here)
+            window.addEventListener('unhandledrejection', function (e) {
+                var r = e.reason;
+                var parts = r instanceof Error
+                    ? ['Unhandled rejection: ' + r.message, r.stack || '']
+                    : ['Unhandled rejection: ' + String(r)];
+                _append(parts.filter(Boolean).join('\n'));
+            });
+
+            // console.error is used by the Blazor WASM runtime to log unhandled exceptions
+            var _origError = console.error;
+            console.error = function () {
+                _origError.apply(console, arguments);
+                var msg = Array.prototype.slice.call(arguments).map(function (a) {
+                    if (a instanceof Error) return a.message + (a.stack ? '\n' + a.stack : '');
+                    return String(a);
+                }).join(' ');
+                _append(msg);
+            };
+
+            // Flush once the DOM is ready (errors may arrive before DOMContentLoaded)
+            document.addEventListener('DOMContentLoaded', function () {
+                _flush();
+                var ui = document.getElementById('blazor-error-ui');
+                if (ui && window.MutationObserver) {
+                    new MutationObserver(_flush).observe(ui, { attributes: true, attributeFilter: ['style'] });
+                }
+            });
+        }());
+    </script>
     <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
     <script src="js/tauri-bridge.js"></script>
 </body>
