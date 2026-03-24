@@ -286,7 +286,7 @@
     {
         try
         {
-            var width = await JS.InvokeAsync<double>("eval", "document.querySelector('.timeline-bar-inner')?.clientWidth ?? 800");
+            var width = await JS.InvokeAsync<double>("traceyBridge.getTimelineBarWidth");
             return Math.Clamp(offsetX / Math.Max(width, 1) * 100.0, 0, 100);
         }
         catch
@@ -313,9 +313,12 @@
 
     private double TimeToPercent(string utcIso)
     {
-        if (DateTime.TryParse(utcIso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+        // DateTimeOffset.TryParse correctly handles RFC 3339 strings with UTC offset
+        // (e.g. "2026-03-24T08:47:06+00:00") and is not affected by IL trimming in
+        // Blazor WASM release builds, unlike DateTime.TryParse + RoundtripKind.
+        if (DateTimeOffset.TryParse(utcIso, out var dto))
         {
-            var local = dt.ToLocalTime();
+            var local = dto.LocalDateTime;
             var hours = local.Hour + local.Minute / 60.0 + local.Second / 3600.0;
             return (hours - _viewStartHours) / _zoomHours * 100.0;
         }
@@ -324,8 +327,8 @@
 
     private static string FormatTime(string utcIso)
     {
-        if (DateTime.TryParse(utcIso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
-            return dt.ToLocalTime().ToString("HH:mm:ss");
+        if (DateTimeOffset.TryParse(utcIso, out var dto))
+            return dto.LocalDateTime.ToString("HH:mm:ss");
         return utcIso;
     }
 
