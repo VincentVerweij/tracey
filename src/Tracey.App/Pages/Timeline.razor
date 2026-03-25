@@ -159,14 +159,19 @@
         await LoadScreenshots();
     }
 
-    private async Task LoadScreenshots()
+    private Task LoadScreenshots() => LoadScreenshots(showLoading: true);
+
+    private async Task LoadScreenshots(bool showLoading)
     {
-        _isLoading = true;
-        _selected = null;
-        _selectedImageUrl = string.Empty;
-        _hoverNearest = null;
-        _hoverImageUrl = string.Empty;
-        StateHasChanged();
+        if (showLoading)
+        {
+            _isLoading = true;
+            _selected = null;
+            _selectedImageUrl = string.Empty;
+            _hoverNearest = null;
+            _hoverImageUrl = string.Empty;
+            StateHasChanged();
+        }
         try
         {
             var from = _dateFilter.ToDateTime(TimeOnly.MinValue).ToUniversalTime().ToString("o");
@@ -222,11 +227,16 @@
 
     private void HandleScreenshotCaptured(ScreenshotCapturedPayload payload)
     {
-        // Auto-reload when a new screenshot is captured for today's date
+        // Auto-reload when a new screenshot is captured for today's date.
+        // Use background refresh to avoid showing "Loading..." and clearing the selection.
         if (payload.CapturedAt.StartsWith(_dateFilter.ToString("yyyy-MM-dd"), StringComparison.OrdinalIgnoreCase)
             || DateOnly.FromDateTime(DateTime.Today) == _dateFilter)
         {
-            InvokeAsync(LoadScreenshots);
+            InvokeAsync(async () =>
+            {
+                await LoadScreenshots(showLoading: false);
+                StateHasChanged();
+            });
         }
     }
 
