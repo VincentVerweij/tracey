@@ -1,4 +1,5 @@
 @inject TauriIpcService Tauri
+@implements IDisposable
 
 @if (_isVisible)
 {
@@ -68,38 +69,58 @@
     private string _idleStartedAt = string.Empty;
     private string _idleEndedAt = string.Empty;
     private string _durationText = string.Empty;
+    private DateTime _idleStartedAtUtc;
+    private System.Threading.Timer? _tickTimer;
 
     /// Called by Dashboard when tracey://idle-detected fires.
     public void Show(string idleSince)
     {
         Console.WriteLine($"[IdleReturnModal] Show() EXECUTING: idleSince={idleSince} _isVisible was {_isVisible}");
         _idleStartedAt = idleSince;
-        _idleEndedAt = DateTime.UtcNow.ToString("o");
         _isVisible = true;
         _showSpecifyInput = false;
         _specifyDescription = string.Empty;
 
-        if (DateTime.TryParse(idleSince, null,
-            System.Globalization.DateTimeStyles.RoundtripKind, out var start))
+        if (DateTimeOffset.TryParse(idleSince, null,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var parsed))
         {
-            var duration = DateTime.UtcNow - start;
-            _durationText = duration.TotalMinutes >= 60
-                ? $"You were away for {(int)duration.TotalHours}h {duration.Minutes}m"
-                : $"You were away for {(int)duration.TotalMinutes} minute{((int)duration.TotalMinutes == 1 ? "" : "s")}";
+            _idleStartedAtUtc = parsed.UtcDateTime;
         }
         else
         {
-            _durationText = "You were away for a while";
+            _idleStartedAtUtc = DateTime.UtcNow;
         }
+
+        UpdateDurationText();
+        StopTickTimer();
+        _tickTimer = new System.Threading.Timer(_ =>
+        {
+            InvokeAsync(() =>
+            {
+                if (!_isVisible) return;
+                UpdateDurationText();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
 
         Console.WriteLine($"[IdleReturnModal] Show() complete: _isVisible={_isVisible}, calling StateHasChanged()");
         StateHasChanged();
     }
 
+    private void UpdateDurationText()
+    {
+        var duration = DateTime.UtcNow - _idleStartedAtUtc;
+        _durationText = duration.TotalMinutes >= 60
+            ? $"You were away for {(int)duration.TotalHours}h {duration.Minutes}m"
+            : $"You were away for {(int)duration.TotalMinutes} minute{((int)duration.TotalMinutes == 1 ? "" : "s")}";
+    }
+
     private async Task Resolve(string resolution)
     {
+        StopTickTimer();
         try
         {
+            _idleEndedAt = DateTime.UtcNow.ToString("o");
             await Tauri.IdleResolveAsync(new IdleResolveRequest(
                 resolution,
                 _idleStartedAt,
@@ -148,8 +169,10 @@
             return;
         }
 
+        StopTickTimer();
         try
         {
+            _idleEndedAt = DateTime.UtcNow.ToString("o");
             await Tauri.IdleResolveAsync(new IdleResolveRequest(
                 "specify",
                 _idleStartedAt,
@@ -167,6 +190,17 @@
             _showSpecifyInput = false;
             await OnResolved.InvokeAsync();
         }
+    }
+
+    private void StopTickTimer()
+    {
+        _tickTimer?.Dispose();
+        _tickTimer = null;
+    }
+
+    public void Dispose()
+    {
+        StopTickTimer();
     }
 
 }
