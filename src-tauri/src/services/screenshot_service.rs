@@ -46,23 +46,41 @@ fn capture_screen_jpeg() -> Result<Vec<u8>, String> {
 fn capture_screen_jpeg() -> Result<Vec<u8>, String> {
     use windows::Win32::Graphics::Gdi::{
         BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject,
-        GetDIBits, GetWindowDC, ReleaseDC, SelectObject,
-        BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ, RGBQUAD, SRCCOPY,
+        GetDIBits, GetMonitorInfoW, GetWindowDC, MonitorFromWindow, ReleaseDC, SelectObject,
+        BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ, MONITORINFO,
+        MONITOR_DEFAULTTONEAREST, RGBQUAD, SRCCOPY,
     };
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetDesktopWindow, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN,
-    };
+    use windows::Win32::UI::WindowsAndMessaging::{GetDesktopWindow, GetForegroundWindow};
 
     // All Win32 GDI calls are synchronous — must be called from spawn_blocking at call site
     unsafe {
-        let hwnd = GetDesktopWindow();
-        let hdc_screen = GetWindowDC(hwnd);
+        // Identify which monitor the foreground (active) window sits on.
+        // MONITOR_DEFAULTTONEAREST guarantees a valid HMONITOR even when
+        // the window straddles monitors or is minimised.
+        let fg_hwnd = GetForegroundWindow();
+        let hmon = MonitorFromWindow(fg_hwnd, MONITOR_DEFAULTTONEAREST);
 
-        let screen_width = GetSystemMetrics(SM_CXSCREEN);
-        let screen_height = GetSystemMetrics(SM_CYSCREEN);
+        let mut mi: MONITORINFO = std::mem::zeroed();
+        mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+
+        if !GetMonitorInfoW(hmon, &mut mi).as_bool() {
+            return Err("GetMonitorInfoW failed".to_string());
+        }
+
+        let rc = mi.rcMonitor;
+        let mon_x = rc.left;
+        let mon_y = rc.top;
+        let mon_w = rc.right - rc.left;
+        let mon_h = rc.bottom - rc.top;
+
+        // Desktop window DC spans the entire virtual screen (all monitors).
+        // BitBlt with the monitor's virtual-screen coordinates captures
+        // exactly that monitor's pixels.
+        let desktop = GetDesktopWindow();
+        let hdc_screen = GetWindowDC(desktop);
 
         let hdc_mem = CreateCompatibleDC(hdc_screen);
-        let hbm = CreateCompatibleBitmap(hdc_screen, screen_width, screen_height);
+        let hbm = CreateCompatibleBitmap(hdc_screen, mon_w, mon_h);
         // SelectObject requires HGDIOBJ; convert HBITMAP via its inner pointer
         let hbm_old = SelectObject(hdc_mem, HGDIOBJ(hbm.0));
 
@@ -70,11 +88,11 @@ fn capture_screen_jpeg() -> Result<Vec<u8>, String> {
             hdc_mem,
             0,
             0,
-            screen_width,
-            screen_height,
+            mon_w,
+            mon_h,
             hdc_screen,
-            0,
-            0,
+            mon_x,
+            mon_y,
             SRCCOPY,
         );
 
@@ -83,7 +101,7 @@ fn capture_screen_jpeg() -> Result<Vec<u8>, String> {
             SelectObject(hdc_mem, hbm_old);
             let _ = DeleteObject(HGDIOBJ(hbm.0));
             let _ = DeleteDC(hdc_mem);
-            ReleaseDC(hwnd, hdc_screen);
+            ReleaseDC(desktop, hdc_screen);
             return Err(e.to_string());
         }
 
@@ -91,8 +109,8 @@ fn capture_screen_jpeg() -> Result<Vec<u8>, String> {
         let mut bmi = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: bmi_size,
-                biWidth: screen_width,
-                biHeight: -screen_height, // negative = top-down scanlines
+                biWidth: mon_w,
+                biHeight: -mon_h, // negative = top-down scanlines
                 biPlanes: 1,
                 biBitCount: 32,
                 biCompression: BI_RGB.0,
@@ -105,14 +123,14 @@ fn capture_screen_jpeg() -> Result<Vec<u8>, String> {
             bmiColors: [RGBQUAD::default()],
         };
 
-        let buf_size = (screen_width * screen_height * 4) as usize;
+        let buf_size = (mon_w * mon_h * 4) as usize;
         let mut pixels: Vec<u8> = vec![0u8; buf_size];
 
         GetDIBits(
             hdc_mem,
             hbm,
             0,
-            screen_height as u32,
+            mon_h as u32,
             Some(pixels.as_mut_ptr() as *mut _),
             &mut bmi,
             DIB_RGB_COLORS,
@@ -122,11 +140,11 @@ fn capture_screen_jpeg() -> Result<Vec<u8>, String> {
         SelectObject(hdc_mem, hbm_old);
         let _ = DeleteObject(HGDIOBJ(hbm.0));
         let _ = DeleteDC(hdc_mem);
-        ReleaseDC(hwnd, hdc_screen);
+        ReleaseDC(desktop, hdc_screen);
 
         // Convert device BGRA → RGB
-        let w = screen_width as u32;
-        let h = screen_height as u32;
+        let w = mon_w as u32;
+        let h = mon_h as u32;
         let rgb_pixels: Vec<u8> = pixels
             .chunks_exact(4)
             .flat_map(|bgra| [bgra[2], bgra[1], bgra[0]])
