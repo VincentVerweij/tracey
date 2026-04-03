@@ -254,7 +254,10 @@ public record UserPreferences(
     [property: JsonPropertyName("process_deny_list_json")] string ProcessDenyListJson,
     [property: JsonPropertyName("external_db_enabled")] bool ExternalDbEnabled,
     [property: JsonPropertyName("timer_notification_threshold_hours")] double TimerNotificationThresholdHours,
-    [property: JsonPropertyName("notification_channels_json")] string? NotificationChannelsJson);
+    [property: JsonPropertyName("notification_channels_json")] string? NotificationChannelsJson,
+    [property: JsonPropertyName("auto_classification_enabled")] bool AutoClassificationEnabled,
+    [property: JsonPropertyName("auto_classification_confidence_threshold")] float AutoClassificationConfidenceThreshold,
+    [property: JsonPropertyName("auto_classification_group_gap_seconds")] int AutoClassificationGroupGapSeconds);
 
 public record PreferencesUpdateRequest(
     [property: JsonPropertyName("inactivity_timeout_seconds")] long? InactivityTimeoutSeconds = null,
@@ -266,7 +269,10 @@ public record PreferencesUpdateRequest(
     [property: JsonPropertyName("process_deny_list_json")] string? ProcessDenyListJson = null,
     [property: JsonPropertyName("external_db_enabled")] bool? ExternalDbEnabled = null,
     [property: JsonPropertyName("timer_notification_threshold_hours")] double? TimerNotificationThresholdHours = null,
-    [property: JsonPropertyName("notification_channels_json")] string? NotificationChannelsJson = null);
+    [property: JsonPropertyName("notification_channels_json")] string? NotificationChannelsJson = null,
+    [property: JsonPropertyName("auto_classification_enabled")] bool? AutoClassificationEnabled = null,
+    [property: JsonPropertyName("auto_classification_confidence_threshold")] float? AutoClassificationConfidenceThreshold = null,
+    [property: JsonPropertyName("auto_classification_group_gap_seconds")] int? AutoClassificationGroupGapSeconds = null);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Timer
@@ -589,9 +595,3 @@ public record ClassificationSubmitLabelRequest(
 public record ClassificationDismissRequest(
     [property: JsonPropertyName("war_id")] string WarId,
     [property: JsonPropertyName("pattern_key")] string PatternKey);
-
-public record FuzzyProjectItem(
-    [property: JsonPropertyName("id")] string Id,
-    [property: JsonPropertyName("name")] string Name,
-    [property: JsonPropertyName("client_id")] string? ClientId,
-    [property: JsonPropertyName("client_name")] string? ClientName);

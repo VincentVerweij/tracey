@@ -746,7 +746,9 @@ fn read_user_preferences(db: &std::sync::Mutex<rusqlite::Connection>) -> Result<
                 screenshot_interval_seconds, screenshot_retention_days,
                 screenshot_storage_path, timer_notification_threshold_hours,
                 page_size, external_db_uri_stored, external_db_enabled,
-                notification_channels_json, process_deny_list_json
+                notification_channels_json, process_deny_list_json,
+                auto_classification_enabled, auto_classification_confidence_threshold,
+                auto_classification_group_gap_seconds
          FROM user_preferences LIMIT 1",
         [],
         |row| Ok(crate::models::UserPreferences {
@@ -757,6 +759,9 @@ fn read_user_preferences(db: &std::sync::Mutex<rusqlite::Connection>) -> Result<
             page_size: row.get(7)?, external_db_uri_stored: row.get(8)?,
             external_db_enabled: row.get(9)?, notification_channels_json: row.get(10)?,
             process_deny_list_json: row.get(11)?,
+            auto_classification_enabled: row.get(12).unwrap_or(true),
+            auto_classification_confidence_threshold: row.get(13).unwrap_or(0.7),
+            auto_classification_group_gap_seconds: row.get(14).unwrap_or(120),
         }),
     )
     .map_err(|e| e.to_string())
