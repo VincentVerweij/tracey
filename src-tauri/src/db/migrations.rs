@@ -19,6 +19,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "004_add_device_id_columns",
         include_str!("migrations/004_add_device_id_columns.sql"),
     ),
+    (
+        "006_classification_engine",
+        include_str!("migrations/006_classification_engine.sql"),
+    ),
 ];
 
 pub fn run(conn: &Connection) -> SqlResult<()> {
