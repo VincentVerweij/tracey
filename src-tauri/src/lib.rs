@@ -80,6 +80,7 @@ pub fn run() {
             services::screenshot_service::start_screenshot_loop(app.handle().clone());
             services::sync_service::start_sync_loop(app.handle().clone());
             services::activity_tracker::start_activity_loop(app.handle().clone());
+            services::classification_loop::start_classification_loop(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
