@@ -14,6 +14,7 @@ use crate::models::UserPreferences;
 use crate::platform::PlatformHooks;
 use crate::services::classification::tfidf::TfIdfModel;
 use crate::services::classification::heuristic::HeuristicRule;
+use crate::services::active_learning_queue::ActiveLearningQueue;
 
 /// Shared classification state: loaded model + rule cache + sample counter.
 pub struct ClassificationState {
@@ -50,6 +51,7 @@ pub struct AppState {
     /// Notify fired to wake the sync background loop for an immediate sync cycle.
     pub sync_notify: Arc<tokio::sync::Notify>,
     pub classification_state: Arc<std::sync::Mutex<ClassificationState>>,
+    pub active_learning_queue: Arc<std::sync::Mutex<ActiveLearningQueue>>,
 }
 
 // ─────────────────────────────────────────────────────────────

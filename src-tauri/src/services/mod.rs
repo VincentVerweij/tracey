@@ -1,3 +1,4 @@
+pub mod active_learning_queue;
 pub mod activity_tracker;
 pub mod classification;
 pub mod idle_service;

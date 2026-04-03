@@ -1,6 +1,7 @@
 use commands::AppState;
 use commands::SyncState;
 use commands::ClassificationState;
+use services::active_learning_queue::ActiveLearningQueue;
 
 mod commands;
 pub mod db;
@@ -38,6 +39,8 @@ pub fn run() {
         }))
     };
 
+    let active_learning_queue = Arc::new(std::sync::Mutex::new(ActiveLearningQueue::new()));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .manage(AppState {
@@ -46,9 +49,32 @@ pub fn run() {
             sync_state,
             sync_notify,
             classification_state,
+            active_learning_queue,
         })
         .setup(|app| {
             log::info!("Tracey starting up");
+
+            // Load persisted snooze state into active learning queue
+            {
+                use tauri::Manager;
+                let state = app.state::<AppState>();
+                let json: Option<String> = {
+                    let conn_result = state.db.lock();
+                    conn_result.ok().and_then(|conn| {
+                        conn.query_row(
+                            "SELECT classification_snooze_json FROM user_preferences LIMIT 1",
+                            [], |r| r.get(0),
+                        ).ok().flatten()
+                    })
+                }; // conn lock dropped
+                if let Some(j) = json {
+                    if let Ok(entries) = serde_json::from_str::<std::collections::HashMap<String, services::active_learning_queue::SnoozeEntry>>(&j) {
+                        if let Ok(mut alq) = state.active_learning_queue.lock() {
+                            alq.load_snooze_state(entries);
+                        };
+                    }
+                }
+            }
             services::timer_tick::start_tick_loop(app.handle().clone());
             services::idle_service::start_idle_loop(app.handle().clone());
             services::screenshot_service::start_screenshot_loop(app.handle().clone());
