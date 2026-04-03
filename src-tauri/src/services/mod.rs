@@ -1,4 +1,5 @@
 pub mod activity_tracker;
+pub mod classification;
 pub mod idle_service;
 pub mod logger;
 pub mod screenshot_service;
