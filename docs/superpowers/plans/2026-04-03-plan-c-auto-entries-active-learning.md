@@ -48,6 +48,7 @@ CREATE TABLE classification_events (
     -- 'heuristic' | 'tf_idf' | 'unclassified'
     outcome                TEXT NOT NULL DEFAULT 'pending',
     -- 'auto' | 'user_confirmed' | 'user_corrected' | 'unclassified' | 'pending'
+    ocr_text               TEXT,            -- raw OCR snippet used during classification
     created_at             TEXT NOT NULL
 );
 
@@ -130,6 +131,12 @@ pub struct PendingRecord {
     pub ocr_text: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnoozeEntry {
+    pub dismissed_count: u32,
+    pub last_snoozed_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Default)]
 pub struct ActiveLearningQueue {
     /// pattern_key → snooze state
@@ -188,6 +195,24 @@ impl ActiveLearningQueue {
     }
 
     pub fn pending_count(&self) -> usize { self.pending.len() }
+
+    /// Returns the snooze map serializable for DB persistence.
+    pub fn snooze_state(&self) -> HashMap<String, SnoozeEntry> {
+        self.snooze.iter().map(|(k, v)| (k.clone(), SnoozeEntry {
+            dismissed_count: v.dismissed_count,
+            last_snoozed_at: v.last_snoozed_at,
+        })).collect()
+    }
+
+    /// Load persisted snooze state back into the queue on startup.
+    pub fn load_snooze_state(&mut self, entries: HashMap<String, SnoozeEntry>) {
+        for (key, entry) in entries {
+            self.snooze.insert(key, SnoozeState {
+                dismissed_count: entry.dismissed_count,
+                last_snoozed_at: entry.last_snoozed_at,
+            });
+        }
+    }
 }
 
 #[cfg(test)]
@@ -298,6 +323,26 @@ pub struct AppState {
 ```
 
 Update `lib.rs` to pass `active_learning_queue: Arc::new(std::sync::Mutex::new(ActiveLearningQueue::new()))` in `.manage(AppState { ... })`.
+
+After calling `.manage(AppState { ... })`, load the persisted snooze state:
+
+```rust
+// Load persisted snooze state into active learning queue
+{
+    let state = app.state::<AppState>();
+    if let (Ok(conn), Ok(mut alq)) = (state.db.lock(), state.active_learning_queue.lock()) {
+        let json: Option<String> = conn.query_row(
+            "SELECT classification_snooze_json FROM user_preferences LIMIT 1",
+            [], |r| r.get(0),
+        ).ok().flatten();
+        if let Some(j) = json {
+            if let Ok(entries) = serde_json::from_str(&j) {
+                alq.load_snooze_state(entries);
+            }
+        }
+    }
+}
+```
 
 - [ ] **Step 5: Commit**
 
@@ -414,11 +459,14 @@ async fn classify_record(app: &AppHandle, rec: &UnclassifiedRecord) {
     };
 
     if auto_enabled == 0 {
-        mark_classified(app, &rec.id);
+        let state = app.state::<AppState>();
+        if let Ok(conn) = state.db.lock() {
+            mark_classified(&conn, &rec.id);
+        }
         return;
     }
 
-    // 3. Store classification event
+    // 3. Store classification event + finalise in a single lock acquisition
     let event_id = Ulid::new().to_string().to_lowercase();
     let now = Utc::now().to_rfc3339();
     let source_str = match result.top.source {
@@ -430,89 +478,97 @@ async fn classify_record(app: &AppHandle, rec: &UnclassifiedRecord) {
     {
         let state = app.state::<AppState>();
         let conn = match state.db.lock() { Ok(c) => c, Err(_) => return };
-        let _ = conn.execute(
+        if let Err(e) = conn.execute(
             "INSERT INTO classification_events \
              (id, war_id, process_name, window_title, client_id, project_id, task_id, \
-              confidence, classification_source, outcome, created_at) \
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'pending',?10)",
+              confidence, classification_source, outcome, ocr_text, created_at) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'pending',?10,?11)",
             rusqlite::params![
                 event_id, rec.id, rec.process_name, rec.window_title,
                 result.top.client_id, result.top.project_id, result.top.task_id,
-                result.top.confidence, source_str, now,
+                result.top.confidence, source_str, ocr_text, now,
             ],
-        );
-    }
-
-    if result.top.confidence >= threshold {
-        // Auto-create/extend time entry
-        auto_create_or_extend_time_entry(app, &rec.id, &rec.recorded_at, &event_id, &result, group_gap);
-    } else {
-        // Enqueue for active learning
-        let pattern_key = make_pattern_key(&rec.process_name, &rec.window_title);
-        let should_prompt = {
-            let state = app.state::<AppState>();
-            let mut alq = match state.active_learning_queue.lock() { Ok(q) => q, Err(_) => return };
-            alq.enqueue(crate::services::active_learning_queue::PendingRecord {
-                war_id: rec.id.clone(),
-                process_name: rec.process_name.clone(),
-                window_title: rec.window_title.clone(),
-                ocr_text: ocr_text.clone(),
-            })
-        };
-
-        if should_prompt {
-            let suggestions_json = serde_json::to_value(&result).unwrap_or_default();
-            let _ = app.emit(
-                "tracey://classification-needed",
-                serde_json::json!({
-                    "war_id": rec.id,
-                    "event_id": event_id,
-                    "process_name": rec.process_name,
-                    "window_title": rec.window_title,
-                    "pattern_key": pattern_key,
-                    "suggestions": suggestions_json,
-                }),
-            );
-        } else {
-            // Snoozed — mark as unclassified
-            update_event_outcome(app, &event_id, "unclassified");
+        ) {
+            log::warn!("[classification_loop] Failed to insert classification event: {e}");
         }
-    }
 
-    mark_classified(app, &rec.id);
+        if result.top.confidence >= threshold {
+            // Auto-create/extend time entry — conn passed directly, no second lock
+            auto_create_or_extend_time_entry(&conn, &rec.id, &rec.recorded_at, &event_id, &result, group_gap);
+        } else {
+            // Enqueue for active learning (release conn first, then lock ALQ)
+            drop(conn); // release db lock before locking active_learning_queue
+            let pattern_key = make_pattern_key(&rec.process_name, &rec.window_title);
+            let should_prompt = {
+                let mut alq = match state.active_learning_queue.lock() { Ok(q) => q, Err(_) => return };
+                alq.enqueue(crate::services::active_learning_queue::PendingRecord {
+                    war_id: rec.id.clone(),
+                    process_name: rec.process_name.clone(),
+                    window_title: rec.window_title.clone(),
+                    ocr_text: ocr_text.clone(),
+                })
+            };
+
+            if should_prompt {
+                let suggestions_json = serde_json::to_value(&result).unwrap_or_default();
+                if let Err(e) = app.emit(
+                    "tracey://classification-needed",
+                    serde_json::json!({
+                        "war_id": rec.id,
+                        "event_id": event_id,
+                        "process_name": rec.process_name,
+                        "window_title": rec.window_title,
+                        "pattern_key": pattern_key,
+                        "suggestions": suggestions_json,
+                    }),
+                ) {
+                    log::warn!("[classification_loop] Failed to emit classification-needed: {e}");
+                }
+            } else {
+                // Snoozed — re-acquire db lock to update outcome
+                if let Ok(conn2) = state.db.lock() {
+                    update_event_outcome(&conn2, &event_id, "unclassified");
+                }
+            }
+            // mark_classified after enqueue path — re-acquire lock
+            if let Ok(conn2) = state.db.lock() {
+                mark_classified(&conn2, &rec.id);
+            }
+            return;
+        }
+
+        // High-confidence path: mark classified using the same lock
+        mark_classified(&conn, &rec.id);
+    }
 }
 
-fn mark_classified(app: &AppHandle, war_id: &str) {
-    let state = app.state::<AppState>();
-    if let Ok(conn) = state.db.lock() {
-        let now = Utc::now().to_rfc3339();
-        let _ = conn.execute(
-            "UPDATE window_activity_records SET classified_at = ?1 WHERE id = ?2",
-            rusqlite::params![now, war_id],
-        );
+fn mark_classified(conn: &rusqlite::Connection, war_id: &str) {
+    let now = Utc::now().to_rfc3339();
+    if let Err(e) = conn.execute(
+        "UPDATE window_activity_records SET classified_at = ?1 WHERE id = ?2",
+        rusqlite::params![now, war_id],
+    ) {
+        log::warn!("[classification_loop] Failed to mark {war_id} as classified: {e}");
     }
 }
 
-fn update_event_outcome(app: &AppHandle, event_id: &str, outcome: &str) {
-    let state = app.state::<AppState>();
-    if let Ok(conn) = state.db.lock() {
-        let _ = conn.execute(
-            "UPDATE classification_events SET outcome = ?1 WHERE id = ?2",
-            rusqlite::params![outcome, event_id],
-        );
+fn update_event_outcome(conn: &rusqlite::Connection, event_id: &str, outcome: &str) {
+    if let Err(e) = conn.execute(
+        "UPDATE classification_events SET outcome = ?1 WHERE id = ?2",
+        rusqlite::params![outcome, event_id],
+    ) {
+        log::warn!("[classification_loop] Failed to update event outcome for {event_id}: {e}");
     }
 }
 
 fn auto_create_or_extend_time_entry(
-    app: &AppHandle,
+    conn: &rusqlite::Connection,
     war_id: &str,
     recorded_at: &str,
     event_id: &str,
     result: &crate::services::classification::ClassificationResult,
     group_gap_seconds: i64,
 ) {
-    let state = app.state::<AppState>();
-    let conn = match state.db.lock() { Ok(c) => c, Err(_) => return };
     let device_id = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".to_string());
 
     // Try to find a recent auto time entry for the same project/task
@@ -533,11 +589,13 @@ fn auto_create_or_extend_time_entry(
             let gap = start.signed_duration_since(ended).num_seconds();
             if gap >= 0 && gap <= group_gap_seconds {
                 // Extend existing entry
-                let _ = conn.execute(
+                if let Err(e) = conn.execute(
                     "UPDATE time_entries SET ended_at = ?1, modified_at = ?2 WHERE id = ?3",
                     rusqlite::params![recorded_at, Utc::now().to_rfc3339(), entry_id],
-                );
-                update_event_outcome(app, event_id, "auto");
+                ) {
+                    log::warn!("[classification_loop] Failed to extend time entry {entry_id}: {e}");
+                }
+                update_event_outcome(conn, event_id, "auto");
                 return;
             }
         }
@@ -546,7 +604,7 @@ fn auto_create_or_extend_time_entry(
     // Create new auto time entry
     let entry_id = Ulid::new().to_string().to_lowercase();
     let now_str = Utc::now().to_rfc3339();
-    let _ = conn.execute(
+    if let Err(e) = conn.execute(
         "INSERT INTO time_entries \
          (id, description, started_at, ended_at, project_id, task_id, is_break, \
           device_id, created_at, modified_at, source) \
@@ -556,8 +614,10 @@ fn auto_create_or_extend_time_entry(
             result.top.project_id, result.top.task_id,
             device_id, now_str,
         ],
-    );
-    update_event_outcome(app, event_id, "auto");
+    ) {
+        log::warn!("[classification_loop] Failed to insert auto time entry: {e}");
+    }
+    update_event_outcome(conn, event_id, "auto");
     let _ = war_id; // war_id used by caller for mark_classified
 }
 ```
@@ -628,6 +688,7 @@ pub struct ClassificationSubmitLabelRequest {
     pub project_id: Option<String>,
     pub task_id: Option<String>,
     pub recorded_at: String,
+    pub source: String, // "user_confirmed" | "user_corrected"
 }
 
 #[tauri::command]
@@ -647,13 +708,13 @@ pub fn classification_submit_label(
         // Store labeled sample
         conn.execute(
             "INSERT INTO labeled_samples \
-             (id,feature_text,process_name,window_title,client_id,project_id,task_id,source,device_id,created_at) \
-             VALUES (?1,?2,?3,?4,?5,?6,?7,'user_confirmed',?8,?9)",
+             (id,feature_text,process_name,window_title,client_id,project_id,task_id,source,device_id,created_at,modified_at) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?10)",
             rusqlite::params![
                 sample_id, features.combined_text,
                 request.process_name, request.window_title,
                 request.client_id, request.project_id, request.task_id,
-                device_id, now,
+                request.source, device_id, now,
             ],
         ).map_err(|e| e.to_string())?;
 
@@ -669,10 +730,10 @@ pub fn classification_submit_label(
             ],
         ).map_err(|e| e.to_string())?;
 
-        // Update classification_events outcome
+        // Update classification_events outcome to match source
         conn.execute(
-            "UPDATE classification_events SET outcome = 'user_confirmed' WHERE id = ?1",
-            rusqlite::params![request.event_id],
+            "UPDATE classification_events SET outcome = ?1 WHERE id = ?2",
+            rusqlite::params![request.source, request.event_id],
         ).map_err(|e| e.to_string())?;
 
         // Remove from active learning queue
@@ -728,9 +789,20 @@ pub fn classification_dismiss(
     state: State<'_, AppState>,
     request: ClassificationDismissRequest,
 ) -> Result<(), String> {
-    let mut alq = state.active_learning_queue.lock().map_err(|e| e.to_string())?;
-    alq.record_dismissal(&request.pattern_key);
-    alq.dequeue(&request.war_id);
+    let snooze_json = {
+        let mut alq = state.active_learning_queue.lock().map_err(|e| e.to_string())?;
+        alq.record_dismissal(&request.pattern_key);
+        alq.dequeue(&request.war_id);
+        serde_json::to_string(alq.snooze_state()).map_err(|e| e.to_string())?
+    }; // alq lock released
+
+    // Persist snooze state so it survives restarts
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE user_preferences SET classification_snooze_json = ?1 WHERE id = 1",
+        rusqlite::params![snooze_json],
+    ).map_err(|e| e.to_string())?;
+
     Ok(())
 }
 ```
@@ -744,15 +816,130 @@ commands::classification::classification_submit_label,
 commands::classification::classification_dismiss,
 ```
 
-- [ ] **Step 3: Build**
+- [ ] **Step 3: Write tests for `classification_submit_label` retrain trigger and `classification_dismiss` snooze count**
+
+Add a `#[cfg(test)]` block at the bottom of `src-tauri/src/commands/classification.rs`:
+
+```rust
+#[cfg(test)]
+mod submit_label_tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn setup_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("
+            CREATE TABLE labeled_samples (
+                id TEXT PRIMARY KEY, feature_text TEXT NOT NULL,
+                process_name TEXT NOT NULL, window_title TEXT NOT NULL,
+                client_id TEXT, project_id TEXT, task_id TEXT,
+                source TEXT NOT NULL, device_id TEXT NOT NULL,
+                created_at TEXT NOT NULL, modified_at TEXT NOT NULL DEFAULT (datetime('now')),
+                synced_at TEXT
+            );
+            CREATE TABLE classifier_model (
+                id TEXT PRIMARY KEY, model_json TEXT NOT NULL,
+                trained_at TEXT NOT NULL, sample_count INTEGER NOT NULL,
+                device_id TEXT NOT NULL
+            );
+            CREATE TABLE time_entries (
+                id TEXT PRIMARY KEY, description TEXT NOT NULL DEFAULT '',
+                started_at TEXT NOT NULL, ended_at TEXT,
+                project_id TEXT, task_id TEXT, is_break INTEGER NOT NULL DEFAULT 0,
+                device_id TEXT NOT NULL, created_at TEXT NOT NULL, modified_at TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'manual'
+            );
+            CREATE TABLE classification_events (
+                id TEXT PRIMARY KEY NOT NULL, war_id TEXT NOT NULL,
+                process_name TEXT NOT NULL, window_title TEXT NOT NULL,
+                client_id TEXT, project_id TEXT, task_id TEXT,
+                confidence REAL NOT NULL DEFAULT 0.0,
+                classification_source TEXT NOT NULL DEFAULT 'unclassified',
+                outcome TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE window_activity_records (
+                id TEXT PRIMARY KEY, process_name TEXT, window_title TEXT,
+                recorded_at TEXT, classified_at TEXT
+            );
+            CREATE TABLE user_preferences (
+                id INTEGER PRIMARY KEY, classification_snooze_json TEXT
+            );
+            INSERT INTO user_preferences (id) VALUES (1);
+        ").unwrap();
+        conn
+    }
+
+    #[test]
+    fn sample_count_increases_after_insert() {
+        let conn = setup_db();
+        let before = trainer::count_samples(&conn);
+        conn.execute(
+            "INSERT INTO labeled_samples \
+             (id,feature_text,process_name,window_title,source,device_id,created_at,modified_at) \
+             VALUES ('s1','feat','app','title','user_confirmed','dev',datetime('now'),datetime('now'))",
+            [],
+        ).unwrap();
+        let after = trainer::count_samples(&conn);
+        assert_eq!(after, before + 1);
+    }
+
+    #[test]
+    fn retrain_threshold_requires_10_new_samples_since_last_train() {
+        let conn = setup_db();
+        let sample_count_at_last_train = 5i64;
+        // Insert 9 samples — below threshold
+        for i in 0..9 {
+            conn.execute(
+                &format!("INSERT INTO labeled_samples \
+                 (id,feature_text,process_name,window_title,source,device_id,created_at,modified_at) \
+                 VALUES ('s{i}','feat','app','title','user_confirmed','dev',datetime('now'),datetime('now'))"),
+                [],
+            ).unwrap();
+        }
+        let total = trainer::count_samples(&conn);
+        let should_retrain = (total - sample_count_at_last_train) >= 10
+            && total >= trainer::PHASE2_MIN_SAMPLES;
+        assert!(!should_retrain, "9 new samples should not trigger retrain");
+
+        // Insert one more — now 10 new
+        conn.execute(
+            "INSERT INTO labeled_samples \
+             (id,feature_text,process_name,window_title,source,device_id,created_at,modified_at) \
+             VALUES ('s9','feat','app','title','user_confirmed','dev',datetime('now'),datetime('now'))",
+            [],
+        ).unwrap();
+        let total = trainer::count_samples(&conn);
+        let should_retrain = (total - sample_count_at_last_train) >= 10
+            && total >= trainer::PHASE2_MIN_SAMPLES;
+        // Only triggers when total >= PHASE2_MIN_SAMPLES (20)
+        assert_eq!(should_retrain, total >= trainer::PHASE2_MIN_SAMPLES);
+    }
+
+    #[test]
+    fn dismiss_increments_snooze_count() {
+        let mut alq = crate::services::active_learning_queue::ActiveLearningQueue::new();
+        let key = "code|tracey";
+        alq.record_dismissal(key);
+        let state = alq.snooze_state();
+        assert_eq!(state.get(key).map(|e| e.dismissed_count), Some(1));
+        alq.record_dismissal(key);
+        let state = alq.snooze_state();
+        assert_eq!(state.get(key).map(|e| e.dismissed_count), Some(2));
+    }
+}
+```
+
+- [ ] **Step 4: Build and run tests**
 
 ```powershell
 cargo build --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml --features test 2>&1
 ```
 
-Expected: builds without errors.
+Expected: all tests pass.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```powershell
 git add src-tauri/src/commands/classification.rs `
@@ -820,7 +1007,8 @@ public record ClassificationSubmitLabelRequest(
     [property: JsonPropertyName("client_id")] string? ClientId,
     [property: JsonPropertyName("project_id")] string? ProjectId,
     [property: JsonPropertyName("task_id")] string? TaskId,
-    [property: JsonPropertyName("recorded_at")] string RecordedAt);
+    [property: JsonPropertyName("recorded_at")] string RecordedAt,
+    [property: JsonPropertyName("source")] string Source);
 
 public record ClassificationDismissRequest(
     [property: JsonPropertyName("war_id")] string WarId,
@@ -880,8 +1068,19 @@ git commit -m "feat(frontend): add ClassificationNeeded event and classification
         {
             <div class="toast-picker">
                 <p>Which project is this?</p>
-                @* Reuse FuzzyMatchService or a simple project list here in Plan D *@
                 <input type="text" @bind="_pickerQuery" placeholder="Search projects…" @oninput="OnPickerInput" />
+                @if (_pickerMatches.Length > 0)
+                {
+                    <div class="toast-picker-matches">
+                        @foreach (var m in _pickerMatches)
+                        {
+                            <button type="button" class="toast-picker-match-btn"
+                                    @onclick="() => ConfirmPicker(m)">
+                                @m.Name
+                            </button>
+                        }
+                    </div>
+                }
                 <button type="button" class="toast-btn-outline" @onclick="ClosePicker">Back</button>
             </div>
         }
@@ -905,6 +1104,7 @@ git commit -m "feat(frontend): add ClassificationNeeded event and classification
     private ClassificationNeededPayload? _payload;
     private bool _showPicker = false;
     private string _pickerQuery = string.Empty;
+    private FuzzyProjectItem[] _pickerMatches = [];
     private System.Threading.Timer? _autoTimer;
 
     protected override void OnInitialized()
@@ -942,7 +1142,8 @@ git commit -m "feat(frontend): add ClassificationNeeded event and classification
             ClientId: suggestion.ClientId,
             ProjectId: suggestion.ProjectId,
             TaskId: suggestion.TaskId,
-            RecordedAt: DateTime.UtcNow.ToString("o")
+            RecordedAt: DateTime.UtcNow.ToString("o"),
+            Source: "user_confirmed"
         ));
         _payload = null;
         StateHasChanged();
@@ -961,8 +1162,45 @@ git commit -m "feat(frontend): add ClassificationNeeded event and classification
     }
 
     private void ShowPicker() { _showPicker = true; StateHasChanged(); }
-    private void ClosePicker() { _showPicker = false; StateHasChanged(); }
-    private void OnPickerInput(ChangeEventArgs e) { _pickerQuery = e.Value?.ToString() ?? string.Empty; }
+    private void ClosePicker() { _showPicker = false; _pickerMatches = []; StateHasChanged(); }
+    private void OnPickerInput(ChangeEventArgs e)
+    {
+        _pickerQuery = e.Value?.ToString() ?? string.Empty;
+        InvokeAsync(async () =>
+        {
+            if (_pickerQuery.Length >= 2)
+            {
+                var results = await Tauri.FuzzyMatchProjectsAsync(_pickerQuery, 5);
+                _pickerMatches = results?.Projects ?? [];
+            }
+            else
+            {
+                _pickerMatches = [];
+            }
+            StateHasChanged();
+        });
+    }
+
+    private async Task ConfirmPicker(FuzzyProjectItem project)
+    {
+        if (_payload == null) return;
+        _autoTimer?.Dispose();
+        _pickerMatches = [];
+        await Tauri.ClassificationSubmitLabelAsync(new ClassificationSubmitLabelRequest(
+            WarId: _payload.WarId,
+            EventId: _payload.EventId,
+            ProcessName: _payload.ProcessName,
+            WindowTitle: _payload.WindowTitle,
+            OcrText: null,
+            ClientId: project.ClientId,
+            ProjectId: project.Id,
+            TaskId: null,
+            RecordedAt: DateTime.UtcNow.ToString("o"),
+            Source: "user_corrected"
+        ));
+        _payload = null;
+        StateHasChanged();
+    }
 
     private static string TruncateTitle(string title) =>
         title.Length > 60 ? title[..57] + "…" : title;

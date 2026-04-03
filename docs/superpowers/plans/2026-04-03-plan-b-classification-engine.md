@@ -28,6 +28,7 @@ CREATE TABLE labeled_samples (
     id            TEXT PRIMARY KEY NOT NULL,
     feature_text  TEXT NOT NULL,   -- normalized "process_name window_title ocr_text"
     process_name  TEXT NOT NULL,
+    modified_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     window_title  TEXT NOT NULL,
     client_id     TEXT,
     project_id    TEXT,
@@ -747,7 +748,9 @@ mod tests {
                 id TEXT PRIMARY KEY, feature_text TEXT NOT NULL,
                 process_name TEXT NOT NULL, window_title TEXT NOT NULL,
                 client_id TEXT, project_id TEXT, task_id TEXT,
-                source TEXT NOT NULL, device_id TEXT NOT NULL, created_at TEXT NOT NULL, synced_at TEXT
+                source TEXT NOT NULL, device_id TEXT NOT NULL,
+                created_at TEXT NOT NULL, modified_at TEXT NOT NULL DEFAULT (datetime('now')),
+                synced_at TEXT
             );
             CREATE TABLE classifier_model (
                 id TEXT PRIMARY KEY, model_json TEXT NOT NULL,
@@ -759,8 +762,8 @@ mod tests {
 
     fn insert_sample(conn: &Connection, text: &str, project: &str) {
         conn.execute(
-            "INSERT INTO labeled_samples (id,feature_text,process_name,window_title,client_id,project_id,task_id,source,device_id,created_at)
-             VALUES (?,?,?,?,NULL,?,NULL,'user_confirmed','dev',datetime('now'))",
+            "INSERT INTO labeled_samples (id,feature_text,process_name,window_title,client_id,project_id,task_id,source,device_id,created_at,modified_at)
+             VALUES (?,?,?,?,NULL,?,NULL,'user_confirmed','dev',datetime('now'),datetime('now'))",
             rusqlite::params![Ulid::new().to_string(), text, "app", "title", project],
         ).unwrap();
     }
@@ -1000,8 +1003,8 @@ pub fn labeled_sample_submit(
         conn.execute(
             "INSERT INTO labeled_samples \
              (id, feature_text, process_name, window_title, client_id, project_id, task_id, \
-              source, device_id, created_at) \
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+              source, device_id, created_at, modified_at) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?10)",
             rusqlite::params![
                 id, features.combined_text,
                 features.process_name, features.window_title,
@@ -1052,7 +1055,132 @@ commands::classification::classification_classify_test,
 commands::classification::labeled_sample_submit,
 ```
 
-- [ ] **Step 4: Build and run all tests**
+- [ ] **Step 4: Add C# wrappers to `TauriIpcService.cs`**
+
+Add to the Classification section:
+
+```csharp
+public record ClassifyTestRequest(
+    [property: JsonPropertyName("process_name")] string ProcessName,
+    [property: JsonPropertyName("window_title")] string WindowTitle,
+    [property: JsonPropertyName("ocr_text")] string? OcrText);
+
+public record LabeledSampleSubmitRequest(
+    [property: JsonPropertyName("process_name")] string ProcessName,
+    [property: JsonPropertyName("window_title")] string WindowTitle,
+    [property: JsonPropertyName("ocr_text")] string? OcrText,
+    [property: JsonPropertyName("client_id")] string? ClientId,
+    [property: JsonPropertyName("project_id")] string? ProjectId,
+    [property: JsonPropertyName("task_id")] string? TaskId,
+    [property: JsonPropertyName("source")] string Source);
+
+public Task<ClassificationResult> ClassificationClassifyTestAsync(ClassifyTestRequest request) =>
+    Invoke<ClassificationResult>("classification_classify_test", new { request });
+
+public Task LabeledSampleSubmitAsync(LabeledSampleSubmitRequest request) =>
+    Invoke<object>("labeled_sample_submit", new { request });
+```
+
+- [ ] **Step 5: Write tests for rules roundtrip and sample submit threshold**
+
+Add to `src/Tracey.Tests/ClassificationCommandTests.cs`:
+
+```csharp
+// tests/Tracey.Tests/ClassificationCommandTests.cs — in-process Rust unit tests only
+// These are Rust-side; add to src-tauri/src/commands/classification.rs #[cfg(test)] block
+```
+
+Add this `#[cfg(test)]` block at the bottom of `src-tauri/src/commands/classification.rs`:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn setup_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("
+            CREATE TABLE user_preferences (
+                id INTEGER PRIMARY KEY, classification_rules_json TEXT
+            );
+            INSERT INTO user_preferences (id) VALUES (1);
+            CREATE TABLE labeled_samples (
+                id TEXT PRIMARY KEY, feature_text TEXT NOT NULL,
+                process_name TEXT NOT NULL, window_title TEXT NOT NULL,
+                client_id TEXT, project_id TEXT, task_id TEXT,
+                source TEXT NOT NULL, device_id TEXT NOT NULL,
+                created_at TEXT NOT NULL, modified_at TEXT NOT NULL DEFAULT (datetime('now')),
+                synced_at TEXT
+            );
+            CREATE TABLE classifier_model (
+                id TEXT PRIMARY KEY, model_json TEXT NOT NULL,
+                trained_at TEXT NOT NULL, sample_count INTEGER NOT NULL,
+                device_id TEXT NOT NULL
+            );
+        ").unwrap();
+        conn
+    }
+
+    #[test]
+    fn rules_roundtrip_empty() {
+        let conn = setup_db();
+        let json: Option<String> = conn.query_row(
+            "SELECT classification_rules_json FROM user_preferences LIMIT 1",
+            [], |r| r.get(0),
+        ).ok().flatten();
+        let rules: Vec<HeuristicRule> = json
+            .and_then(|j| serde_json::from_str(&j).ok())
+            .unwrap_or_default();
+        assert!(rules.is_empty(), "Should be empty on fresh DB");
+    }
+
+    #[test]
+    fn rules_roundtrip_write_and_read() {
+        let conn = setup_db();
+        let rule = HeuristicRule {
+            app_contains: Some("code".to_string()),
+            title_contains: Some("tracey".to_string()),
+            client_id: None,
+            project_id: Some("proj-1".to_string()),
+            task_id: None,
+        };
+        let json = serde_json::to_string(&[&rule]).unwrap();
+        conn.execute(
+            "UPDATE user_preferences SET classification_rules_json = ?1 WHERE id = 1",
+            rusqlite::params![json],
+        ).unwrap();
+
+        let stored: Option<String> = conn.query_row(
+            "SELECT classification_rules_json FROM user_preferences LIMIT 1",
+            [], |r| r.get(0),
+        ).ok().flatten();
+        let loaded: Vec<HeuristicRule> = stored
+            .and_then(|j| serde_json::from_str(&j).ok())
+            .unwrap_or_default();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].project_id.as_deref(), Some("proj-1"));
+    }
+
+    #[test]
+    fn labeled_sample_insert_includes_modified_at() {
+        let conn = setup_db();
+        conn.execute(
+            "INSERT INTO labeled_samples \
+             (id,feature_text,process_name,window_title,client_id,project_id,task_id,source,device_id,created_at,modified_at) \
+             VALUES ('s1','feat','app','title',NULL,'p1',NULL,'user_confirmed','dev',datetime('now'),datetime('now'))",
+            [],
+        ).unwrap();
+        let modified_at: String = conn.query_row(
+            "SELECT modified_at FROM labeled_samples WHERE id = 's1'", [],
+            |r| r.get(0),
+        ).unwrap();
+        assert!(!modified_at.is_empty(), "modified_at should be set");
+    }
+}
+```
+
+- [ ] **Step 6: Build and run all tests**
 
 ```powershell
 cargo build --manifest-path src-tauri/Cargo.toml
@@ -1061,12 +1189,13 @@ cargo test --manifest-path src-tauri/Cargo.toml --features test 2>&1
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```powershell
 git add src-tauri/src/commands/classification.rs `
         src-tauri/src/commands/mod.rs `
-        src-tauri/src/lib.rs
+        src-tauri/src/lib.rs `
+        src/Tracey.App/Services/TauriIpcService.cs
 git commit -m "feat(classification): add Tauri commands for rules CRUD, test-classify, and labeled sample submit"
 ```
 
