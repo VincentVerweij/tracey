@@ -129,6 +129,8 @@ pub fn run() {
             commands::classification::classification_rules_update,
             commands::classification::classification_classify_test,
             commands::classification::labeled_sample_submit,
+            commands::classification::classification_submit_label,
+            commands::classification::classification_dismiss,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
