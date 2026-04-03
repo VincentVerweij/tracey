@@ -28,7 +28,7 @@ fn make_screenshot_filename() -> String {
 // ─── T043 — Test double (no real GDI) ────────────────────────────────────────
 
 #[cfg(feature = "test")]
-fn capture_screen_jpeg() -> Result<Vec<u8>, String> {
+fn capture_screen_full_res_jpeg() -> Result<Vec<u8>, String> {
     use image::{ImageBuffer, Rgb};
     let img: ImageBuffer<Rgb<u8>, Vec<u8>> =
         ImageBuffer::from_fn(100, 100, |_, _| Rgb([128u8, 128u8, 128u8]));
@@ -41,9 +41,10 @@ fn capture_screen_jpeg() -> Result<Vec<u8>, String> {
 }
 
 // ─── T044 — Production GDI capture (Windows) ─────────────────────────────────
-
+/// Captures the active monitor at full resolution. Returns raw JPEG bytes.
+/// Must be called from `spawn_blocking` — all Win32 GDI calls are synchronous.
 #[cfg(not(feature = "test"))]
-fn capture_screen_jpeg() -> Result<Vec<u8>, String> {
+fn capture_screen_full_res_jpeg() -> Result<Vec<u8>, String> {
     use windows::Win32::Graphics::Gdi::{
         BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject,
         GetDIBits, GetMonitorInfoW, GetWindowDC, MonitorFromWindow, ReleaseDC, SelectObject,
@@ -55,8 +56,6 @@ fn capture_screen_jpeg() -> Result<Vec<u8>, String> {
     // All Win32 GDI calls are synchronous — must be called from spawn_blocking at call site
     unsafe {
         // Identify which monitor the foreground (active) window sits on.
-        // MONITOR_DEFAULTTONEAREST guarantees a valid HMONITOR even when
-        // the window straddles monitors or is minimised.
         let fg_hwnd = GetForegroundWindow();
         let hmon = MonitorFromWindow(fg_hwnd, MONITOR_DEFAULTTONEAREST);
 
@@ -73,31 +72,14 @@ fn capture_screen_jpeg() -> Result<Vec<u8>, String> {
         let mon_w = rc.right - rc.left;
         let mon_h = rc.bottom - rc.top;
 
-        // Desktop window DC spans the entire virtual screen (all monitors).
-        // BitBlt with the monitor's virtual-screen coordinates captures
-        // exactly that monitor's pixels.
         let desktop = GetDesktopWindow();
         let hdc_screen = GetWindowDC(desktop);
-
         let hdc_mem = CreateCompatibleDC(hdc_screen);
         let hbm = CreateCompatibleBitmap(hdc_screen, mon_w, mon_h);
-        // SelectObject requires HGDIOBJ; convert HBITMAP via its inner pointer
         let hbm_old = SelectObject(hdc_mem, HGDIOBJ(hbm.0));
 
-        let blit_result = BitBlt(
-            hdc_mem,
-            0,
-            0,
-            mon_w,
-            mon_h,
-            hdc_screen,
-            mon_x,
-            mon_y,
-            SRCCOPY,
-        );
-
+        let blit_result = BitBlt(hdc_mem, 0, 0, mon_w, mon_h, hdc_screen, mon_x, mon_y, SRCCOPY);
         if let Err(e) = blit_result {
-            // Clean up before returning error
             SelectObject(hdc_mem, hbm_old);
             let _ = DeleteObject(HGDIOBJ(hbm.0));
             let _ = DeleteDC(hdc_mem);
@@ -110,7 +92,7 @@ fn capture_screen_jpeg() -> Result<Vec<u8>, String> {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: bmi_size,
                 biWidth: mon_w,
-                biHeight: -mon_h, // negative = top-down scanlines
+                biHeight: -mon_h,
                 biPlanes: 1,
                 biBitCount: 32,
                 biCompression: BI_RGB.0,
@@ -125,47 +107,43 @@ fn capture_screen_jpeg() -> Result<Vec<u8>, String> {
 
         let buf_size = (mon_w * mon_h * 4) as usize;
         let mut pixels: Vec<u8> = vec![0u8; buf_size];
+        GetDIBits(hdc_mem, hbm, 0, mon_h as u32, Some(pixels.as_mut_ptr() as *mut _), &mut bmi, DIB_RGB_COLORS);
 
-        GetDIBits(
-            hdc_mem,
-            hbm,
-            0,
-            mon_h as u32,
-            Some(pixels.as_mut_ptr() as *mut _),
-            &mut bmi,
-            DIB_RGB_COLORS,
-        );
-
-        // Restore and release GDI resources
         SelectObject(hdc_mem, hbm_old);
         let _ = DeleteObject(HGDIOBJ(hbm.0));
         let _ = DeleteDC(hdc_mem);
         ReleaseDC(desktop, hdc_screen);
 
-        // Convert device BGRA → RGB
+        // BGRA → RGB
         let w = mon_w as u32;
         let h = mon_h as u32;
-        let rgb_pixels: Vec<u8> = pixels
-            .chunks_exact(4)
-            .flat_map(|bgra| [bgra[2], bgra[1], bgra[0]])
-            .collect();
+        let rgb: Vec<u8> = pixels.chunks_exact(4).flat_map(|b| [b[2], b[1], b[0]]).collect();
+        let img = image::RgbImage::from_raw(w, h, rgb)
+            .ok_or_else(|| "failed to build RgbImage".to_string())?;
 
-        let img = image::RgbImage::from_raw(w, h, rgb_pixels)
-            .ok_or_else(|| "failed to create image from raw pixels".to_string())?;
-
-        // Resize to 50% with Triangle filter (faster than Lanczos3 at half-scale)
-        let new_w = w / 2;
-        let new_h = h / 2;
-        let resized =
-            image::imageops::resize(&img, new_w, new_h, image::imageops::FilterType::Triangle);
-
-        let dyn_resized: image::DynamicImage = resized.into();
+        // Encode full resolution to JPEG — no resize
+        let dyn_img: image::DynamicImage = img.into();
         let mut out = std::io::Cursor::new(Vec::new());
-        dyn_resized
-            .write_to(&mut out, image::ImageFormat::Jpeg)
-            .map_err(|e| e.to_string())?;
+        dyn_img.write_to(&mut out, image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;
         Ok(out.into_inner())
     }
+}
+
+// ─── Downscale ────────────────────────────────────────────────────────────────
+/// Downscale a full-resolution JPEG byte buffer to 50% and re-encode as JPEG.
+/// Called from `spawn_blocking` because decode+resize is CPU-bound.
+fn downscale_jpeg(full_res_jpeg: Vec<u8>) -> Result<Vec<u8>, String> {
+    let dyn_img = image::load_from_memory_with_format(&full_res_jpeg, image::ImageFormat::Jpeg)
+        .map_err(|e| e.to_string())?;
+    let w = dyn_img.width() / 2;
+    let h = dyn_img.height() / 2;
+    let resized = image::imageops::resize(
+        &dyn_img.to_rgb8(), w, h, image::imageops::FilterType::Triangle,
+    );
+    let dyn_resized: image::DynamicImage = resized.into();
+    let mut out = std::io::Cursor::new(Vec::new());
+    dyn_resized.write_to(&mut out, image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;
+    Ok(out.into_inner())
 }
 
 // ─── Capture + persist ────────────────────────────────────────────────────────
@@ -175,18 +153,26 @@ async fn capture_and_save(
     trigger: &str,
     window_info: Option<(String, String)>,
 ) -> Result<(), String> {
-    // 1. GDI capture runs in spawn_blocking so it doesn't block the async thread
-    let jpeg_bytes = tauri::async_runtime::spawn_blocking(capture_screen_jpeg)
+    // 1. GDI full-resolution capture in spawn_blocking
+    let full_res_jpeg = tauri::async_runtime::spawn_blocking(capture_screen_full_res_jpeg)
         .await
         .map_err(|e| e.to_string())??;
 
-    // 2. Resolve storage dir and generate filename
+    // 2. Clone for OCR (downscale will move the original)
+    let ocr_input = full_res_jpeg.clone();
+
+    // 3. Downscale in spawn_blocking — this moves full_res_jpeg
+    let small_jpeg = tauri::async_runtime::spawn_blocking(move || downscale_jpeg(full_res_jpeg))
+        .await
+        .map_err(|e| e.to_string())??;
+
+    // 4. Resolve storage dir and generate filename
     let storage_dir = resolve_storage_dir(app)?;
     let filename = make_screenshot_filename();
     let full_path = storage_dir.join(&filename);
 
-    // 3. Write JPEG to disk
-    tokio::fs::write(&full_path, &jpeg_bytes)
+    // 5. Write downscaled JPEG to disk
+    tokio::fs::write(&full_path, &small_jpeg)
         .await
         .map_err(|e| format!("write failed: {}", e))?;
 
@@ -195,22 +181,37 @@ async fn capture_and_save(
     let id = Ulid::new().to_string().to_lowercase();
     let (process_name, window_title) = window_info.unwrap_or_default();
 
-    // 4. Insert DB row — lock acquired and released before the next await point
+    // 6. Insert DB row (ocr_text = NULL initially) — lock dropped before OCR await
     {
         let state = app.state::<AppState>();
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        let device_id =
-            std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string());
+        let device_id = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string());
         conn.execute(
             "INSERT INTO screenshots \
-             (id, file_path, captured_at, window_title, process_name, trigger, device_id) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+             (id, file_path, captured_at, window_title, process_name, trigger, device_id, ocr_text) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)",
             rusqlite::params![id, path_str, now, window_title, process_name, trigger, device_id],
         )
         .map_err(|e| e.to_string())?;
     } // MutexGuard dropped here — never held across an await point
 
-    // 5. Emit success event to frontend
+    // 7. Run OCR on full-resolution image (no lock held)
+    let ocr_text = crate::services::ocr_service::extract_text(&ocr_input).await;
+
+    // 8. Update ocr_text in DB if extraction succeeded
+    if let Some(ref text) = ocr_text {
+        let state = app.state::<AppState>();
+        if let Ok(conn) = state.db.lock() {
+            if let Err(e) = conn.execute(
+                "UPDATE screenshots SET ocr_text = ?1 WHERE id = ?2",
+                rusqlite::params![text, id],
+            ) {
+                log::warn!("[screenshot] Failed to persist ocr_text for {id}: {e}");
+            }
+        }; // semicolon drops lock temporary before state is released
+    }
+
+    // 9. Emit success event to frontend
     app.emit(
         "tracey://screenshot-captured",
         serde_json::json!({
@@ -381,4 +382,33 @@ pub fn start_screenshot_loop(app: AppHandle) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn downscale_jpeg_halves_dimensions() {
+        use image::{ImageBuffer, Rgb};
+        let img: ImageBuffer<Rgb<u8>, Vec<u8>> =
+            ImageBuffer::from_fn(100, 100, |_, _| Rgb([200u8, 200u8, 200u8]));
+        let dyn_img: image::DynamicImage = img.into();
+        let mut buf = std::io::Cursor::new(Vec::new());
+        dyn_img.write_to(&mut buf, image::ImageFormat::Jpeg).unwrap();
+        let full_res = buf.into_inner();
+
+        let small = downscale_jpeg(full_res).unwrap();
+
+        let decoded = image::load_from_memory_with_format(&small, image::ImageFormat::Jpeg).unwrap();
+        assert_eq!(decoded.width(), 50);
+        assert_eq!(decoded.height(), 50);
+    }
+
+    #[tokio::test]
+    async fn ocr_service_returns_text_in_test_mode() {
+        let dummy_jpeg: Vec<u8> = vec![0xFF, 0xD8, 0xFF, 0xD9];
+        let result = crate::services::ocr_service::extract_text(&dummy_jpeg).await;
+        assert_eq!(result, Some("test ocr text".to_string()));
+    }
 }
