@@ -1,5 +1,6 @@
 use commands::AppState;
 use commands::SyncState;
+use commands::ClassificationState;
 
 mod commands;
 pub mod db;
@@ -19,6 +20,24 @@ pub fn run() {
     let sync_state = Arc::new(std::sync::Mutex::new(SyncState::default()));
     let sync_notify = Arc::new(tokio::sync::Notify::new());
 
+    // Load persisted classification model and rules at startup
+    let classification_state = {
+        use services::classification::trainer;
+        let model = trainer::load_model(&conn);
+        let rules_json: Option<String> = conn
+            .query_row("SELECT classification_rules_json FROM user_preferences LIMIT 1", [], |r| r.get(0))
+            .ok()
+            .flatten();
+        let rules: Vec<services::classification::heuristic::HeuristicRule> = rules_json
+            .and_then(|j| serde_json::from_str(&j).ok())
+            .unwrap_or_default();
+        Arc::new(std::sync::Mutex::new(ClassificationState {
+            model,
+            rules,
+            sample_count_at_last_train: trainer::count_samples(&conn),
+        }))
+    };
+
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .manage(AppState {
@@ -26,6 +45,7 @@ pub fn run() {
             platform,
             sync_state,
             sync_notify,
+            classification_state,
         })
         .setup(|app| {
             log::info!("Tracey starting up");

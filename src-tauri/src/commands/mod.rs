@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod classification;
 pub mod data;
 pub mod hierarchy;
 pub mod idle;
@@ -11,6 +12,21 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use crate::models::UserPreferences;
 use crate::platform::PlatformHooks;
+use crate::services::classification::tfidf::TfIdfModel;
+use crate::services::classification::heuristic::HeuristicRule;
+
+/// Shared classification state: loaded model + rule cache + sample counter.
+pub struct ClassificationState {
+    pub model: Option<TfIdfModel>,
+    pub rules: Vec<HeuristicRule>,
+    pub sample_count_at_last_train: i64,
+}
+
+impl Default for ClassificationState {
+    fn default() -> Self {
+        ClassificationState { model: None, rules: vec![], sample_count_at_last_train: 0 }
+    }
+}
 
 /// Shared sync state updated by the SyncService background loop.
 #[derive(Default)]
@@ -33,6 +49,7 @@ pub struct AppState {
     pub sync_state: Arc<std::sync::Mutex<SyncState>>,
     /// Notify fired to wake the sync background loop for an immediate sync cycle.
     pub sync_notify: Arc<tokio::sync::Notify>,
+    pub classification_state: Arc<std::sync::Mutex<ClassificationState>>,
 }
 
 // ─────────────────────────────────────────────────────────────
