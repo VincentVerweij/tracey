@@ -169,6 +169,20 @@ public class TauriIpcService
     public Task<DataDeleteAllResponse> DataDeleteAllAsync() =>
         Invoke<DataDeleteAllResponse>("data_delete_all");
 
+    // ── Classification ────────────────────────────────────────────────────
+
+    public Task<HeuristicRule[]> ClassificationRulesGetAsync() =>
+        Invoke<HeuristicRule[]>("classification_rules_get");
+
+    public Task ClassificationRulesUpdateAsync(HeuristicRule[] rules) =>
+        Invoke<object>("classification_rules_update", new { rules });
+
+    public Task<ClassificationResult> ClassificationClassifyTestAsync(ClassifyTestRequest request) =>
+        Invoke<ClassificationResult>("classification_classify_test", new { request });
+
+    public Task LabeledSampleSubmitAsync(LabeledSampleSubmitRequest request) =>
+        Invoke<object>("labeled_sample_submit", new { request });
+
     // ── Private helper ────────────────────────────────────────────────────
 
     private async Task<T> Invoke<T>(string command, object? args = null)
@@ -519,3 +533,37 @@ public record SyncConfigureResponse(
 public record SyncTriggerResponse(
     [property: JsonPropertyName("synced_records")] long SyncedRecords,
     [property: JsonPropertyName("errors")] long Errors);
+
+// ── Classification types ──────────────────────────────────────────────────────
+
+public record HeuristicRule(
+    [property: JsonPropertyName("app_contains")] string? AppContains,
+    [property: JsonPropertyName("title_contains")] string? TitleContains,
+    [property: JsonPropertyName("client_id")] string? ClientId,
+    [property: JsonPropertyName("project_id")] string? ProjectId,
+    [property: JsonPropertyName("task_id")] string? TaskId);
+
+public record ClassificationPrediction(
+    [property: JsonPropertyName("client_id")] string? ClientId,
+    [property: JsonPropertyName("project_id")] string? ProjectId,
+    [property: JsonPropertyName("task_id")] string? TaskId,
+    [property: JsonPropertyName("confidence")] float Confidence,
+    [property: JsonPropertyName("source")] string Source);
+
+public record ClassificationResult(
+    [property: JsonPropertyName("top")] ClassificationPrediction Top,
+    [property: JsonPropertyName("suggestions")] ClassificationPrediction[] Suggestions);
+
+public record ClassifyTestRequest(
+    [property: JsonPropertyName("process_name")] string ProcessName,
+    [property: JsonPropertyName("window_title")] string WindowTitle,
+    [property: JsonPropertyName("ocr_text")] string? OcrText);
+
+public record LabeledSampleSubmitRequest(
+    [property: JsonPropertyName("process_name")] string ProcessName,
+    [property: JsonPropertyName("window_title")] string WindowTitle,
+    [property: JsonPropertyName("ocr_text")] string? OcrText,
+    [property: JsonPropertyName("client_id")] string? ClientId,
+    [property: JsonPropertyName("project_id")] string? ProjectId,
+    [property: JsonPropertyName("task_id")] string? TaskId,
+    [property: JsonPropertyName("source")] string Source);

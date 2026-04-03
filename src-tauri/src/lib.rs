@@ -98,6 +98,10 @@ pub fn run() {
             commands::sync::sync_get_status,
             commands::sync::sync_trigger,
             commands::data::data_delete_all,
+            commands::classification::classification_rules_get,
+            commands::classification::classification_rules_update,
+            commands::classification::classification_classify_test,
+            commands::classification::labeled_sample_submit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
