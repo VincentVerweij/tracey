@@ -183,6 +183,12 @@ public class TauriIpcService
     public Task LabeledSampleSubmitAsync(LabeledSampleSubmitRequest request) =>
         Invoke<object>("labeled_sample_submit", new { request });
 
+    public Task ClassificationSubmitLabelAsync(ClassificationSubmitLabelRequest request) =>
+        Invoke<object>("classification_submit_label", new { request });
+
+    public Task ClassificationDismissAsync(ClassificationDismissRequest request) =>
+        Invoke<object>("classification_dismiss", new { request });
+
     // ── Private helper ────────────────────────────────────────────────────
 
     private async Task<T> Invoke<T>(string command, object? args = null)
@@ -567,3 +573,25 @@ public record LabeledSampleSubmitRequest(
     [property: JsonPropertyName("project_id")] string? ProjectId,
     [property: JsonPropertyName("task_id")] string? TaskId,
     [property: JsonPropertyName("source")] string Source);
+
+public record ClassificationSubmitLabelRequest(
+    [property: JsonPropertyName("war_id")] string WarId,
+    [property: JsonPropertyName("event_id")] string EventId,
+    [property: JsonPropertyName("process_name")] string ProcessName,
+    [property: JsonPropertyName("window_title")] string WindowTitle,
+    [property: JsonPropertyName("ocr_text")] string? OcrText,
+    [property: JsonPropertyName("client_id")] string? ClientId,
+    [property: JsonPropertyName("project_id")] string? ProjectId,
+    [property: JsonPropertyName("task_id")] string? TaskId,
+    [property: JsonPropertyName("recorded_at")] string RecordedAt,
+    [property: JsonPropertyName("source")] string Source);
+
+public record ClassificationDismissRequest(
+    [property: JsonPropertyName("war_id")] string WarId,
+    [property: JsonPropertyName("pattern_key")] string PatternKey);
+
+public record FuzzyProjectItem(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("client_id")] string? ClientId,
+    [property: JsonPropertyName("client_name")] string? ClientName);
