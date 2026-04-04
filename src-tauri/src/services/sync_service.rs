@@ -14,7 +14,7 @@ use crate::commands::sync::read_keychain_uri;
 // ─────────────────────────────────────────────────────────────
 
 /// Schema version applied to the external Postgres database.
-const EXTERNAL_SCHEMA_VERSION: i32 = 1;
+const EXTERNAL_SCHEMA_VERSION: i32 = 2;
 
 /// Full DDL for the external Postgres schema (sync-api.md schema version 1).
 /// Applied idempotently via IF NOT EXISTS / DO NOTHING guards.
@@ -143,6 +143,38 @@ CREATE TABLE IF NOT EXISTS user_preferences (
         DEFAULT '["keepass","1password","bitwarden","lastpass"]',
     modified_at                         TIMESTAMPTZ NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS labeled_samples (
+    id            TEXT PRIMARY KEY,
+    feature_text  TEXT NOT NULL,
+    process_name  TEXT NOT NULL,
+    window_title  TEXT NOT NULL,
+    client_id     TEXT,
+    project_id    TEXT,
+    task_id       TEXT,
+    source        TEXT NOT NULL,
+    device_id     TEXT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL,
+    modified_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    synced_at     TIMESTAMPTZ
+);
+
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_indexes WHERE indexname = 'idx_labeled_samples_created'
+    ) THEN
+        CREATE INDEX idx_labeled_samples_created
+            ON labeled_samples (device_id, created_at DESC);
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS classifier_model (
+    id           TEXT PRIMARY KEY,
+    model_json   TEXT NOT NULL,
+    trained_at   TIMESTAMPTZ NOT NULL,
+    sample_count INTEGER NOT NULL,
+    device_id    TEXT NOT NULL
+);
 "#;
 
 /// Connect to Postgres, apply the external schema migrations, and disconnect.
@@ -192,6 +224,7 @@ async fn apply_migrations(client: &tokio_postgres::Client) -> Result<(), String>
 ///
 /// Upserts are done via `modified_at` scan (belt) + sync_queue delete entries (suspenders).
 pub async fn run_sync_cycle_inline(
+    app: &AppHandle,
     db: &std::sync::Mutex<rusqlite::Connection>,
     uri: &str,
     cursor: Option<String>,
@@ -492,6 +525,151 @@ pub async fn run_sync_cycle_inline(
         }
     }
 
+    // ── labeled_samples push to Postgres ─────────────────────────────────────
+    let unsynced_samples = read_unsynced_labeled_samples(db, 200);
+    let mut samples_synced_ids: Vec<String> = Vec::new();
+
+    for (id, feature_text, process_name, window_title,
+         client_id, project_id, task_id, source, device_id, created_at, modified_at)
+    in &unsynced_samples
+    {
+        let result = pg_client.execute(
+            "INSERT INTO labeled_samples \
+             (id, feature_text, process_name, window_title, client_id, project_id, \
+              task_id, source, device_id, created_at, modified_at) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::TIMESTAMPTZ,$11::TIMESTAMPTZ) \
+             ON CONFLICT (id) DO UPDATE SET \
+                 feature_text = EXCLUDED.feature_text, \
+                 client_id = EXCLUDED.client_id, \
+                 project_id = EXCLUDED.project_id, \
+                 task_id = EXCLUDED.task_id, \
+                 source = EXCLUDED.source, \
+                 modified_at = EXCLUDED.modified_at \
+             WHERE EXCLUDED.modified_at > labeled_samples.modified_at",
+            &[id, feature_text, process_name, window_title,
+              client_id, project_id, task_id, source, device_id, created_at, modified_at],
+        ).await;
+        match result {
+            Ok(_) => { synced += 1; samples_synced_ids.push(id.clone()); }
+            Err(e) => {
+                errors += 1;
+                record_first_error("labeled_samples upsert", &e);
+            }
+        }
+    }
+
+    if !samples_synced_ids.is_empty() {
+        let now_str = Utc::now().to_rfc3339();
+        if let Ok(conn) = db.lock() {
+            let placeholders: String = samples_synced_ids.iter().enumerate()
+                .map(|(i, _)| format!("?{}", i + 1))
+                .collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "UPDATE labeled_samples SET synced_at = '{}' WHERE id IN ({})",
+                now_str, placeholders,
+            );
+            let params: Vec<&dyn rusqlite::ToSql> = samples_synced_ids.iter()
+                .map(|s| s as &dyn rusqlite::ToSql).collect();
+            let _ = conn.execute(&sql, params.as_slice());
+        }
+    }
+
+    log::info!("[sync] labeled_samples push: {} ok", samples_synced_ids.len());
+
+    // ── labeled_samples pull from Postgres (other devices) ───────────────────
+    let local_count_before: i64 = {
+        let conn = db.lock().map_err(|e| e.to_string())?;
+        conn.query_row("SELECT COUNT(*) FROM labeled_samples", [], |r| r.get(0))
+            .unwrap_or(0)
+    };
+
+    let device_id_str = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".to_string());
+    let remote_samples = match pg_client.query(
+        "SELECT id, feature_text, process_name, window_title, client_id, project_id, \
+                task_id, source, device_id, created_at, modified_at \
+         FROM labeled_samples WHERE device_id <> $1",
+        &[&device_id_str],
+    ).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::warn!("[sync] labeled_samples pull from Postgres failed: {e}");
+            vec![]
+        }
+    };
+
+    for row in &remote_samples {
+        let id: &str = row.get(0);
+        let feature_text: &str = row.get(1);
+        let process_name: &str = row.get(2);
+        let window_title: &str = row.get(3);
+        let client_id: Option<&str> = row.get(4);
+        let project_id: Option<&str> = row.get(5);
+        let task_id: Option<&str> = row.get(6);
+        let source: &str = row.get(7);
+        let device_id: &str = row.get(8);
+        let created_at: chrono::DateTime<chrono::Utc> = row.get(9);
+        let modified_at: chrono::DateTime<chrono::Utc> = row.get(10);
+        let created_at_str = created_at.to_rfc3339();
+        let modified_at_str = modified_at.to_rfc3339();
+        let now = Utc::now().to_rfc3339();
+
+        if let Ok(conn) = db.lock() {
+            if let Err(e) = conn.execute(
+                "INSERT INTO labeled_samples \
+                 (id,feature_text,process_name,window_title,client_id,project_id,task_id, \
+                  source,device_id,created_at,modified_at,synced_at) \
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
+                 ON CONFLICT(id) DO UPDATE SET
+                     feature_text = CASE WHEN excluded.modified_at > labeled_samples.modified_at
+                                    THEN excluded.feature_text ELSE labeled_samples.feature_text END,
+                     client_id = CASE WHEN excluded.modified_at > labeled_samples.modified_at
+                                 THEN excluded.client_id ELSE labeled_samples.client_id END,
+                     project_id = CASE WHEN excluded.modified_at > labeled_samples.modified_at
+                                  THEN excluded.project_id ELSE labeled_samples.project_id END,
+                     task_id = CASE WHEN excluded.modified_at > labeled_samples.modified_at
+                               THEN excluded.task_id ELSE labeled_samples.task_id END,
+                     source = CASE WHEN excluded.modified_at > labeled_samples.modified_at
+                              THEN excluded.source ELSE labeled_samples.source END,
+                     modified_at = CASE WHEN excluded.modified_at > labeled_samples.modified_at
+                                   THEN excluded.modified_at ELSE labeled_samples.modified_at END",
+                rusqlite::params![
+                    id, feature_text, process_name, window_title,
+                    client_id, project_id, task_id,
+                    source, device_id, created_at_str, modified_at_str, now,
+                ],
+            ) {
+                log::warn!("[sync] Failed to upsert pulled labeled_sample {id}: {e}");
+            }
+        }
+    }
+
+    let local_count_after: i64 = {
+        let conn = db.lock().map_err(|e| e.to_string())?;
+        conn.query_row("SELECT COUNT(*) FROM labeled_samples", [], |r| r.get(0))
+            .unwrap_or(0)
+    };
+
+    let new_samples_received = local_count_after - local_count_before;
+    log::info!("[sync] labeled_samples pull: {} new from other devices", new_samples_received);
+
+    // Trigger retrain if new samples received from other devices
+    if new_samples_received > 0 {
+        let new_model = {
+            let app_state = app.state::<AppState>();
+            let conn = app_state.db.lock().ok();
+            conn.as_ref().and_then(|c| crate::services::classification::trainer::retrain(c))
+        };
+        if let Some(model) = new_model {
+            let app_state = app.state::<AppState>();
+            {
+                if let Ok(mut cs) = app_state.classification_state.lock() {
+                    cs.model = Some(model);
+                    log::info!("[sync] Classification model retrained from {} new samples", new_samples_received);
+                };
+            }
+        }
+    }
+
     // Advance cursor to now so next cycle only picks up new writes
     let new_cursor = Utc::now().to_rfc3339();
     if errors == 0 {
@@ -584,7 +762,7 @@ pub fn start_sync_loop(app: AppHandle) {
                 ss.last_sync_cursor.clone()
             };
 
-            match run_sync_cycle_inline(&app_state.db, &uri, cursor).await {
+            match run_sync_cycle_inline(&app, &app_state.db, &uri, cursor).await {
                 Ok((synced, errors, new_cursor)) => {
                     let now = Utc::now().to_rfc3339();
                     {
@@ -737,6 +915,33 @@ fn read_window_activity(
         window_handle: r.get(3)?, recorded_at: r.get(4)?, device_id: r.get(5)?,
     })).map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+type LabeledSampleRow = (
+    String, String, String, String,
+    Option<String>, Option<String>, Option<String>,
+    String, String, String, String,
+);
+
+fn read_unsynced_labeled_samples(
+    db: &std::sync::Mutex<rusqlite::Connection>,
+    limit: usize,
+) -> Vec<LabeledSampleRow> {
+    let Ok(conn) = db.lock() else { return vec![]; };
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT id, feature_text, process_name, window_title, \
+                client_id, project_id, task_id, source, device_id, created_at, modified_at \
+         FROM labeled_samples WHERE synced_at IS NULL \
+         ORDER BY modified_at LIMIT ?1"
+    ) else { return vec![]; };
+    let Ok(rows) = stmt.query_map(rusqlite::params![limit as i64], |r| Ok((
+        r.get::<_, String>(0)?, r.get::<_, String>(1)?,
+        r.get::<_, String>(2)?, r.get::<_, String>(3)?,
+        r.get::<_, Option<String>>(4)?, r.get::<_, Option<String>>(5)?,
+        r.get::<_, Option<String>>(6)?, r.get::<_, String>(7)?,
+        r.get::<_, String>(8)?, r.get::<_, String>(9)?, r.get::<_, String>(10)?,
+    ))) else { return vec![]; };
+    rows.filter_map(|r| r.ok()).collect()
 }
 
 fn read_user_preferences(db: &std::sync::Mutex<rusqlite::Connection>) -> Result<crate::models::UserPreferences, String> {
