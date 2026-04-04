@@ -83,6 +83,7 @@ pub struct Screenshot {
     pub process_name: String,
     pub trigger: String, // "interval" | "window_change"
     pub device_id: String,
+    pub ocr_text: Option<String>,
 }
 
 // SQL: id is INTEGER singleton (always 1), no modified_at column

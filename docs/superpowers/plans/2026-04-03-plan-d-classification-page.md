@@ -73,7 +73,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --features test classification::
 
 Expected: test passes (it only tests SQL logic inline, not the command — this verifies the query design).
 
-- [ ] **Step 3: Add the `ClassificationEventItem` type, `classification_event_list`, and `fuzzy_match_projects` commands**
+- [ ] **Step 3: Add the `ClassificationEventItem` type and `classification_event_list` command**
 
 Add to `src-tauri/src/commands/classification.rs`:
 
@@ -92,7 +92,6 @@ pub struct ClassificationEventItem {
     pub confidence: f64,
     pub classification_source: String,
     pub outcome: String,
-    pub ocr_text: Option<String>,
     pub created_at: String,
 }
 
@@ -124,7 +123,7 @@ pub fn classification_event_list(
 
     let mut stmt = conn.prepare(
         "SELECT id, war_id, process_name, window_title, client_id, project_id, task_id, \
-                confidence, classification_source, outcome, ocr_text, created_at \
+                confidence, classification_source, outcome, created_at \
          FROM classification_events \
          ORDER BY created_at DESC \
          LIMIT ?1 OFFSET ?2",
@@ -143,8 +142,7 @@ pub fn classification_event_list(
             confidence:            r.get(7)?,
             classification_source: r.get(8)?,
             outcome:               r.get(9)?,
-            ocr_text:              r.get(10)?,
-            created_at:            r.get(11)?,
+            created_at:            r.get(10)?,
         }),
     ).map_err(|e| e.to_string())?
     .filter_map(|r| r.ok())
@@ -152,65 +150,14 @@ pub fn classification_event_list(
 
     Ok(ClassificationEventListResponse { items, total })
 }
-
-// ── Fuzzy project search (used by correction forms in Classification page + Toast) ─
-
-#[derive(Deserialize)]
-pub struct FuzzyMatchProjectsRequest {
-    pub query: String,
-    pub limit: i64,
-}
-
-#[derive(Serialize)]
-pub struct FuzzyProjectItem {
-    pub id: String,
-    pub name: String,
-    pub client_id: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct FuzzyMatchProjectsResponse {
-    pub projects: Vec<FuzzyProjectItem>,
-}
-
-#[tauri::command]
-pub fn fuzzy_match_projects(
-    state: State<'_, AppState>,
-    query: String,
-    limit: i64,
-) -> Result<FuzzyMatchProjectsResponse, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let pattern = format!("%{}%", query.to_lowercase());
-    let mut stmt = conn.prepare(
-        "SELECT p.id, p.name, p.client_id \
-         FROM projects p \
-         WHERE lower(p.name) LIKE ?1 \
-         ORDER BY p.name ASC \
-         LIMIT ?2",
-    ).map_err(|e| e.to_string())?;
-
-    let projects: Vec<FuzzyProjectItem> = stmt.query_map(
-        rusqlite::params![pattern, limit],
-        |r| Ok(FuzzyProjectItem {
-            id:        r.get(0)?,
-            name:      r.get(1)?,
-            client_id: r.get(2)?,
-        }),
-    ).map_err(|e| e.to_string())?
-    .filter_map(|r| r.ok())
-    .collect();
-
-    Ok(FuzzyMatchProjectsResponse { projects })
-}
 ```
 
-- [ ] **Step 4: Register commands in `lib.rs`**
+- [ ] **Step 4: Register command in `lib.rs`**
 
 Add to `invoke_handler`:
 
 ```rust
 commands::classification::classification_event_list,
-commands::classification::fuzzy_match_projects,
 ```
 
 - [ ] **Step 5: Build and run tests**
@@ -253,30 +200,16 @@ public record ClassificationEventItem(
     [property: JsonPropertyName("confidence")] float Confidence,
     [property: JsonPropertyName("classification_source")] string ClassificationSource,
     [property: JsonPropertyName("outcome")] string Outcome,
-    [property: JsonPropertyName("ocr_text")] string? OcrText,
     [property: JsonPropertyName("created_at")] string CreatedAt);
 
 public record ClassificationEventListResponse(
     [property: JsonPropertyName("items")] ClassificationEventItem[] Items,
     [property: JsonPropertyName("total")] long Total);
 
-public record FuzzyProjectItem(
-    [property: JsonPropertyName("id")] string Id,
-    [property: JsonPropertyName("name")] string Name,
-    [property: JsonPropertyName("client_id")] string? ClientId);
-
-public record FuzzyMatchProjectsResponse(
-    [property: JsonPropertyName("projects")] FuzzyProjectItem[] Projects);
-
 public Task<ClassificationEventListResponse> ClassificationEventListAsync(int page = 0, int pageSize = 50) =>
     Invoke<ClassificationEventListResponse>(
         "classification_event_list",
         new { request = new { page, page_size = pageSize } });
-
-public Task<FuzzyMatchProjectsResponse> FuzzyMatchProjectsAsync(string query, int limit = 5) =>
-    Invoke<FuzzyMatchProjectsResponse>(
-        "fuzzy_match_projects",
-        new { query, limit });
 ```
 
 - [ ] **Step 2: Build frontend**
@@ -332,13 +265,6 @@ git commit -m "feat(frontend): add ClassificationEventListAsync IPC method and r
                 @if (!string.IsNullOrEmpty(_liveEvent.ProjectId))
                 {
                     <div class="live-assignment">→ @FormatAssignment(_liveEvent)</div>
-                }
-                @if (!string.IsNullOrEmpty(_liveEvent.OcrText))
-                {
-                    <details class="live-ocr">
-                        <summary>OCR text</summary>
-                        <pre class="live-ocr-text">@_liveEvent.OcrText</pre>
-                    </details>
                 }
             </div>
         }
@@ -533,8 +459,7 @@ git commit -m "feat(frontend): add ClassificationEventListAsync IPC method and r
             ClientId: item.ClientId,
             ProjectId: _correctionProjectId,
             TaskId: item.TaskId,
-            RecordedAt: item.CreatedAt,
-            Source: "user_corrected"
+            RecordedAt: item.CreatedAt
         ));
         _correctingId = null;
         await LoadPage();

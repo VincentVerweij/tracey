@@ -20,6 +20,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         include_str!("migrations/004_add_device_id_columns.sql"),
     ),
     (
+        "005_add_ocr_text_to_screenshots",
+        include_str!("migrations/005_add_ocr_text_to_screenshots.sql"),
+    ),
+    (
         "006_classification_engine",
         include_str!("migrations/006_classification_engine.sql"),
     ),

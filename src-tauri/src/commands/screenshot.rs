@@ -16,6 +16,7 @@ pub struct ScreenshotItem {
     pub window_title: String,
     pub process_name: String,
     pub trigger: String,
+    pub ocr_text: Option<String>,
 }
 
 #[tauri::command]
@@ -25,7 +26,7 @@ pub fn screenshot_list(
 ) -> Result<Vec<ScreenshotItem>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT id, file_path, captured_at, window_title, process_name, trigger \
+        "SELECT id, file_path, captured_at, window_title, process_name, trigger, ocr_text \
          FROM screenshots WHERE captured_at >= ?1 AND captured_at <= ?2 \
          ORDER BY captured_at DESC"
     ).map_err(|e| e.to_string())?;
@@ -38,6 +39,7 @@ pub fn screenshot_list(
             window_title: row.get(3)?,
             process_name: row.get(4)?,
             trigger: row.get(5)?,
+            ocr_text: row.get(6)?,
         })
     ).map_err(|e| e.to_string())?
      .filter_map(|r| r.ok())
