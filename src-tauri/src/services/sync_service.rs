@@ -14,7 +14,7 @@ use crate::commands::sync::read_keychain_uri;
 // ─────────────────────────────────────────────────────────────
 
 /// Schema version applied to the external Postgres database.
-const EXTERNAL_SCHEMA_VERSION: i32 = 1;
+const EXTERNAL_SCHEMA_VERSION: i32 = 2;
 
 /// Full DDL for the external Postgres schema (sync-api.md schema version 1).
 /// Applied idempotently via IF NOT EXISTS / DO NOTHING guards.
@@ -142,6 +142,38 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     process_deny_list_json              TEXT NOT NULL
         DEFAULT '["keepass","1password","bitwarden","lastpass"]',
     modified_at                         TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS labeled_samples (
+    id            TEXT PRIMARY KEY,
+    feature_text  TEXT NOT NULL,
+    process_name  TEXT NOT NULL,
+    window_title  TEXT NOT NULL,
+    client_id     TEXT,
+    project_id    TEXT,
+    task_id       TEXT,
+    source        TEXT NOT NULL,
+    device_id     TEXT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL,
+    modified_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    synced_at     TIMESTAMPTZ
+);
+
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_indexes WHERE indexname = 'idx_labeled_samples_created'
+    ) THEN
+        CREATE INDEX idx_labeled_samples_created
+            ON labeled_samples (device_id, created_at DESC);
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS classifier_model (
+    id           TEXT PRIMARY KEY,
+    model_json   TEXT NOT NULL,
+    trained_at   TIMESTAMPTZ NOT NULL,
+    sample_count INTEGER NOT NULL,
+    device_id    TEXT NOT NULL
 );
 "#;
 
