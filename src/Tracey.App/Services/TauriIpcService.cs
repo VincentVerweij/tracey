@@ -339,7 +339,8 @@ public record TimeEntryItem(
     [property: JsonPropertyName("task_name")] string? TaskName,
     [property: JsonPropertyName("tag_ids")] string[] TagIds,
     [property: JsonPropertyName("tag_names")] string[] TagNames,
-    [property: JsonPropertyName("is_break")] bool IsBreak);
+    [property: JsonPropertyName("is_break")] bool IsBreak,
+    [property: JsonPropertyName("source")] string Source);
 
 public record TimeEntryCreateManualRequest(
     [property: JsonPropertyName("description")] string Description,
