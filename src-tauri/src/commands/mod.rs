@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod classification;
 pub mod data;
 pub mod hierarchy;
 pub mod idle;
@@ -11,6 +12,17 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use crate::models::UserPreferences;
 use crate::platform::PlatformHooks;
+use crate::services::classification::tfidf::TfIdfModel;
+use crate::services::classification::heuristic::HeuristicRule;
+use crate::services::active_learning_queue::ActiveLearningQueue;
+
+/// Shared classification state: loaded model + rule cache + sample counter.
+#[derive(Default)]
+pub struct ClassificationState {
+    pub model: Option<TfIdfModel>,
+    pub rules: Vec<HeuristicRule>,
+    pub sample_count_at_last_train: i64,
+}
 
 /// Shared sync state updated by the SyncService background loop.
 #[derive(Default)]
@@ -33,6 +45,8 @@ pub struct AppState {
     pub sync_state: Arc<std::sync::Mutex<SyncState>>,
     /// Notify fired to wake the sync background loop for an immediate sync cycle.
     pub sync_notify: Arc<tokio::sync::Notify>,
+    pub classification_state: Arc<std::sync::Mutex<ClassificationState>>,
+    pub active_learning_queue: Arc<std::sync::Mutex<ActiveLearningQueue>>,
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -70,7 +84,9 @@ pub fn preferences_get(state: State<'_, AppState>) -> Result<UserPreferences, St
                 screenshot_interval_seconds, screenshot_retention_days,
                 screenshot_storage_path, timer_notification_threshold_hours,
                 page_size, external_db_uri_stored, external_db_enabled,
-                notification_channels_json, process_deny_list_json
+                notification_channels_json, process_deny_list_json,
+                auto_classification_enabled, auto_classification_confidence_threshold,
+                auto_classification_group_gap_seconds
          FROM user_preferences LIMIT 1",
         [],
         |row| {
@@ -87,6 +103,9 @@ pub fn preferences_get(state: State<'_, AppState>) -> Result<UserPreferences, St
                 external_db_enabled: row.get(9)?,
                 notification_channels_json: row.get(10)?,
                 process_deny_list_json: row.get(11)?,
+                auto_classification_enabled: row.get(12)?,
+                auto_classification_confidence_threshold: row.get(13)?,
+                auto_classification_group_gap_seconds: row.get(14)?,
             })
         },
     )
@@ -107,6 +126,9 @@ pub struct PreferencesUpdateRequest {
     pub external_db_enabled: Option<bool>,
     pub notification_channels_json: Option<String>,
     pub process_deny_list_json: Option<String>,
+    pub auto_classification_enabled: Option<bool>,
+    pub auto_classification_confidence_threshold: Option<f64>,
+    pub auto_classification_group_gap_seconds: Option<i64>,
 }
 
 #[tauri::command]
@@ -122,7 +144,9 @@ pub fn preferences_update(
                 screenshot_interval_seconds, screenshot_retention_days,
                 screenshot_storage_path, timer_notification_threshold_hours,
                 page_size, external_db_uri_stored, external_db_enabled,
-                notification_channels_json, process_deny_list_json
+                notification_channels_json, process_deny_list_json,
+                auto_classification_enabled, auto_classification_confidence_threshold,
+                auto_classification_group_gap_seconds
          FROM user_preferences LIMIT 1",
         [],
         |row| {
@@ -139,6 +163,9 @@ pub fn preferences_update(
                 external_db_enabled: row.get(9)?,
                 notification_channels_json: row.get(10)?,
                 process_deny_list_json: row.get(11)?,
+                auto_classification_enabled: row.get(12)?,
+                auto_classification_confidence_threshold: row.get(13)?,
+                auto_classification_group_gap_seconds: row.get(14)?,
             })
         },
     )
@@ -155,6 +182,9 @@ pub fn preferences_update(
     if let Some(v) = update.external_db_enabled { current.external_db_enabled = v; }
     if let Some(v) = update.notification_channels_json { current.notification_channels_json = Some(v); }
     if let Some(v) = update.process_deny_list_json { current.process_deny_list_json = v; }
+    if let Some(v) = update.auto_classification_enabled { current.auto_classification_enabled = v; }
+    if let Some(v) = update.auto_classification_confidence_threshold { current.auto_classification_confidence_threshold = v; }
+    if let Some(v) = update.auto_classification_group_gap_seconds { current.auto_classification_group_gap_seconds = v; }
     // external_db_uri_stored is NOT updated here — managed exclusively by sync_configure command
 
     conn.execute(
@@ -168,8 +198,11 @@ pub fn preferences_update(
             page_size = ?7,
             external_db_enabled = ?8,
             notification_channels_json = ?9,
-            process_deny_list_json = ?10
-         WHERE id = ?11",
+            process_deny_list_json = ?10,
+            auto_classification_enabled = ?11,
+            auto_classification_confidence_threshold = ?12,
+            auto_classification_group_gap_seconds = ?13
+         WHERE id = ?14",
         rusqlite::params![
             current.local_timezone,
             current.inactivity_timeout_seconds,
@@ -181,6 +214,9 @@ pub fn preferences_update(
             current.external_db_enabled,
             current.notification_channels_json,
             current.process_deny_list_json,
+            current.auto_classification_enabled,
+            current.auto_classification_confidence_threshold,
+            current.auto_classification_group_gap_seconds,
             current.id,
         ],
     )

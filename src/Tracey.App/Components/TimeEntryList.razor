@@ -173,6 +173,10 @@
                                         aria-label="@(string.IsNullOrEmpty(entry.Description) ? "Add description (click to edit)" : $"{entry.Description} (click to edit)")">
                                     @(string.IsNullOrEmpty(entry.Description) ? "(no description)" : entry.Description)
                                 </button>
+                                @if (entry.Source == "auto")
+                                {
+                                    <span class="auto-badge" title="Created automatically by classification">auto</span>
+                                }
                                 <span class="entry-times">
                                     @FormatTime(entry.StartedAt) – @FormatTime(entry.EndedAt)
                                 </span>

@@ -169,6 +169,31 @@ public class TauriIpcService
     public Task<DataDeleteAllResponse> DataDeleteAllAsync() =>
         Invoke<DataDeleteAllResponse>("data_delete_all");
 
+    // ── Classification ────────────────────────────────────────────────────
+
+    public Task<HeuristicRule[]> ClassificationRulesGetAsync() =>
+        Invoke<HeuristicRule[]>("classification_rules_get");
+
+    public Task ClassificationRulesUpdateAsync(HeuristicRule[] rules) =>
+        Invoke<object>("classification_rules_update", new { rules });
+
+    public Task<ClassificationResult> ClassificationClassifyTestAsync(ClassifyTestRequest request) =>
+        Invoke<ClassificationResult>("classification_classify_test", new { request });
+
+    public Task LabeledSampleSubmitAsync(LabeledSampleSubmitRequest request) =>
+        Invoke<object>("labeled_sample_submit", new { request });
+
+    public Task ClassificationSubmitLabelAsync(ClassificationSubmitLabelRequest request) =>
+        Invoke<object>("classification_submit_label", new { request });
+
+    public Task ClassificationDismissAsync(ClassificationDismissRequest request) =>
+        Invoke<object>("classification_dismiss", new { request });
+
+    public Task<ClassificationEventListResponse> ClassificationEventListAsync(int page = 0, int pageSize = 50) =>
+        Invoke<ClassificationEventListResponse>(
+            "classification_event_list",
+            new { request = new { page, page_size = pageSize } });
+
     // ── Private helper ────────────────────────────────────────────────────
 
     private async Task<T> Invoke<T>(string command, object? args = null)
@@ -234,7 +259,10 @@ public record UserPreferences(
     [property: JsonPropertyName("process_deny_list_json")] string ProcessDenyListJson,
     [property: JsonPropertyName("external_db_enabled")] bool ExternalDbEnabled,
     [property: JsonPropertyName("timer_notification_threshold_hours")] double TimerNotificationThresholdHours,
-    [property: JsonPropertyName("notification_channels_json")] string? NotificationChannelsJson);
+    [property: JsonPropertyName("notification_channels_json")] string? NotificationChannelsJson,
+    [property: JsonPropertyName("auto_classification_enabled")] bool AutoClassificationEnabled,
+    [property: JsonPropertyName("auto_classification_confidence_threshold")] float AutoClassificationConfidenceThreshold,
+    [property: JsonPropertyName("auto_classification_group_gap_seconds")] int AutoClassificationGroupGapSeconds);
 
 public record PreferencesUpdateRequest(
     [property: JsonPropertyName("inactivity_timeout_seconds")] long? InactivityTimeoutSeconds = null,
@@ -246,7 +274,10 @@ public record PreferencesUpdateRequest(
     [property: JsonPropertyName("process_deny_list_json")] string? ProcessDenyListJson = null,
     [property: JsonPropertyName("external_db_enabled")] bool? ExternalDbEnabled = null,
     [property: JsonPropertyName("timer_notification_threshold_hours")] double? TimerNotificationThresholdHours = null,
-    [property: JsonPropertyName("notification_channels_json")] string? NotificationChannelsJson = null);
+    [property: JsonPropertyName("notification_channels_json")] string? NotificationChannelsJson = null,
+    [property: JsonPropertyName("auto_classification_enabled")] bool? AutoClassificationEnabled = null,
+    [property: JsonPropertyName("auto_classification_confidence_threshold")] float? AutoClassificationConfidenceThreshold = null,
+    [property: JsonPropertyName("auto_classification_group_gap_seconds")] int? AutoClassificationGroupGapSeconds = null);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Timer
@@ -308,7 +339,8 @@ public record TimeEntryItem(
     [property: JsonPropertyName("task_name")] string? TaskName,
     [property: JsonPropertyName("tag_ids")] string[] TagIds,
     [property: JsonPropertyName("tag_names")] string[] TagNames,
-    [property: JsonPropertyName("is_break")] bool IsBreak);
+    [property: JsonPropertyName("is_break")] bool IsBreak,
+    [property: JsonPropertyName("source")] string Source);
 
 public record TimeEntryCreateManualRequest(
     [property: JsonPropertyName("description")] string Description,
@@ -519,3 +551,71 @@ public record SyncConfigureResponse(
 public record SyncTriggerResponse(
     [property: JsonPropertyName("synced_records")] long SyncedRecords,
     [property: JsonPropertyName("errors")] long Errors);
+
+// ── Classification types ──────────────────────────────────────────────────────
+
+public record HeuristicRule(
+    [property: JsonPropertyName("app_contains")] string? AppContains,
+    [property: JsonPropertyName("title_contains")] string? TitleContains,
+    [property: JsonPropertyName("client_id")] string? ClientId,
+    [property: JsonPropertyName("project_id")] string? ProjectId,
+    [property: JsonPropertyName("task_id")] string? TaskId);
+
+public record ClassificationPrediction(
+    [property: JsonPropertyName("client_id")] string? ClientId,
+    [property: JsonPropertyName("project_id")] string? ProjectId,
+    [property: JsonPropertyName("task_id")] string? TaskId,
+    [property: JsonPropertyName("confidence")] float Confidence,
+    [property: JsonPropertyName("source")] string Source);
+
+public record ClassificationResult(
+    [property: JsonPropertyName("top")] ClassificationPrediction Top,
+    [property: JsonPropertyName("suggestions")] ClassificationPrediction[] Suggestions);
+
+public record ClassifyTestRequest(
+    [property: JsonPropertyName("process_name")] string ProcessName,
+    [property: JsonPropertyName("window_title")] string WindowTitle,
+    [property: JsonPropertyName("ocr_text")] string? OcrText);
+
+public record LabeledSampleSubmitRequest(
+    [property: JsonPropertyName("process_name")] string ProcessName,
+    [property: JsonPropertyName("window_title")] string WindowTitle,
+    [property: JsonPropertyName("ocr_text")] string? OcrText,
+    [property: JsonPropertyName("client_id")] string? ClientId,
+    [property: JsonPropertyName("project_id")] string? ProjectId,
+    [property: JsonPropertyName("task_id")] string? TaskId,
+    [property: JsonPropertyName("source")] string Source);
+
+public record ClassificationSubmitLabelRequest(
+    [property: JsonPropertyName("war_id")] string WarId,
+    [property: JsonPropertyName("event_id")] string EventId,
+    [property: JsonPropertyName("process_name")] string ProcessName,
+    [property: JsonPropertyName("window_title")] string WindowTitle,
+    [property: JsonPropertyName("ocr_text")] string? OcrText,
+    [property: JsonPropertyName("client_id")] string? ClientId,
+    [property: JsonPropertyName("project_id")] string? ProjectId,
+    [property: JsonPropertyName("task_id")] string? TaskId,
+    [property: JsonPropertyName("recorded_at")] string RecordedAt,
+    [property: JsonPropertyName("source")] string Source);
+
+public record ClassificationDismissRequest(
+    [property: JsonPropertyName("war_id")] string WarId,
+    [property: JsonPropertyName("pattern_key")] string PatternKey);
+
+public record ClassificationEventItem(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("war_id")] string WarId,
+    [property: JsonPropertyName("process_name")] string ProcessName,
+    [property: JsonPropertyName("window_title")] string WindowTitle,
+    [property: JsonPropertyName("client_id")] string? ClientId,
+    [property: JsonPropertyName("project_id")] string? ProjectId,
+    [property: JsonPropertyName("task_id")] string? TaskId,
+    [property: JsonPropertyName("confidence")] float Confidence,
+    [property: JsonPropertyName("classification_source")] string ClassificationSource,
+    [property: JsonPropertyName("outcome")] string Outcome,
+    [property: JsonPropertyName("ocr_text")] string? OcrText,
+    [property: JsonPropertyName("created_at")] string CreatedAt);
+
+public record ClassificationEventListResponse(
+    [property: JsonPropertyName("items")] ClassificationEventItem[] Items,
+    [property: JsonPropertyName("total")] long Total);

@@ -1,0 +1,276 @@
+@page "/classification"
+@inject TauriIpcService Tauri
+@inject TauriEventService Events
+@implements IDisposable
+
+<div class="classification-page">
+
+    <section class="live-panel">
+        <h2 class="section-title">Current activity</h2>
+        @if (_liveEvent != null)
+        {
+            <div class="live-card">
+                <div class="live-app">@_liveEvent.ProcessName</div>
+                <div class="live-title" title="@_liveEvent.WindowTitle">@_liveEvent.WindowTitle</div>
+                <div class="live-meta">
+                    <span class="source-badge source-@_liveEvent.ClassificationSource">
+                        @FormatSource(_liveEvent.ClassificationSource)
+                    </span>
+                    <span class="confidence-bar-wrap">
+                        <span class="confidence-bar" style="width: @(Math.Round(_liveEvent.Confidence * 100))%"></span>
+                    </span>
+                    <span class="confidence-value">@Math.Round(_liveEvent.Confidence * 100)%</span>
+                    <span class="outcome-badge outcome-@_liveEvent.Outcome">@_liveEvent.Outcome</span>
+                </div>
+                @if (!string.IsNullOrEmpty(_liveEvent.ProjectId))
+                {
+                    <div class="live-assignment">→ @FormatAssignment(_liveEvent)</div>
+                }
+                @if (!string.IsNullOrEmpty(_liveEvent.OcrText))
+                {
+                    <details class="live-ocr">
+                        <summary>OCR text</summary>
+                        <pre class="live-ocr-text">@_liveEvent.OcrText</pre>
+                    </details>
+                }
+            </div>
+        }
+        else
+        {
+            <p class="empty-state">No classification data yet. The engine starts after a window change.</p>
+        }
+    </section>
+
+    <section class="history-section">
+        <h2 class="section-title">History</h2>
+
+        @if (_loading)
+        {
+            <p>Loading entries…</p>
+        }
+        else if (_items.Length == 0)
+        {
+            <p class="empty-state">No classification events yet.</p>
+        }
+        else
+        {
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>App</th>
+                        <th>Window</th>
+                        <th>Assignment</th>
+                        <th>Confidence</th>
+                        <th>Outcome</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _items)
+                    {
+                        <tr class="history-row @(item.Id == _correctingId ? "correcting" : "")">
+                            <td class="col-time">@FormatTime(item.CreatedAt)</td>
+                            <td class="col-app">@item.ProcessName</td>
+                            <td class="col-title" title="@item.WindowTitle">@TruncateTitle(item.WindowTitle)</td>
+                            <td class="col-assignment">@FormatAssignment(item)</td>
+                            <td class="col-confidence">@Math.Round(item.Confidence * 100)%</td>
+                            <td class="col-outcome">
+                                <span class="outcome-badge outcome-@item.Outcome">@item.Outcome</span>
+                            </td>
+                            <td class="col-actions">
+                                <button type="button" class="btn-correct"
+                                        @onclick="() => StartCorrection(item)">Correct</button>
+                            </td>
+                        </tr>
+                        @if (item.Id == _correctingId)
+                        {
+                            <tr class="correction-row">
+                                <td colspan="7">
+                                    <div class="correction-form">
+                                        <span>Assign to:</span>
+                                        <input type="text" @bind="_correctionQuery"
+                                               placeholder="Search projects…"
+                                               @oninput="OnCorrectionInput" />
+                                        @if (_correctionMatches.Length > 0)
+                                        {
+                                            <div class="correction-matches">
+                                                @foreach (var m in _correctionMatches)
+                                                {
+                                                    <button type="button"
+                                                            class="correction-match-btn @(_correctionProjectId == m.ProjectId ? "selected" : "")"
+                                                            @onclick="() => { _correctionProjectId = m.ProjectId; _correctionQuery = m.ProjectName; _correctionMatches = []; StateHasChanged(); }">
+                                                        @m.ProjectName
+                                                    </button>
+                                                }
+                                            </div>
+                                        }
+                                        <button type="button" @onclick="() => SubmitCorrection(item)">Save</button>
+                                        <button type="button" @onclick="CancelCorrection">Cancel</button>
+                                        @if (!string.IsNullOrEmpty(_correctionError))
+                                        {
+                                            <span class="error">@_correctionError</span>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+
+            <div class="pagination">
+                <button type="button" @onclick="PrevPage" disabled="@(_page == 0)">← Previous</button>
+                <span>Page @(_page + 1) of @TotalPages</span>
+                <button type="button" @onclick="NextPage" disabled="@(_page >= TotalPages - 1)">Next →</button>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private const int PageSize = 50;
+    private bool _loading = true;
+    private ClassificationEventItem[] _items = [];
+    private long _total = 0;
+    private int _page = 0;
+    private ClassificationEventItem? _liveEvent;
+    private string? _correctingId;
+    private string _correctionQuery = string.Empty;
+    private string _correctionError = string.Empty;
+    private string? _correctionProjectId;
+    private ProjectMatch[] _correctionMatches = [];
+
+    private int TotalPages => (int)Math.Max(1, Math.Ceiling((double)_total / PageSize));
+
+    protected override async Task OnInitializedAsync()
+    {
+        Events.OnClassificationNeeded += OnClassificationNeeded;
+        await LoadPage();
+    }
+
+    private async Task LoadPage()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            var resp = await Tauri.ClassificationEventListAsync(_page, PageSize);
+            _items = resp?.Items ?? [];
+            _total = resp?.Total ?? 0;
+            _liveEvent ??= _items.FirstOrDefault();
+        }
+        catch
+        {
+            _items = [];
+        }
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private void OnClassificationNeeded(ClassificationNeededPayload payload)
+    {
+        InvokeAsync(LoadPage);
+    }
+
+    private async Task PrevPage()
+    {
+        if (_page > 0) { _page--; await LoadPage(); }
+    }
+
+    private async Task NextPage()
+    {
+        if (_page < TotalPages - 1) { _page++; await LoadPage(); }
+    }
+
+    private void StartCorrection(ClassificationEventItem item)
+    {
+        _correctingId = item.Id;
+        _correctionQuery = string.Empty;
+        _correctionError = string.Empty;
+        _correctionProjectId = null;
+        _correctionMatches = [];
+        StateHasChanged();
+    }
+
+    private void CancelCorrection()
+    {
+        _correctingId = null;
+        _correctionMatches = [];
+        StateHasChanged();
+    }
+
+    private void OnCorrectionInput(ChangeEventArgs e)
+    {
+        _correctionQuery = e.Value?.ToString() ?? string.Empty;
+        InvokeAsync(async () =>
+        {
+            if (_correctionQuery.Length >= 2)
+            {
+                var results = await Tauri.FuzzyMatchProjectsAsync(_correctionQuery, 5);
+                _correctionMatches = results?.Matches ?? [];
+            }
+            else
+            {
+                _correctionMatches = [];
+            }
+            StateHasChanged();
+        });
+    }
+
+    private async Task SubmitCorrection(ClassificationEventItem item)
+    {
+        if (string.IsNullOrWhiteSpace(_correctionProjectId))
+        {
+            _correctionError = "Select a project to assign.";
+            StateHasChanged();
+            return;
+        }
+        try
+        {
+            await Tauri.ClassificationSubmitLabelAsync(new ClassificationSubmitLabelRequest(
+                WarId: item.WarId,
+                EventId: item.Id,
+                ProcessName: item.ProcessName,
+                WindowTitle: item.WindowTitle,
+                OcrText: null,
+                ClientId: item.ClientId,
+                ProjectId: _correctionProjectId,
+                TaskId: item.TaskId,
+                RecordedAt: item.CreatedAt,
+                Source: "user_corrected"
+            ));
+        }
+        catch (Exception ex)
+        {
+            _correctionError = ex.Message;
+            StateHasChanged();
+            return;
+        }
+        _correctingId = null;
+        await LoadPage();
+    }
+
+    private static string FormatTime(string iso) =>
+        DateTimeOffset.TryParse(iso, out var dt)
+            ? dt.LocalDateTime.ToString("HH:mm:ss")
+            : iso;
+
+    private static string TruncateTitle(string title) =>
+        title.Length > 50 ? title[..47] + "…" : title;
+
+    private static string FormatAssignment(ClassificationEventItem item) =>
+        string.Join(" / ", new[] { item.ClientId, item.ProjectId, item.TaskId }
+            .Where(x => !string.IsNullOrEmpty(x)));
+
+    private static string FormatSource(string source) => source switch {
+        "heuristic" => "Rule",
+        "tf_idf"    => "Model",
+        _           => "–"
+    };
+
+    public void Dispose()
+    {
+        Events.OnClassificationNeeded -= OnClassificationNeeded;
+    }
+}

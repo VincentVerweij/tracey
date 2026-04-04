@@ -162,7 +162,7 @@ pub struct SyncTriggerResponse {
 }
 
 #[tauri::command]
-pub async fn sync_trigger(state: State<'_, AppState>) -> Result<SyncTriggerResponse, String> {
+pub async fn sync_trigger(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<SyncTriggerResponse, String> {
     // Read URI from in-memory cache first; fall back to keychain for app-restart persistence
     let uri = {
         let ss = state.sync_state.lock().map_err(|e| e.to_string())?;
@@ -175,7 +175,7 @@ pub async fn sync_trigger(state: State<'_, AppState>) -> Result<SyncTriggerRespo
 
     // Always run a full scan (cursor = None = from epoch). The background loop handles
     // incremental cursor-based sync; a manual "Sync now" should push everything.
-    let result = sync_service::run_sync_cycle_inline(&state.db, &uri, None).await;
+    let result = sync_service::run_sync_cycle_inline(&app, &state.db, &uri, None).await;
 
     match result {
         Ok((synced, errors, new_cursor)) => {

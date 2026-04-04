@@ -430,6 +430,59 @@
             </div>
         </section>
 
+        <!-- ── Auto-Classification ───────────────────────────────────────────── -->
+        <section class="settings-card">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">🤖</span>
+                <div>
+                    <h2 class="settings-card-title">Auto-Classification</h2>
+                    <p class="settings-card-desc">Let Tracey classify window activity and create time entries automatically.</p>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-row">
+                    <label class="settings-label">Enable</label>
+                    <div class="settings-control-group">
+                        <label class="settings-toggle">
+                            <input type="checkbox" @bind="_autoClassificationEnabled" />
+                            Automatically classify window activity and create time entries
+                        </label>
+                    </div>
+                </div>
+                <div class="settings-row">
+                    <label for="conf-threshold" class="settings-label">
+                        Confidence threshold
+                        <span class="settings-label-unit">@Math.Round(_confidenceThreshold * 100)%</span>
+                    </label>
+                    <div class="settings-control-group">
+                        <input id="conf-threshold" type="range" class="settings-range"
+                               min="0.5" max="1.0" step="0.05"
+                               @bind="_confidenceThreshold" @bind:event="oninput" />
+                        <span class="settings-hint">Activities above this threshold are classified automatically. Below it, you'll be prompted.</span>
+                    </div>
+                </div>
+                <div class="settings-row">
+                    <label for="group-gap" class="settings-label">
+                        Grouping gap
+                        <span class="settings-label-unit">seconds</span>
+                    </label>
+                    <div class="settings-control-group">
+                        <input id="group-gap" type="number" class="settings-input settings-input-short"
+                               min="30" max="600" step="30"
+                               @bind="_groupGapSeconds" />
+                        <span class="settings-hint">Consecutive windows for the same project within this gap are merged into one time entry.</span>
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(_autoClassificationError))
+                {
+                    <p class="t-inline-error" role="alert">@_autoClassificationError</p>
+                }
+                <div class="settings-actions">
+                    <button class="t-btn t-btn-primary" @onclick="SaveAutoClassificationPrefsAsync">Save</button>
+                </div>
+            </div>
+        </section>
+
         <!-- ── Danger Zone ────────────────────────────────────────────────────────────── -->
         <section class="settings-card settings-card-danger">
             <div class="settings-card-label">
@@ -509,6 +562,12 @@
     private string? _deleteError;
     private string? _deleteSuccess;
 
+    // ── Auto-Classification ──────────────────────────────────────────────────
+    private bool _autoClassificationEnabled = true;
+    private float _confidenceThreshold = 0.7f;
+    private int _groupGapSeconds = 120;
+    private string _autoClassificationError = string.Empty;
+
     private static readonly string[] _ianaTimezones =
     [
         "Africa/Abidjan", "Africa/Cairo", "Africa/Johannesburg", "Africa/Lagos", "Africa/Nairobi",
@@ -579,6 +638,15 @@
                 _denyList = parsed ?? new();
             }
             catch { _denyList = new(); }
+
+            // ── Auto-Classification ──────────────────────────────────────────
+            _autoClassificationEnabled = prefs.AutoClassificationEnabled;
+            _confidenceThreshold = prefs.AutoClassificationConfidenceThreshold > 0
+                ? prefs.AutoClassificationConfidenceThreshold
+                : 0.7f;
+            _groupGapSeconds = prefs.AutoClassificationGroupGapSeconds > 0
+                ? prefs.AutoClassificationGroupGapSeconds
+                : 120;
         }
         catch
         {
@@ -776,6 +844,25 @@
     }
 
     // ── Danger Zone methods ───────────────────────────────────────────────
+
+    // ── Auto-Classification methods ───────────────────────────────────────
+    private async Task SaveAutoClassificationPrefsAsync()
+    {
+        _autoClassificationError = string.Empty;
+        try
+        {
+            await Tauri.PreferencesUpdateAsync(new PreferencesUpdateRequest(
+                AutoClassificationEnabled: _autoClassificationEnabled,
+                AutoClassificationConfidenceThreshold: _confidenceThreshold,
+                AutoClassificationGroupGapSeconds: _groupGapSeconds
+            ));
+        }
+        catch (Exception ex)
+        {
+            _autoClassificationError = $"Couldn't save settings. {ex.Message}";
+        }
+        StateHasChanged();
+    }
 
     private void RequestDeleteAll() => _showDeleteConfirm = true;
     private void CancelDeleteAll() { _showDeleteConfirm = false; _deleteError = null; }
