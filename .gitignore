@@ -1,6 +1,9 @@
 # Git worktrees
 .worktrees/
 
+# Rust build artifacts
+src-tauri/target/
+
 # Squad: ignore runtime state (logs, inbox, sessions)
 .squad/orchestration-log/
 .squad/log/
