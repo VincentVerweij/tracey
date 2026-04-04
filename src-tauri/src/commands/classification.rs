@@ -1,7 +1,7 @@
 //! Tauri commands for managing classification rules and testing the engine.
 
 use tauri::{State, Manager};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use ulid::Ulid;
 use chrono::Utc;
 
@@ -447,5 +447,121 @@ mod submit_label_tests {
         alq.record_dismissal(key);
         let state = alq.snooze_state();
         assert_eq!(state.get(key).map(|e| e.dismissed_count), Some(2));
+    }
+}
+
+// ── Classification event list (for Classification page) ───────────────────────
+
+#[derive(Serialize)]
+pub struct ClassificationEventItem {
+    pub id: String,
+    pub war_id: String,
+    pub process_name: String,
+    pub window_title: String,
+    pub client_id: Option<String>,
+    pub project_id: Option<String>,
+    pub task_id: Option<String>,
+    pub confidence: f64,
+    pub classification_source: String,
+    pub outcome: String,
+    pub ocr_text: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Deserialize)]
+pub struct ClassificationEventListRequest {
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Serialize)]
+pub struct ClassificationEventListResponse {
+    pub items: Vec<ClassificationEventItem>,
+    pub total: i64,
+}
+
+#[tauri::command]
+pub fn classification_event_list(
+    state: State<'_, AppState>,
+    request: ClassificationEventListRequest,
+) -> Result<ClassificationEventListResponse, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let offset = request.page * request.page_size;
+
+    let total: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM classification_events",
+        [],
+        |r| r.get(0),
+    ).unwrap_or(0);
+
+    let mut stmt = conn.prepare(
+        "SELECT id, war_id, process_name, window_title, client_id, project_id, task_id, \
+                confidence, classification_source, outcome, ocr_text, created_at \
+         FROM classification_events \
+         ORDER BY created_at DESC \
+         LIMIT ?1 OFFSET ?2",
+    ).map_err(|e| e.to_string())?;
+
+    let items: Vec<ClassificationEventItem> = stmt.query_map(
+        rusqlite::params![request.page_size, offset],
+        |r| Ok(ClassificationEventItem {
+            id:                    r.get(0)?,
+            war_id:                r.get(1)?,
+            process_name:          r.get(2)?,
+            window_title:          r.get(3)?,
+            client_id:             r.get(4)?,
+            project_id:            r.get(5)?,
+            task_id:               r.get(6)?,
+            confidence:            r.get(7)?,
+            classification_source: r.get(8)?,
+            outcome:               r.get(9)?,
+            ocr_text:              r.get(10)?,
+            created_at:            r.get(11)?,
+        }),
+    ).map_err(|e| e.to_string())?
+    .filter_map(|r| r.ok())
+    .collect();
+
+    Ok(ClassificationEventListResponse { items, total })
+}
+
+#[cfg(test)]
+mod event_list_tests {
+    use rusqlite::Connection;
+
+    fn test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("
+            CREATE TABLE classification_events (
+                id TEXT PRIMARY KEY, war_id TEXT NOT NULL,
+                process_name TEXT NOT NULL, window_title TEXT NOT NULL,
+                client_id TEXT, project_id TEXT, task_id TEXT,
+                confidence REAL NOT NULL DEFAULT 0.0,
+                classification_source TEXT NOT NULL DEFAULT 'unclassified',
+                outcome TEXT NOT NULL DEFAULT 'pending',
+                ocr_text TEXT,
+                created_at TEXT NOT NULL
+            );
+        ").unwrap();
+        conn.execute_batch("
+            INSERT INTO classification_events VALUES
+              ('e1','w1','Code','tracey',NULL,'p1',NULL,0.9,'heuristic','auto',NULL,'2026-01-01T10:00:00Z'),
+              ('e2','w2','Slack','general',NULL,'p2',NULL,0.4,'tf_idf','pending',NULL,'2026-01-01T10:01:00Z');
+        ").unwrap();
+        conn
+    }
+
+    #[test]
+    fn list_returns_events_descending() {
+        let conn = test_db();
+        let mut stmt = conn.prepare(
+            "SELECT id, process_name, confidence FROM classification_events \
+             ORDER BY created_at DESC LIMIT 50 OFFSET 0"
+        ).unwrap();
+        let rows: Vec<(String, String, f64)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap().filter_map(|r| r.ok()).collect();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].0, "e2"); // most recent first
+        assert_eq!(rows[1].0, "e1");
     }
 }
