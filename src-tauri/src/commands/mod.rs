@@ -17,16 +17,11 @@ use crate::services::classification::heuristic::HeuristicRule;
 use crate::services::active_learning_queue::ActiveLearningQueue;
 
 /// Shared classification state: loaded model + rule cache + sample counter.
+#[derive(Default)]
 pub struct ClassificationState {
     pub model: Option<TfIdfModel>,
     pub rules: Vec<HeuristicRule>,
     pub sample_count_at_last_train: i64,
-}
-
-impl Default for ClassificationState {
-    fn default() -> Self {
-        ClassificationState { model: None, rules: vec![], sample_count_at_last_train: 0 }
-    }
 }
 
 /// Shared sync state updated by the SyncService background loop.

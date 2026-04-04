@@ -16,6 +16,7 @@ pub struct PendingRecord {
     pub war_id: String,
     pub process_name: String,
     pub window_title: String,
+    #[allow(dead_code)]
     pub ocr_text: Option<String>,
 }
 
@@ -82,6 +83,7 @@ impl ActiveLearningQueue {
         entry.last_snoozed_at = Utc::now();
     }
 
+    #[allow(dead_code)]
     pub fn pending_count(&self) -> usize { self.pending.len() }
 
     /// Returns the snooze map serializable for DB persistence.
