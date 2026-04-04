@@ -301,7 +301,10 @@ file class FakeTauriIpcService : TauriIpcService
             ProcessDenyListJson:            "[]",
             ExternalDbEnabled:              false,
             TimerNotificationThresholdHours: 8.0,
-            NotificationChannelsJson:       null);
+            NotificationChannelsJson:       null,
+            AutoClassificationEnabled:      true,
+            AutoClassificationConfidenceThreshold: 0.7f,
+            AutoClassificationGroupGapSeconds: 120);
         return Task.FromResult(prefs);
     }
 }
@@ -430,5 +433,8 @@ public class NotificationOrchestrationServiceTests
             ProcessDenyListJson:             "[]",
             ExternalDbEnabled:               false,
             TimerNotificationThresholdHours: thresholdHours,
-            NotificationChannelsJson:        channelsJson);
+            NotificationChannelsJson:        channelsJson,
+            AutoClassificationEnabled:       true,
+            AutoClassificationConfidenceThreshold: 0.7f,
+            AutoClassificationGroupGapSeconds: 120);
 }

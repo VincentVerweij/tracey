@@ -23,6 +23,14 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "005_add_ocr_text_to_screenshots",
         include_str!("migrations/005_add_ocr_text_to_screenshots.sql"),
     ),
+    (
+        "006_classification_engine",
+        include_str!("migrations/006_classification_engine.sql"),
+    ),
+    (
+        "007_auto_classification_loop",
+        include_str!("migrations/007_auto_classification_loop.sql"),
+    ),
 ];
 
 pub fn run(conn: &Connection) -> SqlResult<()> {

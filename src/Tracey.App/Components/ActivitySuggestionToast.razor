@@ -1,0 +1,166 @@
+@inject TauriIpcService Tauri
+@inject TauriEventService Events
+@implements IDisposable
+
+@if (_payload != null)
+{
+    <div class="suggestion-toast" role="alertdialog" aria-labelledby="toast-title">
+        <div class="toast-header">
+            <span id="toast-title" class="toast-app">@_payload.ProcessName</span>
+            <span class="toast-title-text" title="@_payload.WindowTitle">
+                @TruncateTitle(_payload.WindowTitle)
+            </span>
+            <button type="button" class="toast-dismiss" aria-label="Dismiss" @onclick="Dismiss">✕</button>
+        </div>
+
+        @if (_showPicker)
+        {
+            <div class="toast-picker">
+                <p>Which project is this?</p>
+                <input type="text" @bind="_pickerQuery" placeholder="Search projects…" @oninput="OnPickerInput" />
+                @if (_pickerMatches.Length > 0)
+                {
+                    <div class="toast-picker-matches">
+                        @foreach (var m in _pickerMatches)
+                        {
+                            <button type="button" class="toast-picker-match-btn"
+                                    @onclick="() => ConfirmPicker(m)">
+                                @m.ProjectName
+                            </button>
+                        }
+                    </div>
+                }
+                <button type="button" class="toast-btn-outline" @onclick="ClosePicker">Back</button>
+            </div>
+        }
+        else
+        {
+            <div class="toast-suggestions">
+                @foreach (var s in _payload.Suggestions.Take(3))
+                {
+                    <button type="button" class="toast-suggestion-btn" @onclick="() => Confirm(s)">
+                        <span class="suggestion-label">@FormatLabel(s)</span>
+                        <span class="suggestion-confidence">@Math.Round(s.Confidence * 100)%</span>
+                    </button>
+                }
+                <button type="button" class="toast-btn-outline" @onclick="ShowPicker">Something else…</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private ClassificationNeededPayload? _payload;
+    private bool _showPicker = false;
+    private string _pickerQuery = string.Empty;
+    private ProjectMatch[] _pickerMatches = [];
+    private System.Threading.Timer? _autoTimer;
+
+    protected override void OnInitialized()
+    {
+        Events.OnClassificationNeeded += OnClassificationNeeded;
+    }
+
+    private void OnClassificationNeeded(ClassificationNeededPayload payload)
+    {
+        _payload = payload;
+        _showPicker = false;
+        _autoTimer?.Dispose();
+        _autoTimer = new System.Threading.Timer(_ =>
+        {
+            InvokeAsync(async () =>
+            {
+                if (_payload?.WarId == payload.WarId)
+                    await Dismiss();
+            });
+        }, null, TimeSpan.FromSeconds(30), Timeout.InfiniteTimeSpan);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task Confirm(ClassificationSuggestion suggestion)
+    {
+        if (_payload == null) return;
+        _autoTimer?.Dispose();
+        await Tauri.ClassificationSubmitLabelAsync(new ClassificationSubmitLabelRequest(
+            WarId: _payload.WarId,
+            EventId: _payload.EventId,
+            ProcessName: _payload.ProcessName,
+            WindowTitle: _payload.WindowTitle,
+            OcrText: null,
+            ClientId: suggestion.ClientId,
+            ProjectId: suggestion.ProjectId,
+            TaskId: suggestion.TaskId,
+            RecordedAt: DateTime.UtcNow.ToString("o"),
+            Source: "user_confirmed"
+        ));
+        _payload = null;
+        StateHasChanged();
+    }
+
+    private async Task Dismiss()
+    {
+        if (_payload == null) return;
+        _autoTimer?.Dispose();
+        await Tauri.ClassificationDismissAsync(new ClassificationDismissRequest(
+            WarId: _payload.WarId,
+            PatternKey: _payload.PatternKey
+        ));
+        _payload = null;
+        StateHasChanged();
+    }
+
+    private void ShowPicker() { _showPicker = true; StateHasChanged(); }
+    private void ClosePicker() { _showPicker = false; _pickerMatches = []; StateHasChanged(); }
+
+    private void OnPickerInput(ChangeEventArgs e)
+    {
+        _pickerQuery = e.Value?.ToString() ?? string.Empty;
+        InvokeAsync(async () =>
+        {
+            if (_pickerQuery.Length >= 2)
+            {
+                var results = await Tauri.FuzzyMatchProjectsAsync(_pickerQuery, 5);
+                _pickerMatches = results?.Matches ?? [];
+            }
+            else
+            {
+                _pickerMatches = [];
+            }
+            StateHasChanged();
+        });
+    }
+
+    private async Task ConfirmPicker(ProjectMatch project)
+    {
+        if (_payload == null) return;
+        _autoTimer?.Dispose();
+        _pickerMatches = [];
+        await Tauri.ClassificationSubmitLabelAsync(new ClassificationSubmitLabelRequest(
+            WarId: _payload.WarId,
+            EventId: _payload.EventId,
+            ProcessName: _payload.ProcessName,
+            WindowTitle: _payload.WindowTitle,
+            OcrText: null,
+            ClientId: project.ClientId,
+            ProjectId: project.ProjectId,
+            TaskId: null,
+            RecordedAt: DateTime.UtcNow.ToString("o"),
+            Source: "user_corrected"
+        ));
+        _payload = null;
+        StateHasChanged();
+    }
+
+    private static string TruncateTitle(string title) =>
+        title.Length > 60 ? title[..57] + "…" : title;
+
+    private static string FormatLabel(ClassificationSuggestion s) =>
+        string.Join(" / ", new[] { s.ClientId, s.ProjectId, s.TaskId }
+            .Where(x => !string.IsNullOrEmpty(x)));
+
+    public void Dispose()
+    {
+        Events.OnClassificationNeeded -= OnClassificationNeeded;
+        _autoTimer?.Dispose();
+    }
+}

@@ -23,6 +23,7 @@ public class TauriEventService : IDisposable
     public event Action<SyncStatusPayload>? OnSyncStatusChanged;
     public event Action<NotificationSentPayload>? OnNotificationSent;
     public event Action<ErrorPayload>? OnError;
+    public event Action<ClassificationNeededPayload>? OnClassificationNeeded;
 
     /// <summary>
     /// Called by <c>NotificationOrchestrationService</c> to fire the notification-sent event
@@ -96,6 +97,10 @@ public class TauriEventService : IDisposable
                     var err = JsonSerializer.Deserialize<ErrorPayload>(jsonPayload, _jsonOptions);
                     if (err != null) OnError?.Invoke(err);
                     break;
+                case "tracey://classification-needed":
+                    var classPayload = JsonSerializer.Deserialize<ClassificationNeededPayload>(jsonPayload, _jsonOptions);
+                    if (classPayload != null) OnClassificationNeeded?.Invoke(classPayload);
+                    break;
                 default:
                     Console.WriteLine($"[TauriEventService] Unknown event: {eventName}");
                     break;
@@ -142,3 +147,18 @@ public record ErrorPayload(
     [property: JsonPropertyName("component")] string Component,
     [property: JsonPropertyName("event")] string Event,
     [property: JsonPropertyName("error")] string Error);
+
+public record ClassificationSuggestion(
+    [property: JsonPropertyName("client_id")] string? ClientId,
+    [property: JsonPropertyName("project_id")] string? ProjectId,
+    [property: JsonPropertyName("task_id")] string? TaskId,
+    [property: JsonPropertyName("confidence")] float Confidence,
+    [property: JsonPropertyName("source")] string Source);
+
+public record ClassificationNeededPayload(
+    [property: JsonPropertyName("war_id")] string WarId,
+    [property: JsonPropertyName("event_id")] string EventId,
+    [property: JsonPropertyName("process_name")] string ProcessName,
+    [property: JsonPropertyName("window_title")] string WindowTitle,
+    [property: JsonPropertyName("pattern_key")] string PatternKey,
+    [property: JsonPropertyName("suggestions")] ClassificationSuggestion[] Suggestions);

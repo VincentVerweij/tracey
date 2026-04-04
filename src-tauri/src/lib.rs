@@ -1,5 +1,7 @@
 use commands::AppState;
 use commands::SyncState;
+use commands::ClassificationState;
+use services::active_learning_queue::ActiveLearningQueue;
 
 mod commands;
 pub mod db;
@@ -19,6 +21,26 @@ pub fn run() {
     let sync_state = Arc::new(std::sync::Mutex::new(SyncState::default()));
     let sync_notify = Arc::new(tokio::sync::Notify::new());
 
+    // Load persisted classification model and rules at startup
+    let classification_state = {
+        use services::classification::trainer;
+        let model = trainer::load_model(&conn);
+        let rules_json: Option<String> = conn
+            .query_row("SELECT classification_rules_json FROM user_preferences LIMIT 1", [], |r| r.get(0))
+            .ok()
+            .flatten();
+        let rules: Vec<services::classification::heuristic::HeuristicRule> = rules_json
+            .and_then(|j| serde_json::from_str(&j).ok())
+            .unwrap_or_default();
+        Arc::new(std::sync::Mutex::new(ClassificationState {
+            model,
+            rules,
+            sample_count_at_last_train: trainer::count_samples(&conn),
+        }))
+    };
+
+    let active_learning_queue = Arc::new(std::sync::Mutex::new(ActiveLearningQueue::new()));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .manage(AppState {
@@ -26,14 +48,39 @@ pub fn run() {
             platform,
             sync_state,
             sync_notify,
+            classification_state,
+            active_learning_queue,
         })
         .setup(|app| {
             log::info!("Tracey starting up");
+
+            // Load persisted snooze state into active learning queue
+            {
+                use tauri::Manager;
+                let state = app.state::<AppState>();
+                let json: Option<String> = {
+                    let conn_result = state.db.lock();
+                    conn_result.ok().and_then(|conn| {
+                        conn.query_row(
+                            "SELECT classification_snooze_json FROM user_preferences LIMIT 1",
+                            [], |r| r.get(0),
+                        ).ok().flatten()
+                    })
+                }; // conn lock dropped
+                if let Some(j) = json {
+                    if let Ok(entries) = serde_json::from_str::<std::collections::HashMap<String, services::active_learning_queue::SnoozeEntry>>(&j) {
+                        if let Ok(mut alq) = state.active_learning_queue.lock() {
+                            alq.load_snooze_state(entries);
+                        };
+                    }
+                }
+            }
             services::timer_tick::start_tick_loop(app.handle().clone());
             services::idle_service::start_idle_loop(app.handle().clone());
             services::screenshot_service::start_screenshot_loop(app.handle().clone());
             services::sync_service::start_sync_loop(app.handle().clone());
             services::activity_tracker::start_activity_loop(app.handle().clone());
+            services::classification_loop::start_classification_loop(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -78,6 +125,13 @@ pub fn run() {
             commands::sync::sync_get_status,
             commands::sync::sync_trigger,
             commands::data::data_delete_all,
+            commands::classification::classification_rules_get,
+            commands::classification::classification_rules_update,
+            commands::classification::classification_classify_test,
+            commands::classification::labeled_sample_submit,
+            commands::classification::classification_submit_label,
+            commands::classification::classification_dismiss,
+            commands::classification::classification_event_list,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

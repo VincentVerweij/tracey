@@ -359,3 +359,13 @@
     display: flex;
     gap: 0.5rem;
 }
+
+.auto-badge {
+    font-size: 0.7rem;
+    background: var(--bg-subtle, #eee);
+    color: var(--text-muted, #888);
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    margin-left: 0.4rem;
+    vertical-align: middle;
+}
