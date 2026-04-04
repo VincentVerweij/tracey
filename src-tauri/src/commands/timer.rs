@@ -299,6 +299,7 @@ pub struct TimeEntryListItem {
     pub tag_ids: Vec<String>,
     pub tag_names: Vec<String>,
     pub is_break: bool,
+    pub source: String,
 }
 
 #[derive(Serialize)]
@@ -331,7 +332,7 @@ pub fn time_entry_list(
         .prepare(
             "SELECT te.id, te.description, te.started_at, te.ended_at,
                     te.project_id, p.name AS project_name, c.name AS client_name,
-                    te.task_id, t.name AS task_name, te.is_break
+                    te.task_id, t.name AS task_name, te.is_break, te.source
              FROM time_entries te
              LEFT JOIN projects p ON te.project_id = p.id
              LEFT JOIN clients  c ON p.client_id   = c.id
@@ -355,13 +356,14 @@ pub fn time_entry_list(
                 r.get::<_, Option<String>>(7)?, // task_id
                 r.get::<_, Option<String>>(8)?, // task_name
                 r.get::<_, bool>(9)?,           // is_break (INTEGER 0/1 → bool)
+                r.get::<_, String>(10)?,        // source
             ))
         })
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .map(
             |(id, description, started_at, ended_at, project_id, project_name,
-              client_name, task_id, task_name, is_break)| TimeEntryListItem {
+              client_name, task_id, task_name, is_break, source)| TimeEntryListItem {
                 id,
                 description,
                 started_at,
@@ -374,6 +376,7 @@ pub fn time_entry_list(
                 tag_ids: vec![],
                 tag_names: vec![],
                 is_break,
+                source,
             },
         )
         .collect();

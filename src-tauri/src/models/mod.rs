@@ -101,6 +101,9 @@ pub struct UserPreferences {
     pub external_db_enabled: bool,
     pub notification_channels_json: Option<String>, // JSON array
     pub process_deny_list_json: String,             // JSON array of strings
+    pub auto_classification_enabled: bool,
+    pub auto_classification_confidence_threshold: f64,
+    pub auto_classification_group_gap_seconds: i64,
 }
 
 // SQL: id is INTEGER AUTOINCREMENT (not TEXT)
