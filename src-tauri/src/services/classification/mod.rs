@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 pub struct Features {
     pub process_name: String,
     pub window_title: String,
+    #[allow(dead_code)]
     pub ocr_text: Option<String>,
     /// Concatenated, lowercased feature text for TF-IDF.
     pub combined_text: String,
