@@ -405,6 +405,7 @@ mod tests {
         assert_eq!(decoded.height(), 50);
     }
 
+    #[cfg(feature = "test")]
     #[tokio::test]
     async fn ocr_service_returns_text_in_test_mode() {
         let dummy_jpeg: Vec<u8> = vec![0xFF, 0xD8, 0xFF, 0xD9];
