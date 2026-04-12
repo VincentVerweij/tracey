@@ -231,6 +231,8 @@
                                                     <div class="add-task-form">
                                                         <input type="text"
                                                                @bind="_newTaskName[project.Id]"
+                                                               @bind:event="oninput"
+                                                               @onkeydown="@(e => HandleNewTaskKey(e, project.Id))"
                                                                placeholder="Task name"
                                                                aria-label="New task name for @project.Name" />
                                                         <BbButton OnClick="() => SaveNewTask(project.Id)" AriaLabel="Save task">Save</BbButton>
@@ -254,6 +256,8 @@
                                 <div class="add-project-form">
                                     <input type="text"
                                            @bind="_newProjectName[client.Id]"
+                                           @bind:event="oninput"
+                                           @onkeydown="@(e => HandleNewProjectKey(e, client.Id))"
                                            placeholder="Project name"
                                            aria-label="New project name for @client.Name" />
                                     <BbButton OnClick="() => SaveNewProject(client.Id)" AriaLabel="Save project">Save</BbButton>
@@ -469,6 +473,12 @@
 
     private void HideAddProject(string clientId) => _showAddProject[clientId] = false;
 
+    private async Task HandleNewProjectKey(KeyboardEventArgs e, string clientId)
+    {
+        if (e.Key == "Enter") await SaveNewProject(clientId);
+        else if (e.Key == "Escape") HideAddProject(clientId);
+    }
+
     private async Task SaveNewProject(string clientId)
     {
         if (!_newProjectName.TryGetValue(clientId, out var name) || string.IsNullOrWhiteSpace(name))
@@ -547,6 +557,12 @@
     }
 
     private void HideAddTask(string projectId) => _showAddTask[projectId] = false;
+
+    private async Task HandleNewTaskKey(KeyboardEventArgs e, string projectId)
+    {
+        if (e.Key == "Enter") await SaveNewTask(projectId);
+        else if (e.Key == "Escape") HideAddTask(projectId);
+    }
 
     private async Task SaveNewTask(string projectId)
     {
