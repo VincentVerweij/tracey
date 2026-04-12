@@ -233,7 +233,7 @@
                 EventId: item.Id,
                 ProcessName: item.ProcessName,
                 WindowTitle: item.WindowTitle,
-                OcrText: null,
+                OcrText: item.OcrText,
                 ClientId: item.ClientId,
                 ProjectId: _correctionProjectId,
                 TaskId: item.TaskId,
@@ -253,7 +253,7 @@
 
     private static string FormatTime(string iso) =>
         DateTimeOffset.TryParse(iso, out var dt)
-            ? dt.LocalDateTime.ToString("HH:mm:ss")
+            ? dt.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss")
             : iso;
 
     private static string TruncateTitle(string title) =>

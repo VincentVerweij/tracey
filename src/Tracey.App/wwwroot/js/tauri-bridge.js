@@ -16,7 +16,8 @@
             'tracey://screenshot-captured',
             'tracey://sync-status-changed',
             'tracey://notification-sent',
-            'tracey://error'
+            'tracey://error',
+            'tracey://classification-needed'
         ];
 
         for (const eventName of events) {
