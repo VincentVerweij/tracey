@@ -19,9 +19,44 @@
             <section class="date-group">
                 <h2 class="date-header">@FormatDate(group.Key)</h2>
                 <ul class="entry-list" role="list">
-                    @foreach (var entry in group.Value)
+                    @foreach (var ag in group.Value)
                     {
-                        <li class="entry-row @(_editingId == entry.Id ? "is-editing" : "")"
+                        @if (ag.Entries.Count > 1)
+                        {
+                            <li class="entry-row aggregate-header" role="listitem">
+                                <button type="button"
+                                        class="aggregate-toggle @(ag.IsExpanded ? "is-expanded" : "")"
+                                        @onclick="() => { ag.IsExpanded = !ag.IsExpanded; StateHasChanged(); }"
+                                        aria-label="@(ag.IsExpanded ? "Collapse group" : "Expand group")"
+                                        aria-expanded="@(ag.IsExpanded ? "true" : "false")">
+                                    ›
+                                </button>
+                                <span class="aggregate-count">@ag.Entries.Count×</span>
+                                <span class="aggregate-description @(string.IsNullOrEmpty(ag.Key.Description) ? "entry-description-empty" : "")">
+                                    @(string.IsNullOrEmpty(ag.Key.Description) ? "(no description)" : ag.Key.Description)
+                                </span>
+                                <span class="entry-times">
+                                    <span class="entry-duration">@FormatTotalDuration(ag.TotalDuration)</span>
+                                </span>
+                                @if (ag.Key.ProjectName != null)
+                                {
+                                    <span class="entry-project">
+                                        @ag.Key.ClientName / @ag.Key.ProjectName@(ag.Key.TaskName != null ? $" ‣ {ag.Key.TaskName}" : "")
+                                    </span>
+                                }
+                                <BbButton Variant="ButtonVariant.Outline"
+                                          Size="ButtonSize.Small"
+                                          AriaLabel="@($"Continue: {ag.Key.Description}")"
+                                          OnClick="() => ContinueEntry(ag.MostRecentEntryId)">
+                                    Continue
+                                </BbButton>
+                            </li>
+                        }
+                        @if (ag.Entries.Count == 1 || ag.IsExpanded)
+                        {
+                            @foreach (var entry in ag.Entries)
+                            {
+                        <li class="entry-row @(ag.Entries.Count > 1 ? "aggregate-child" : "") @(_editingId == entry.Id ? "is-editing" : "")"
                             role="listitem">
                             @if (_editingId == entry.Id)
                             {
@@ -226,6 +261,8 @@
                                 </div>
                             }
                         </li>
+                            }
+                        }
                     }
                 </ul>
             </section>
@@ -249,7 +286,7 @@
 
     private bool _loading = true;
     private List<TimeEntryItem> _entries = new();
-    private Dictionary<string, List<TimeEntryItem>> _groupedEntries = new();
+    private Dictionary<string, List<AggregatedGroup>> _groupedEntries = new();
     private bool _hasMore = false;
     private int _currentPage = 1;
     private string? _editingId;
@@ -324,7 +361,11 @@
             .OrderByDescending(g => g.Key)
             .ToDictionary(
                 g => g.Key.ToString("yyyy-MM-dd"),
-                g => g.ToList()
+                g => g
+                    .GroupBy(e => new AggregateKey(e.Description, e.ClientName, e.ProjectName, e.TaskName))
+                    .Select(ag => new AggregatedGroup(ag.Key, ag.ToList()))
+                    .OrderByDescending(ag => ag.Entries.Max(e => e.StartedAt))
+                    .ToList()
             );
     }
 
@@ -356,9 +397,8 @@
         {
             await Tauri.TimeEntryDeleteAsync(entryId);
             // Remove from local list immediately for responsiveness
-            foreach (var group in _groupedEntries)
-                group.Value.RemoveAll(e => e.Id == entryId);
             _entries.RemoveAll(e => e.Id == entryId);
+            RebuildGroups();
             StateHasChanged();
         }
         catch (Exception ex)
@@ -594,6 +634,56 @@
             // Scroll restoration via JS — stub for T029a compliance intent
         }
         catch { }
+    }
+
+    private record AggregateKey(
+        string Description,
+        string? ClientName,
+        string? ProjectName,
+        string? TaskName);
+
+    private sealed class AggregatedGroup
+    {
+        public AggregateKey Key { get; }
+        public List<TimeEntryItem> Entries { get; }
+        public bool IsExpanded { get; set; }
+
+        public AggregatedGroup(AggregateKey key, List<TimeEntryItem> entries)
+        {
+            Key = key;
+            Entries = entries;
+        }
+
+        public string MostRecentEntryId =>
+            Entries.MaxBy(e => e.StartedAt)!.Id;
+
+        public TimeSpan TotalDuration
+        {
+            get
+            {
+                var total = TimeSpan.Zero;
+                foreach (var e in Entries)
+                {
+                    if (e.StartedAt is not null && e.EndedAt is not null
+                        && DateTime.TryParse(e.StartedAt, null,
+                            System.Globalization.DateTimeStyles.RoundtripKind, out var s)
+                        && DateTime.TryParse(e.EndedAt, null,
+                            System.Globalization.DateTimeStyles.RoundtripKind, out var end)
+                        && end > s)
+                    {
+                        total += end - s;
+                    }
+                }
+                return total;
+            }
+        }
+    }
+
+    private static string FormatTotalDuration(TimeSpan span)
+    {
+        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
+        return string.Format("{0:D2}:{1:D2}:{2:D2}",
+            (int)span.TotalHours, span.Minutes, span.Seconds);
     }
 
     private static string FormatDate(string isoDate) =>
