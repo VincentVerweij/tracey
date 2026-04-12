@@ -141,7 +141,9 @@ async fn classify_record(app: &AppHandle, rec: &UnclassifiedRecord) {
             };
 
             if should_prompt {
-                let suggestions_json = serde_json::to_value(&result).unwrap_or_default();
+                let mut all_suggestions = vec![result.top.clone()];
+                all_suggestions.extend(result.suggestions.clone());
+                let suggestions_json = serde_json::to_value(&all_suggestions).unwrap_or_default();
                 if let Err(e) = app.emit(
                     "tracey://classification-needed",
                     serde_json::json!({
