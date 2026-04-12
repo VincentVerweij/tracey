@@ -39,6 +39,8 @@
                 <input id="new-client-name"
                        type="text"
                        @bind="_newClientName"
+                       @bind:event="oninput"
+                       @onkeydown="@(e => HandleNewClientKey(e))"
                        placeholder="Client name"
                        aria-label="Client name" />
             </div>
@@ -54,6 +56,8 @@
                 <input id="new-client-logo"
                        type="text"
                        @bind="_newClientLogoPath"
+                       @bind:event="oninput"
+                       @onkeydown="@(e => HandleNewClientKey(e))"
                        placeholder="C:\path\to\logo.png"
                        aria-label="Logo path" />
             </div>
@@ -403,6 +407,12 @@
         {
             _errorMessage = $"Failed to create client: {ex.Message}";
         }
+    }
+
+    private async Task HandleNewClientKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SaveNewClient();
+        else if (e.Key == "Escape") CancelAddClient();
     }
 
     private void CancelAddClient()
