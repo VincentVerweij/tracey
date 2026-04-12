@@ -14,7 +14,7 @@
                 Show archived
             </label>
             <BbButton Variant="ButtonVariant.Default" Size="ButtonSize.Small"
-                      OnClick="@(() => { _showAddClient = !_showAddClient; })"
+                      OnClick="ToggleAddClient"
                       AriaLabel="Add client">
                 + Add client
             </BbButton>
@@ -38,6 +38,7 @@
                 <label for="new-client-name">Name</label>
                 <input id="new-client-name"
                        type="text"
+                       @ref="_clientNameRef"
                        @bind="_newClientName"
                        @bind:event="oninput"
                        @onkeydown="@(e => HandleNewClientKey(e))"
@@ -234,6 +235,7 @@
                                                 {
                                                     <div class="add-task-form">
                                                         <input type="text"
+                                                               @ref="_taskNameRefs[project.Id]"
                                                                @bind="_newTaskName[project.Id]"
                                                                @bind:event="oninput"
                                                                @onkeydown="@(e => HandleNewTaskKey(e, project.Id))"
@@ -259,6 +261,7 @@
                             {
                                 <div class="add-project-form">
                                     <input type="text"
+                                           @ref="_projectNameRefs[client.Id]"
                                            @bind="_newProjectName[client.Id]"
                                            @bind:event="oninput"
                                            @onkeydown="@(e => HandleNewProjectKey(e, client.Id))"
@@ -298,6 +301,13 @@
     private bool _showAddClient;
     private bool _showArchived;
     private bool _loading;
+
+    private ElementReference _clientNameRef;
+    private Dictionary<string, ElementReference> _projectNameRefs = [];
+    private Dictionary<string, ElementReference> _taskNameRefs = [];
+    private bool _pendingFocusClient;
+    private string? _pendingFocusProjectId;
+    private string? _pendingFocusTaskId;
     private string? _errorMessage;
 
     private string _newClientName = string.Empty;
@@ -311,6 +321,25 @@
         expanded ? $"Collapse {name}" : $"Expand {name}";
 
     protected override async Task OnInitializedAsync() => await LoadClients();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingFocusClient)
+        {
+            _pendingFocusClient = false;
+            await _clientNameRef.FocusAsync();
+        }
+        if (_pendingFocusProjectId is not null && _projectNameRefs.TryGetValue(_pendingFocusProjectId, out var projRef))
+        {
+            _pendingFocusProjectId = null;
+            await projRef.FocusAsync();
+        }
+        if (_pendingFocusTaskId is not null && _taskNameRefs.TryGetValue(_pendingFocusTaskId, out var taskRef))
+        {
+            _pendingFocusTaskId = null;
+            await taskRef.FocusAsync();
+        }
+    }
 
     private async Task LoadClients()
     {
@@ -409,6 +438,12 @@
         }
     }
 
+    private void ToggleAddClient()
+    {
+        _showAddClient = !_showAddClient;
+        if (_showAddClient) _pendingFocusClient = true;
+    }
+
     private void HandlePageKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Escape" && _showAddClient) CancelAddClient();
@@ -484,6 +519,7 @@
     {
         _showAddProject[clientId] = true;
         _newProjectName.TryAdd(clientId, string.Empty);
+        _pendingFocusProjectId = clientId;
     }
 
     private void HideAddProject(string clientId)
@@ -573,6 +609,7 @@
     {
         _showAddTask[projectId] = true;
         _newTaskName.TryAdd(projectId, string.Empty);
+        _pendingFocusTaskId = projectId;
     }
 
     private void HideAddTask(string projectId)
