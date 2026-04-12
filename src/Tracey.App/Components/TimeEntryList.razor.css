@@ -138,6 +138,14 @@
     flex-shrink: 0;
 }
 
+.entry-duration {
+    font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Code', Consolas, monospace;
+    font-size: 0.78rem;
+    color: var(--tracey-text-muted);
+    margin-left: 0.45rem;
+    flex-shrink: 0;
+}
+
 .entry-project {
     font-size: 0.72rem;
     color: var(--tracey-text-muted);

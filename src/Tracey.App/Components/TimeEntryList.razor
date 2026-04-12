@@ -177,9 +177,13 @@
                                 {
                                     <span class="auto-badge" title="Created automatically by classification">auto</span>
                                 }
-                                <span class="entry-times">
-                                    @FormatTime(entry.StartedAt) – @FormatTime(entry.EndedAt)
-                                </span>
+                                    <span class="entry-times">
+                                        @FormatTime(entry.StartedAt) – @FormatTime(entry.EndedAt)
+                                        @if (!string.IsNullOrEmpty(FormatDuration(entry.StartedAt, entry.EndedAt)))
+                                        {
+                                            <span class="entry-duration"> @FormatDuration(entry.StartedAt, entry.EndedAt)</span>
+                                        }
+                                    </span>
                                 @if (entry.ProjectName != null)
                                 {
                                     <span class="entry-project">
@@ -603,6 +607,19 @@
         if (DateTime.TryParse(isoUtc, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
             return dt.ToLocalTime().ToString("HH:mm");
         return isoUtc;
+    }
+    private static string FormatDuration(string? isoStarted, string? isoEnded)
+    {
+        if (isoStarted is null || isoEnded is null) return string.Empty;
+        if (DateTime.TryParse(isoStarted, null, System.Globalization.DateTimeStyles.RoundtripKind, out var s)
+            && DateTime.TryParse(isoEnded, null, System.Globalization.DateTimeStyles.RoundtripKind, out var e))
+        {
+            var span = e.ToLocalTime() - s.ToLocalTime();
+            if (span < TimeSpan.Zero) span = TimeSpan.Zero;
+            var hours = (int)span.TotalHours;
+            return string.Format("{0:D2}:{1:D2}:{2:D2}", hours, span.Minutes, span.Seconds);
+        }
+        return string.Empty;
     }
 
 }
