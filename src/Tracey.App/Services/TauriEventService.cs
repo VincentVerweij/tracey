@@ -160,5 +160,6 @@ public record ClassificationNeededPayload(
     [property: JsonPropertyName("event_id")] string EventId,
     [property: JsonPropertyName("process_name")] string ProcessName,
     [property: JsonPropertyName("window_title")] string WindowTitle,
+    [property: JsonPropertyName("ocr_text")] string? OcrText,
     [property: JsonPropertyName("pattern_key")] string PatternKey,
     [property: JsonPropertyName("suggestions")] ClassificationSuggestion[] Suggestions);

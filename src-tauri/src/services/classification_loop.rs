@@ -149,6 +149,7 @@ async fn classify_record(app: &AppHandle, rec: &UnclassifiedRecord) {
                         "event_id": event_id,
                         "process_name": rec.process_name,
                         "window_title": rec.window_title,
+                        "ocr_text": ocr_text,
                         "pattern_key": pattern_key,
                         "suggestions": suggestions_json,
                     }),
