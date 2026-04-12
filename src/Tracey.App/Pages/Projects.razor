@@ -481,7 +481,11 @@
         _newProjectName.TryAdd(clientId, string.Empty);
     }
 
-    private void HideAddProject(string clientId) => _showAddProject[clientId] = false;
+    private void HideAddProject(string clientId)
+    {
+        _showAddProject[clientId] = false;
+        _newProjectName[clientId] = string.Empty;
+    }
 
     private async Task HandleNewProjectKey(KeyboardEventArgs e, string clientId)
     {
@@ -566,7 +570,11 @@
         _newTaskName.TryAdd(projectId, string.Empty);
     }
 
-    private void HideAddTask(string projectId) => _showAddTask[projectId] = false;
+    private void HideAddTask(string projectId)
+    {
+        _showAddTask[projectId] = false;
+        _newTaskName[projectId] = string.Empty;
+    }
 
     private async Task HandleNewTaskKey(KeyboardEventArgs e, string projectId)
     {
