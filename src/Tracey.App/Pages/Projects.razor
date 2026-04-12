@@ -3,7 +3,7 @@
 
 <PageTitle>Projects</PageTitle>
 
-<div class="projects-page">
+<div class="projects-page" @onkeydown="HandlePageKeyDown">
     <div class="projects-header">
         <h1 class="page-title">Projects</h1>
         <div class="projects-toolbar">
@@ -407,6 +407,11 @@
         {
             _errorMessage = $"Failed to create client: {ex.Message}";
         }
+    }
+
+    private void HandlePageKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && _showAddClient) CancelAddClient();
     }
 
     private async Task HandleNewClientKey(KeyboardEventArgs e)
