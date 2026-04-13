@@ -41,7 +41,6 @@
             <BbButton Variant="ButtonVariant.Default"
                       Size="ButtonSize.Small"
                       AriaLabel="Start timer"
-                      Disabled="@(string.IsNullOrWhiteSpace(GetDescription()) && _slashMode != SlashMode.Description)"
                       OnClick="StartTimer">
                 Start ↵
             </BbButton>
