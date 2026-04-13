@@ -658,6 +658,16 @@
 
     private async Task StopTimer()
     {
+        // Persist any description typed while the timer was running
+        if (Timer.CurrentEntryId != null)
+        {
+            var description = GetDescription();
+            if (description != (Timer.CurrentDescription ?? string.Empty))
+            {
+                try { await Tauri.TimeEntryUpdateDescriptionAsync(Timer.CurrentEntryId, description); }
+                catch { /* best-effort: description update failure is non-fatal */ }
+            }
+        }
         await Timer.StopAsync();
         ResetAll();
         await OnTimerStopped.InvokeAsync();
