@@ -39,11 +39,7 @@ pub fn timer_start(
     state: State<'_, AppState>,
     request: TimerStartRequest,
 ) -> Result<TimerStartResponse, String> {
-    // Empty description is valid when a project is selected — the project/task context
-    // already identifies the work. Description is only mandatory in plain (no-project) mode.
-    let empty_without_context =
-        request.description.is_empty() && request.project_id.is_none();
-    if empty_without_context || request.description.len() > 500 {
+    if request.description.len() > 500 {
         return Err("invalid_description".to_string());
     }
 

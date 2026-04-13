@@ -129,6 +129,11 @@ public class TauriIpcService
     public Task<ModifiedAtResponse> TimeEntryUpdateTagsAsync(string entryId, string[] tagIds) =>
         Invoke<ModifiedAtResponse>("time_entry_update", new { request = new { id = entryId, tag_ids = tagIds } });
 
+    /// Partial update — sends only id + description; all other fields preserved by Rust.
+    /// Safe to call on a running entry (ended_at = NULL is preserved).
+    public Task<ModifiedAtResponse> TimeEntryUpdateDescriptionAsync(string entryId, string description) =>
+        Invoke<ModifiedAtResponse>("time_entry_update", new { request = new { id = entryId, description } });
+
     // ── Fuzzy Match ───────────────────────────────────────────────────────
 
     public Task<FuzzyMatchProjectsResponse> FuzzyMatchProjectsAsync(string query, int limit = 8) =>

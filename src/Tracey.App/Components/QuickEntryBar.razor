@@ -36,6 +36,15 @@
                 Stop
             </BbButton>
         }
+        else
+        {
+            <BbButton Variant="ButtonVariant.Default"
+                      Size="ButtonSize.Small"
+                      AriaLabel="Start timer"
+                      OnClick="StartTimer">
+                Start ↵
+            </BbButton>
+        }
     </div>
 
     @* Client disambiguation dropdown — shown BEFORE project is resolved *@
@@ -266,8 +275,7 @@
                 {
                     await ConfirmTask(_dropdownIndex < 0 ? 0 : _dropdownIndex);
                 }
-                else if (!string.IsNullOrWhiteSpace(GetDescription()) ||
-                         _slashMode == SlashMode.Description)
+                else
                 {
                     await StartTimer();
                 }
@@ -632,9 +640,6 @@
     {
         if (Timer.IsRunning) return; // guard against repeated Enter presses
         var description = GetDescription();
-        // Allow empty description when project/task already resolved via slash notation
-        if (string.IsNullOrWhiteSpace(description) && _slashMode != SlashMode.Description) return;
-
         _historySuggestions.Clear();
         ClearDropdowns();
 
@@ -653,6 +658,16 @@
 
     private async Task StopTimer()
     {
+        // Persist any description typed while the timer was running
+        if (Timer.CurrentEntryId != null)
+        {
+            var description = GetDescription();
+            if (description != (Timer.CurrentDescription ?? string.Empty))
+            {
+                try { await Tauri.TimeEntryUpdateDescriptionAsync(Timer.CurrentEntryId, description); }
+                catch { /* best-effort: description update failure is non-fatal */ }
+            }
+        }
         await Timer.StopAsync();
         ResetAll();
         await OnTimerStopped.InvokeAsync();
