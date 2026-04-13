@@ -139,12 +139,21 @@ public class TimerStateService : ITimerStateService
         string? projectName = null, string? clientId = null, string? clientName = null,
         string? taskName = null, string[]? tagIds = null)
     {
-        var result = await _tauri.TimerStartAsync(new TimerStartRequest(
-            description,
-            projectId,
-            taskId,
-            tagIds ?? []
-        ));
+        TimerStartResponse result;
+        try
+        {
+            result = await _tauri.TimerStartAsync(new TimerStartRequest(
+                description,
+                projectId,
+                taskId,
+                tagIds ?? []
+            ));
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[TimerStateService] StartAsync failed: {ex.Message}");
+            return;
+        }
 
         _isRunning = true;
         _currentEntryId = result.Id;
