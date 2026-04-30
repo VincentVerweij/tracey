@@ -30,6 +30,7 @@ static LOG_LEVEL: AtomicU8 = AtomicU8::new(3);
 static LOG_FILE: OnceLock<Mutex<BufWriter<std::fs::File>>> = OnceLock::new();
 
 fn level_str_to_u8(level: &str) -> u8 {
+    // Accepts the user-facing level names stored in user_preferences.log_level
     match level.to_lowercase().as_str() {
         "error"           => 1,
         "warning" | "warn" => 2,
@@ -40,6 +41,7 @@ fn level_str_to_u8(level: &str) -> u8 {
 }
 
 fn event_level_to_u8(level: &str) -> u8 {
+    // Accepts the uppercase short-form levels used by log_event()
     match level {
         "ERROR"            => 1,
         "WARN" | "WARNING" => 2,

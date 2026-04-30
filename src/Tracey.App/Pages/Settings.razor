@@ -509,13 +509,14 @@
                         <select id="log-level-select"
                                 class="settings-input settings-select"
                                 @bind="_logLevel"
-                                disabled="@(!_loggingEnabled)">
+                                disabled="@(!_loggingEnabled)"
+                                aria-label="Log level — enable logging first to change this setting">
                             <option value="error">Error — critical failures only</option>
                             <option value="warning">Warning — errors and warnings</option>
                             <option value="info">Info — normal operation (recommended)</option>
                             <option value="trace">Trace — verbose diagnostic output</option>
                         </select>
-                        <span class="settings-hint">Only events at or above the selected level are written to the log file.</span>
+                        <span class="settings-hint">Only events at or above the selected level are written to the log file.@(!_loggingEnabled ? " Enable logging to change this setting." : "")</span>
                     </div>
                 </div>
                 <div class="settings-actions">

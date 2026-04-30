@@ -26,7 +26,12 @@ pub fn run() {
         let log_path = db::resolve_db_path_for(None)
             .parent()
             .map(|d| d.join("tracey.log"))
-            .unwrap_or_else(|| std::path::PathBuf::from("tracey.log"));
+            .unwrap_or_else(|| {
+                // Extremely unlikely — only if the DB path itself has no parent directory.
+                // Fall back to the same APPDATA location used by the DB.
+                let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+                std::path::PathBuf::from(appdata).join("tracey").join("tracey.log")
+            });
         services::logger::init_file_logger(logging_enabled, &log_level, &log_path);
     }
 
