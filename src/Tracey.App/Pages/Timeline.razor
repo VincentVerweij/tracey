@@ -148,6 +148,11 @@
 </div>
 
 @code {
+    private const double HoursPerDay = 24.0;
+    private const double DefaultTimelineWidthPx = 800;
+    private const double MinViewStartDelta = 0.0001;
+    private const string TimelineWidthJsMethod = "traceyBridge.getTimelineBarWidth";
+
     private List<ScreenshotItem> _screenshots = new();
     private ScreenshotItem? _selected;
     private ScreenshotItem? _hoverNearest;
@@ -160,7 +165,7 @@
     private string? _hoverTimeLabel;
 
     // Zoom state
-    private double _zoomHours = 24.0;    // hours visible in the window (24 = full day)
+    private double _zoomHours = HoursPerDay;    // hours visible in the window (24 = full day)
     private double _viewStartHours = 0.0; // hours from midnight where view starts
 
     // Zoom range drag state
@@ -385,7 +390,7 @@
     {
         // DeltaY > 0 = scroll down = zoom out; DeltaY < 0 = scroll up = zoom in
         var factor = e.DeltaY > 0 ? 1.5 : (1.0 / 1.5);
-        var newZoom = Math.Clamp(_zoomHours * factor, 0.5, 24.0);
+        var newZoom = Math.Clamp(_zoomHours * factor, 0.5, HoursPerDay);
         if (Math.Abs(newZoom - _zoomHours) < 0.001) return;
 
         // Get mouse position as fraction [0,1] within bar
@@ -398,7 +403,7 @@
         _zoomHours = newZoom;
 
         // Clamp so we don't scroll past midnight
-        _viewStartHours = Math.Clamp(_viewStartHours, 0.0, Math.Max(0.0, 24.0 - _zoomHours));
+        _viewStartHours = Math.Clamp(_viewStartHours, 0.0, Math.Max(0.0, HoursPerDay - _zoomHours));
         StateHasChanged();
     }
 
@@ -414,9 +419,10 @@
     {
         var width = await GetTimelineBarWidthAsync();
         var deltaPx = e.ClientX - _dragStartClientX;
-        var deltaHours = deltaPx / Math.Max(width, 1) * 24.0;
-        var newStart = Math.Clamp(_dragStartViewStartHours + deltaHours, 0.0, Math.Max(0.0, 24.0 - _zoomHours));
-        if (Math.Abs(newStart - _viewStartHours) < 0.0001) return;
+        var safeWidth = width > 0 ? width : DefaultTimelineWidthPx;
+        var deltaHours = deltaPx / safeWidth * HoursPerDay;
+        var newStart = Math.Clamp(_dragStartViewStartHours + deltaHours, 0.0, Math.Max(0.0, HoursPerDay - _zoomHours));
+        if (Math.Abs(newStart - _viewStartHours) < MinViewStartDelta) return;
 
         _viewStartHours = newStart;
         _didDragZoomRange = true;
@@ -436,17 +442,17 @@
     {
         try
         {
-            return await JS.InvokeAsync<double>("traceyBridge.getTimelineBarWidth");
+            return await JS.InvokeAsync<double>(TimelineWidthJsMethod);
         }
-        catch
+        catch (JSException)
         {
-            return 800;
+            return DefaultTimelineWidthPx;
         }
     }
 
     private void ResetZoom()
     {
-        _zoomHours = 24.0;
+        _zoomHours = HoursPerDay;
         _viewStartHours = 0.0;
         StateHasChanged();
     }
@@ -458,9 +464,9 @@
         return $"{_zoomHours:F0}h window";
     }
 
-    private double GetZoomRangeLeftPercent() => _viewStartHours / 24.0 * 100.0;
+    private double GetZoomRangeLeftPercent() => _viewStartHours / HoursPerDay * 100.0;
 
-    private double GetZoomRangeWidthPercent() => _zoomHours / 24.0 * 100.0;
+    private double GetZoomRangeWidthPercent() => _zoomHours / HoursPerDay * 100.0;
 
     public void Dispose()
     {
