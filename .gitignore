@@ -475,6 +475,8 @@ tags
 tags.*
 TAGS
 TAGS.*
+!**/Tags.razor
+!**/Tags.razor.css
 
 ## Python
 __pycache__/

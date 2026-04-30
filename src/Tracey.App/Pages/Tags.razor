@@ -1,0 +1,180 @@
+@page "/tags"
+@inject TauriIpcService Tauri
+
+<PageTitle>Tags — Tracey</PageTitle>
+
+<div class="tags-page">
+    <header class="tags-header">
+        <div class="tags-header-text">
+            <h1 class="page-title">Tags</h1>
+            <p class="page-subtitle">Organize time entries with reusable labels.</p>
+        </div>
+        <form class="tag-create-row" @onsubmit="CreateTag" @onsubmit:preventDefault>
+            <input type="text"
+                   @bind="_newTagName"
+                   @bind:event="oninput"
+                   placeholder="New tag name…"
+                   aria-label="New tag name"
+                   class="t-input tag-name-input"
+                   maxlength="50"
+                   disabled="@_creating" />
+            <button type="submit"
+                    class="t-btn t-btn-primary"
+                    disabled="@(_creating || string.IsNullOrWhiteSpace(_newTagName))">
+                Add tag
+            </button>
+        </form>
+    </header>
+
+    @if (_createError != null)
+    {
+        <p class="t-inline-error" role="alert">@_createError</p>
+    }
+
+    @if (_loading)
+    {
+        <p class="t-loading-text" aria-live="polite">Loading…</p>
+    }
+    else if (_tags.Count == 0)
+    {
+        <div class="empty-state-illustration">
+            <span class="empty-state-emoji" aria-hidden="true">🏷️</span>
+            <p class="empty-state-message">No tags yet.</p>
+            <p class="empty-state-hint">Add one above to get started.</p>
+        </div>
+    }
+    else
+    {
+        <ul class="tag-list" role="list" aria-label="Tags">
+            @foreach (var tag in _tags)
+            {
+                var isConfirming = _pendingDeleteTag?.Id == tag.Id;
+                <li class="tag-row @(isConfirming ? "tag-row--confirming" : "")" role="listitem">
+                    @if (isConfirming)
+                    {
+                        <span class="tag-row-name">@tag.Name</span>
+                        <span class="tag-confirm-text">
+                            @(tag.EntryCount > 0
+                                ? $"Removes from {tag.EntryCount} {(tag.EntryCount == 1 ? "entry" : "entries")}."
+                                : "Delete this tag?")
+                        </span>
+                        <button class="t-btn t-btn-danger"
+                                @onclick="ExecuteDelete"
+                                disabled="@_deleting"
+                                aria-label="@($"Confirm delete {tag.Name}")">
+                            Delete
+                        </button>
+                        <button class="t-btn t-btn-secondary"
+                                @onclick="() => _pendingDeleteTag = null"
+                                aria-label="Cancel">
+                            Cancel
+                        </button>
+                    }
+                    else
+                    {
+                        <span class="tag-chip">@tag.Name</span>
+                        <span class="tag-count" aria-label="@tag.EntryCount @(tag.EntryCount == 1 ? "entry" : "entries")">
+                            @tag.EntryCount @(tag.EntryCount == 1 ? "entry" : "entries")
+                        </span>
+                        <button class="tag-btn--remove t-btn t-btn-secondary"
+                                @onclick="() => ConfirmDelete(tag)"
+                                aria-label="@($"Delete {tag.Name}")">
+                            Remove
+                        </button>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    private List<TagItem> _tags = new();
+    private bool _loading = true;
+    private string _newTagName = string.Empty;
+    private string? _createError;
+    private bool _creating;
+    private TagItem? _pendingDeleteTag;
+    private bool _deleting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTags();
+    }
+
+    private async Task LoadTags()
+    {
+        _loading = true;
+        _createError = null;
+        try
+        {
+            var response = await Tauri.TagListAsync();
+            _tags = response.Tags.ToList();
+        }
+        catch (Exception ex)
+        {
+            _createError = $"Failed to load tags: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CreateTag()
+    {
+        var name = _newTagName.Trim();
+        if (string.IsNullOrEmpty(name)) return;
+
+        _creating = true;
+        _createError = null;
+        try
+        {
+            await Tauri.TagCreateAsync(name);
+            _newTagName = string.Empty;
+            await LoadTags();
+        }
+        catch (Exception ex) when (ex.Message.Contains("name_conflict"))
+        {
+            _createError = "A tag with this name already exists.";
+        }
+        catch (Exception ex) when (ex.Message.Contains("name_required"))
+        {
+            _createError = "Tag name cannot be empty.";
+        }
+        catch (Exception ex)
+        {
+            _createError = $"Create failed: {ex.Message}";
+        }
+        finally
+        {
+            _creating = false;
+        }
+    }
+
+    private void ConfirmDelete(TagItem tag)
+    {
+        _pendingDeleteTag = tag;
+    }
+
+    private async Task ExecuteDelete()
+    {
+        if (_pendingDeleteTag == null) return;
+        _deleting = true;
+        try
+        {
+            await Tauri.TagDeleteAsync(_pendingDeleteTag.Id);
+            _pendingDeleteTag = null;
+            await LoadTags();
+        }
+        catch (Exception ex)
+        {
+            _createError = $"Delete failed: {ex.Message}";
+            _pendingDeleteTag = null;
+        }
+        finally
+        {
+            _deleting = false;
+        }
+    }
+}

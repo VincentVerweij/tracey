@@ -315,6 +315,79 @@ test.describe('US1 — Start Tracking Time on a Task', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Discard running timer
+  // spec: "user can discard a running time entry; entry is deleted, not saved"
+  // ─────────────────────────────────────────────────────────────────────────
+
+  test.describe('Discard Running Timer', () => {
+
+    test('discard button is visible when timer is running', async ({ page }) => {
+      await waitForApp(page);
+
+      const quickEntry = page.getByRole('textbox', { name: /what are you working on/i });
+      await quickEntry.fill('Task to discard');
+      await quickEntry.press('Enter');
+
+      await expect(page.getByRole('timer')).toBeVisible();
+      await expect(page.getByRole('button', { name: /discard timer/i })).toBeVisible();
+    });
+
+    test('clicking discard shows inline confirmation dialog', async ({ page }) => {
+      await waitForApp(page);
+
+      const quickEntry = page.getByRole('textbox', { name: /what are you working on/i });
+      await quickEntry.fill('Task to discard');
+      await quickEntry.press('Enter');
+
+      await expect(page.getByRole('timer')).toBeVisible();
+      await page.getByRole('button', { name: /discard timer/i }).click();
+
+      await expect(page.getByRole('dialog', { name: /confirm discard/i })).toBeVisible();
+      await expect(page.getByRole('button', { name: /cancel discard/i })).toBeVisible();
+      await expect(page.getByRole('button', { name: /confirm discard/i })).toBeVisible();
+    });
+
+    test('clicking Cancel on discard dialog leaves timer running', async ({ page }) => {
+      await waitForApp(page);
+
+      const quickEntry = page.getByRole('textbox', { name: /what are you working on/i });
+      await quickEntry.fill('Cancel discard check');
+      await quickEntry.press('Enter');
+
+      await expect(page.getByRole('timer')).toBeVisible();
+      await page.getByRole('button', { name: /discard timer/i }).click();
+      await page.getByRole('button', { name: /cancel discard/i }).click();
+
+      // Dialog is gone, timer still running
+      await expect(page.getByRole('dialog', { name: /confirm discard/i })).not.toBeVisible();
+      await expect(page.getByRole('timer')).toBeVisible();
+    });
+
+    test('confirming discard stops the timer and entry does not appear in Timeline', async ({ page }) => {
+      if (!(await hasTauriAvailable(page))) {
+        test.skip(true, 'Requires Tauri bridge — run with tauri-driver for IPC tests');
+      }
+      await waitForApp(page);
+
+      const quickEntry = page.getByRole('textbox', { name: /what are you working on/i });
+      await quickEntry.fill('Discarded entry unique-text-12345');
+      await quickEntry.press('Enter');
+
+      await expect(page.getByRole('timer')).toBeVisible();
+      await page.getByRole('button', { name: /discard timer/i }).click();
+      await page.getByRole('button', { name: /confirm discard/i }).click();
+
+      // Timer stops
+      await expect(page.getByRole('timer')).not.toBeVisible();
+
+      // Entry must NOT appear in Timeline
+      await page.getByRole('link', { name: /timeline/i }).click();
+      await expect(page.getByText('Discarded entry unique-text-12345')).not.toBeVisible();
+    });
+
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
   // US1 AC5 — Continue (restart a past entry)
   // spec: "new timer starts from current time; description/project/task copied"
   // ─────────────────────────────────────────────────────────────────────────
