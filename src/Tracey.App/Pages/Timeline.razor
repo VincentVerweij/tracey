@@ -52,13 +52,14 @@
                 </div>
             }
             <div class="timeline-bar-inner"
-                 @onmousemove="HandleBarMouseMove"
+                  @onmousemove="HandleBarMouseMove"
+                 @onmouseup="HandleBarMouseUp"
                  @onmouseleave="HandleBarMouseLeave"
                  @onclick="HandleBarClick"
-                 @onwheel="HandleBarWheel"
-                 @onwheel:preventDefault="true"
-                 @ondblclick="ResetZoom"
-                 data-zoom="@_zoomHours.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)">
+                  @onwheel="HandleBarWheel"
+                  @onwheel:preventDefault="true"
+                  @ondblclick="ResetZoom"
+                  data-zoom="@_zoomHours.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)">
 
                 @* Hour markers — only render hours within the current zoom window *@
                 @for (int h = 0; h <= 23; h++)
@@ -70,6 +71,16 @@
                          style="left: @hPct.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%"
                          aria-hidden="true">
                         <span class="hour-label">@hour.ToString("D2")</span>
+                    </div>
+                }
+
+                @if (_zoomHours < 23.9)
+                {
+                    <div class="timeline-zoom-range-overlay @(_isDraggingZoomRange ? "timeline-zoom-range-overlay-dragging" : "")"
+                         style="left: @GetZoomRangeLeftPercent().ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%; width: @GetZoomRangeWidthPercent().ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%;"
+                         @onmousedown="HandleZoomRangeMouseDown"
+                         @onmousedown:stopPropagation="true"
+                         aria-label="Current zoom range. Drag left or right to move the visible time window.">
                     </div>
                 }
 
@@ -151,6 +162,13 @@
     // Zoom state
     private double _zoomHours = 24.0;    // hours visible in the window (24 = full day)
     private double _viewStartHours = 0.0; // hours from midnight where view starts
+
+    // Zoom range drag state
+    private bool _isDraggingZoomRange;
+    private bool _didDragZoomRange;
+    private bool _suppressNextBarClick;
+    private double _dragStartClientX;
+    private double _dragStartViewStartHours;
 
     protected override async Task OnInitializedAsync()
     {
@@ -253,6 +271,12 @@
 
     private async Task HandleBarMouseMove(MouseEventArgs e)
     {
+        if (_isDraggingZoomRange)
+        {
+            await HandleZoomRangeDragAsync(e);
+            return;
+        }
+
         var pct = await GetMousePercentAsync(e.OffsetX);
         _hoverPct = pct;
 
@@ -270,6 +294,7 @@
 
     private void HandleBarMouseLeave()
     {
+        HandleBarMouseUp();
         _hoverTimeLabel = null;
         _hoverNearest = null;
         _hoverImageUrl = string.Empty;
@@ -278,6 +303,12 @@
 
     private async Task HandleBarClick(MouseEventArgs e)
     {
+        if (_suppressNextBarClick)
+        {
+            _suppressNextBarClick = false;
+            return;
+        }
+
         var pct = await GetMousePercentAsync(e.OffsetX);
         var nearest = FindNearestScreenshot(pct);
         if (nearest != null)
@@ -371,6 +402,48 @@
         StateHasChanged();
     }
 
+    private void HandleZoomRangeMouseDown(MouseEventArgs e)
+    {
+        _isDraggingZoomRange = true;
+        _didDragZoomRange = false;
+        _dragStartClientX = e.ClientX;
+        _dragStartViewStartHours = _viewStartHours;
+    }
+
+    private async Task HandleZoomRangeDragAsync(MouseEventArgs e)
+    {
+        var width = await GetTimelineBarWidthAsync();
+        var deltaPx = e.ClientX - _dragStartClientX;
+        var deltaHours = deltaPx / Math.Max(width, 1) * 24.0;
+        var newStart = Math.Clamp(_dragStartViewStartHours + deltaHours, 0.0, Math.Max(0.0, 24.0 - _zoomHours));
+        if (Math.Abs(newStart - _viewStartHours) < 0.0001) return;
+
+        _viewStartHours = newStart;
+        _didDragZoomRange = true;
+        StateHasChanged();
+    }
+
+    private void HandleBarMouseUp()
+    {
+        if (_isDraggingZoomRange && _didDragZoomRange)
+            _suppressNextBarClick = true;
+
+        _isDraggingZoomRange = false;
+        _didDragZoomRange = false;
+    }
+
+    private async Task<double> GetTimelineBarWidthAsync()
+    {
+        try
+        {
+            return await JS.InvokeAsync<double>("traceyBridge.getTimelineBarWidth");
+        }
+        catch
+        {
+            return 800;
+        }
+    }
+
     private void ResetZoom()
     {
         _zoomHours = 24.0;
@@ -385,10 +458,13 @@
         return $"{_zoomHours:F0}h window";
     }
 
+    private double GetZoomRangeLeftPercent() => _viewStartHours / 24.0 * 100.0;
+
+    private double GetZoomRangeWidthPercent() => _zoomHours / 24.0 * 100.0;
+
     public void Dispose()
     {
         Events.OnScreenshotCaptured -= HandleScreenshotCaptured;
         Events.OnError -= HandleError;
     }
 }
-

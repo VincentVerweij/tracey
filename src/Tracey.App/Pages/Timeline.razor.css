@@ -71,10 +71,28 @@
 .timeline-bar-inner {
     position: relative;
     height: 80px;
-    cursor: ns-resize;
+    cursor: crosshair;
     background: linear-gradient(to bottom, #1e1e2e 0%, #16213e 100%);
     user-select: none;
     overflow: hidden;
+}
+
+/* ─── Zoom drag range ────────────────────────────────────────── */
+.timeline-zoom-range-overlay {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    cursor: grab;
+    z-index: 1;
+}
+
+.timeline-zoom-range-overlay-dragging {
+    cursor: grabbing;
+    background: rgba(255, 255, 255, 0.14);
 }
 
 /* ─── Hour markers ─────────────────────────────────────────── */
