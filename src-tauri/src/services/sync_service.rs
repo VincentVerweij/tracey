@@ -954,7 +954,7 @@ fn read_user_preferences(db: &std::sync::Mutex<rusqlite::Connection>) -> Result<
                 notification_channels_json, process_deny_list_json,
                 auto_classification_enabled, auto_classification_confidence_threshold,
                 auto_classification_group_gap_seconds,
-                logging_enabled, log_level, theme
+                logging_enabled, log_level, minimize_to_tray, theme
          FROM user_preferences LIMIT 1",
         [],
         |row| Ok(crate::models::UserPreferences {
@@ -970,7 +970,8 @@ fn read_user_preferences(db: &std::sync::Mutex<rusqlite::Connection>) -> Result<
             auto_classification_group_gap_seconds: row.get(14).unwrap_or(120),
             logging_enabled: row.get(15).unwrap_or(false),
             log_level: row.get(16).unwrap_or_else(|_| "info".to_string()),
-            theme: row.get(17).unwrap_or_else(|_| "system".to_string()),
+            minimize_to_tray: row.get(17).unwrap_or(false),
+            theme: row.get(18).unwrap_or_else(|_| "system".to_string()),
         }),
     )
     .map_err(|e| e.to_string())

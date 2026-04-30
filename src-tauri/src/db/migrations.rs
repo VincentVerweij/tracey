@@ -36,8 +36,12 @@ const MIGRATIONS: &[(&str, &str)] = &[
         include_str!("migrations/008_logging_preferences.sql"),
     ),
     (
-        "009_theme_preference",
-        include_str!("migrations/009_theme_preference.sql"),
+        "009_minimize_to_tray",
+        include_str!("migrations/009_minimize_to_tray.sql"),
+    ),
+    (
+        "010_theme_preference",
+        include_str!("migrations/010_theme_preference.sql"),
     ),
 ];
 
