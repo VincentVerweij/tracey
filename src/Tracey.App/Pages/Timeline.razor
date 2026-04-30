@@ -44,13 +44,13 @@
     {
         <div class="timeline-day-bar"
              aria-label="24-hour timeline for @_dateFilter.ToString("yyyy-MM-dd")">
-            @if (_zoomHours < 23.9)
-            {
-                <div class="timeline-zoom-indicator" aria-live="polite">
-                    <span class="zoom-level-text">@FormatZoomLevel()</span>
+            <div class="timeline-zoom-indicator" aria-live="polite">
+                <span class="zoom-level-text">@FormatZoomLevel()</span>
+                @if (_zoomHours < 23.9)
+                {
                     <button class="zoom-reset-btn" @onclick="ResetZoom" title="Reset to full day view" aria-label="Reset zoom">↺ full day</button>
-                </div>
-            }
+                }
+            </div>
             <div class="timeline-bar-inner"
                   @onmousemove="HandleBarMouseMove"
                  @onmouseup="HandleBarMouseUp"
@@ -523,6 +523,7 @@
 
     private string FormatZoomLevel()
     {
+        if (_zoomHours >= 23.9) return "full day";
         if (_zoomHours < 1) return $"{(int)(_zoomHours * 60)}min window";
         if (_zoomHours < 1.5) return "1h window";
         return $"{_zoomHours:F0}h window";
