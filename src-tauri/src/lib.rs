@@ -11,7 +11,11 @@ mod services;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::init();
+    // Register the composite logger (env_logger for stderr + our file writer).
+    // Must come before any log::*!() calls, including those inside db::open().
+    // Do NOT call env_logger::init() — this replaces it.
+    services::logger::init_early_logger();
+
     commands::init_health();
     let conn = db::open().expect("DB init failed");
 
