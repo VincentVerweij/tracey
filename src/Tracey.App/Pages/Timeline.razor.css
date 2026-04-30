@@ -292,6 +292,7 @@
     justify-content: flex-end;
     gap: 0.5rem;
     padding: 0.25rem 0.75rem;
+    min-height: calc(0.7rem * 1.4 + 0.2rem + 2px + 0.5rem);
     background: var(--tracey-surface);
     border-bottom: 1px solid var(--tracey-border);
     font-size: 0.75rem;
