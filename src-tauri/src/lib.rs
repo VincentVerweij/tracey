@@ -8,6 +8,7 @@ pub mod db;
 mod models;
 mod platform;
 mod services;
+mod tray;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -99,6 +100,10 @@ pub fn run() {
                     }
                 }
             }
+
+            // Set up system tray icon with context menu
+            tray::setup_tray(app)?;
+
             services::timer_tick::start_tick_loop(app.handle().clone());
             services::idle_service::start_idle_loop(app.handle().clone());
             services::screenshot_service::start_screenshot_loop(app.handle().clone());
@@ -106,6 +111,29 @@ pub fn run() {
             services::activity_tracker::start_activity_loop(app.handle().clone());
             services::classification_loop::start_classification_loop(app.handle().clone());
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Check if minimize-to-tray is enabled
+                use tauri::Manager;
+                let app = window.app_handle();
+                let minimize = app.state::<AppState>()
+                    .db.lock()
+                    .ok()
+                    .and_then(|conn| {
+                        conn.query_row(
+                            "SELECT minimize_to_tray FROM user_preferences LIMIT 1",
+                            [],
+                            |row| row.get::<_, bool>(0),
+                        ).ok()
+                    })
+                    .unwrap_or(false);
+
+                if minimize {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::preferences_get,
