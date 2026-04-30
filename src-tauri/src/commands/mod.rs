@@ -86,7 +86,8 @@ pub fn preferences_get(state: State<'_, AppState>) -> Result<UserPreferences, St
                 page_size, external_db_uri_stored, external_db_enabled,
                 notification_channels_json, process_deny_list_json,
                 auto_classification_enabled, auto_classification_confidence_threshold,
-                auto_classification_group_gap_seconds
+                auto_classification_group_gap_seconds,
+                logging_enabled, log_level
          FROM user_preferences LIMIT 1",
         [],
         |row| {
@@ -106,6 +107,8 @@ pub fn preferences_get(state: State<'_, AppState>) -> Result<UserPreferences, St
                 auto_classification_enabled: row.get(12)?,
                 auto_classification_confidence_threshold: row.get(13)?,
                 auto_classification_group_gap_seconds: row.get(14)?,
+                logging_enabled: row.get(15)?,
+                log_level: row.get(16)?,
             })
         },
     )
@@ -129,6 +132,8 @@ pub struct PreferencesUpdateRequest {
     pub auto_classification_enabled: Option<bool>,
     pub auto_classification_confidence_threshold: Option<f64>,
     pub auto_classification_group_gap_seconds: Option<i64>,
+    pub logging_enabled: Option<bool>,
+    pub log_level: Option<String>,
 }
 
 #[tauri::command]
@@ -146,7 +151,8 @@ pub fn preferences_update(
                 page_size, external_db_uri_stored, external_db_enabled,
                 notification_channels_json, process_deny_list_json,
                 auto_classification_enabled, auto_classification_confidence_threshold,
-                auto_classification_group_gap_seconds
+                auto_classification_group_gap_seconds,
+                logging_enabled, log_level
          FROM user_preferences LIMIT 1",
         [],
         |row| {
@@ -166,6 +172,8 @@ pub fn preferences_update(
                 auto_classification_enabled: row.get(12)?,
                 auto_classification_confidence_threshold: row.get(13)?,
                 auto_classification_group_gap_seconds: row.get(14)?,
+                logging_enabled: row.get(15)?,
+                log_level: row.get(16)?,
             })
         },
     )
@@ -185,6 +193,8 @@ pub fn preferences_update(
     if let Some(v) = update.auto_classification_enabled { current.auto_classification_enabled = v; }
     if let Some(v) = update.auto_classification_confidence_threshold { current.auto_classification_confidence_threshold = v; }
     if let Some(v) = update.auto_classification_group_gap_seconds { current.auto_classification_group_gap_seconds = v; }
+    if let Some(v) = update.logging_enabled { current.logging_enabled = v; }
+    if let Some(v) = update.log_level { current.log_level = v; }
     // external_db_uri_stored is NOT updated here — managed exclusively by sync_configure command
 
     conn.execute(
@@ -201,8 +211,10 @@ pub fn preferences_update(
             process_deny_list_json = ?10,
             auto_classification_enabled = ?11,
             auto_classification_confidence_threshold = ?12,
-            auto_classification_group_gap_seconds = ?13
-         WHERE id = ?14",
+            auto_classification_group_gap_seconds = ?13,
+            logging_enabled = ?14,
+            log_level = ?15
+         WHERE id = ?16",
         rusqlite::params![
             current.local_timezone,
             current.inactivity_timeout_seconds,
@@ -217,10 +229,15 @@ pub fn preferences_update(
             current.auto_classification_enabled,
             current.auto_classification_confidence_threshold,
             current.auto_classification_group_gap_seconds,
+            current.logging_enabled,
+            current.log_level,
             current.id,
         ],
     )
     .map_err(|e| format!("preferences_update write failed: {}", e))?;
+
+    // Reflect changed logging settings in the running process immediately
+    crate::services::logger::update_logging_settings(current.logging_enabled, &current.log_level);
 
     Ok(current)
 }

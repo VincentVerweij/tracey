@@ -31,6 +31,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "007_auto_classification_loop",
         include_str!("migrations/007_auto_classification_loop.sql"),
     ),
+    (
+        "008_logging_preferences",
+        include_str!("migrations/008_logging_preferences.sql"),
+    ),
 ];
 
 pub fn run(conn: &Connection) -> SqlResult<()> {
