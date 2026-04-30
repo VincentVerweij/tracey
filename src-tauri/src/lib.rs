@@ -15,6 +15,21 @@ pub fn run() {
     commands::init_health();
     let conn = db::open().expect("DB init failed");
 
+    // Initialise file logger from persisted preferences (non-fatal if the query fails)
+    {
+        let logging_enabled: bool = conn
+            .query_row("SELECT logging_enabled FROM user_preferences LIMIT 1", [], |r| r.get(0))
+            .unwrap_or(false);
+        let log_level: String = conn
+            .query_row("SELECT log_level FROM user_preferences LIMIT 1", [], |r| r.get(0))
+            .unwrap_or_else(|_| "info".to_string());
+        let log_path = db::resolve_db_path_for(None)
+            .parent()
+            .map(|d| d.join("tracey.log"))
+            .unwrap_or_else(|| std::path::PathBuf::from("tracey.log"));
+        services::logger::init_file_logger(logging_enabled, &log_level, &log_path);
+    }
+
     use platform::windows::WindowsPlatformHooks;
     use std::sync::Arc;
     let platform: Arc<dyn platform::PlatformHooks + Send + Sync> = Arc::new(WindowsPlatformHooks);

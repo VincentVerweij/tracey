@@ -483,6 +483,47 @@
             </div>
         </section>
 
+        <!-- ── Logging ───────────────────────────────────────────────────────────── -->
+        <section class="settings-card">
+            <div class="settings-card-label">
+                <span class="settings-card-icon">📋</span>
+                <div>
+                    <h2 class="settings-card-title">Logging</h2>
+                    <p class="settings-card-desc">Write diagnostic logs to a file next to the application.</p>
+                </div>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-row">
+                    <label class="settings-label">Enable logging</label>
+                    <div class="settings-control-group">
+                        <label class="settings-toggle">
+                            <input type="checkbox" @bind="_loggingEnabled" />
+                            Write a <code>tracey.log</code> file next to the application
+                        </label>
+                        <span class="settings-hint">When enabled, events are appended to <code>tracey.log</code> in the same folder as the Tracey executable.</span>
+                    </div>
+                </div>
+                <div class="settings-row">
+                    <label for="log-level-select" class="settings-label">Log level</label>
+                    <div class="settings-control-group">
+                        <select id="log-level-select"
+                                class="settings-input settings-select"
+                                @bind="_logLevel"
+                                disabled="@(!_loggingEnabled)">
+                            <option value="error">Error — critical failures only</option>
+                            <option value="warning">Warning — errors and warnings</option>
+                            <option value="info">Info — normal operation (recommended)</option>
+                            <option value="trace">Trace — verbose diagnostic output</option>
+                        </select>
+                        <span class="settings-hint">Only events at or above the selected level are written to the log file.</span>
+                    </div>
+                </div>
+                <div class="settings-actions">
+                    <button class="t-btn t-btn-primary" @onclick="SaveLoggingPrefsAsync">Save</button>
+                </div>
+            </div>
+        </section>
+
         <!-- ── Danger Zone ────────────────────────────────────────────────────────────── -->
         <section class="settings-card settings-card-danger">
             <div class="settings-card-label">
@@ -568,6 +609,10 @@
     private int _groupGapSeconds = 120;
     private string _autoClassificationError = string.Empty;
 
+    // ── Logging ──────────────────────────────────────────────────────────────
+    private bool _loggingEnabled;
+    private string _logLevel = "info";
+
     private static readonly string[] _ianaTimezones =
     [
         "Africa/Abidjan", "Africa/Cairo", "Africa/Johannesburg", "Africa/Lagos", "Africa/Nairobi",
@@ -647,6 +692,10 @@
             _groupGapSeconds = prefs.AutoClassificationGroupGapSeconds > 0
                 ? prefs.AutoClassificationGroupGapSeconds
                 : 120;
+
+            // ── Logging ──────────────────────────────────────────────────────
+            _loggingEnabled = prefs.LoggingEnabled;
+            _logLevel = string.IsNullOrEmpty(prefs.LogLevel) ? "info" : prefs.LogLevel;
         }
         catch
         {
@@ -862,6 +911,27 @@
             _autoClassificationError = $"Couldn't save settings. {ex.Message}";
         }
         StateHasChanged();
+    }
+
+    private async Task SaveLoggingPrefsAsync()
+    {
+        _saveError   = null;
+        _saveSuccess = false;
+        try
+        {
+            await Tauri.PreferencesUpdateAsync(new PreferencesUpdateRequest(
+                LoggingEnabled: _loggingEnabled,
+                LogLevel:       _logLevel));
+            _saveSuccess = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _saveSuccess = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
     }
 
     private void RequestDeleteAll() => _showDeleteConfirm = true;

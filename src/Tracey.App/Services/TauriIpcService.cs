@@ -267,7 +267,9 @@ public record UserPreferences(
     [property: JsonPropertyName("notification_channels_json")] string? NotificationChannelsJson,
     [property: JsonPropertyName("auto_classification_enabled")] bool AutoClassificationEnabled,
     [property: JsonPropertyName("auto_classification_confidence_threshold")] float AutoClassificationConfidenceThreshold,
-    [property: JsonPropertyName("auto_classification_group_gap_seconds")] int AutoClassificationGroupGapSeconds);
+    [property: JsonPropertyName("auto_classification_group_gap_seconds")] int AutoClassificationGroupGapSeconds,
+    [property: JsonPropertyName("logging_enabled")] bool LoggingEnabled,
+    [property: JsonPropertyName("log_level")] string LogLevel);
 
 public record PreferencesUpdateRequest(
     [property: JsonPropertyName("inactivity_timeout_seconds")] long? InactivityTimeoutSeconds = null,
@@ -282,7 +284,9 @@ public record PreferencesUpdateRequest(
     [property: JsonPropertyName("notification_channels_json")] string? NotificationChannelsJson = null,
     [property: JsonPropertyName("auto_classification_enabled")] bool? AutoClassificationEnabled = null,
     [property: JsonPropertyName("auto_classification_confidence_threshold")] float? AutoClassificationConfidenceThreshold = null,
-    [property: JsonPropertyName("auto_classification_group_gap_seconds")] int? AutoClassificationGroupGapSeconds = null);
+    [property: JsonPropertyName("auto_classification_group_gap_seconds")] int? AutoClassificationGroupGapSeconds = null,
+    [property: JsonPropertyName("logging_enabled")] bool? LoggingEnabled = null,
+    [property: JsonPropertyName("log_level")] string? LogLevel = null);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Timer
