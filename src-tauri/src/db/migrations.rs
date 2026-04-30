@@ -45,12 +45,14 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ),
 ];
 
-fn user_preferences_has_theme_column(conn: &Connection) -> SqlResult<bool> {
-    let mut stmt = conn.prepare("PRAGMA table_info(user_preferences)")?;
+const THEME_PREFERENCE_MIGRATION_VERSION: &str = "010_theme_preference";
+
+fn table_has_column(conn: &Connection, table_name: &str, column_name: &str) -> SqlResult<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table_name})"))?;
     let mut rows = stmt.query([])?;
     while let Some(row) = rows.next()? {
-        let column_name: String = row.get(1)?;
-        if column_name == "theme" {
+        let name: String = row.get(1)?;
+        if name == column_name {
             return Ok(true);
         }
     }
@@ -83,7 +85,9 @@ pub fn run(conn: &Connection) -> SqlResult<()> {
         )?;
 
         if !already_applied {
-            if *version == "010_theme_preference" && user_preferences_has_theme_column(conn)? {
+            if *version == THEME_PREFERENCE_MIGRATION_VERSION
+                && table_has_column(conn, "user_preferences", "theme")?
+            {
                 log::warn!(
                     "Skipping migration {} because user_preferences.theme already exists; marking as applied",
                     version
