@@ -23,7 +23,7 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             "exit" => {
-                std::process::exit(0);
+                app.exit(0);
             }
             _ => {}
         })
