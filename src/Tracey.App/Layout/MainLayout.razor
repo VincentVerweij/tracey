@@ -1,5 +1,6 @@
 ﻿@inherits LayoutComponentBase
 @inject TauriIpcService Tauri
+@inject IJSRuntime JS
 
 <div class="tracey-shell">
     <nav class="sidebar" aria-label="Main navigation">
@@ -25,6 +26,23 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
+
+        // Apply saved theme as early as possible
+        try
+        {
+            var prefs = await Tauri.PreferencesGetAsync();
+            var theme = string.IsNullOrEmpty(prefs.Theme) ? "system" : prefs.Theme;
+            await JS.InvokeVoidAsync("traceySetTheme", theme);
+        }
+        catch (JSException)
+        {
+            // JS interop not available — theme attribute already defaults to "system" in HTML
+        }
+        catch
+        {
+            // Tauri bridge unavailable — theme attribute already defaults to "system" in HTML
+        }
+
         // Health check on startup — confirms the Rust bridge is alive.
         try
         {

@@ -273,7 +273,8 @@ public record UserPreferences(
     [property: JsonPropertyName("auto_classification_group_gap_seconds")] int AutoClassificationGroupGapSeconds,
     [property: JsonPropertyName("logging_enabled")] bool LoggingEnabled,
     [property: JsonPropertyName("log_level")] string LogLevel,
-    [property: JsonPropertyName("minimize_to_tray")] bool MinimizeToTray);
+    [property: JsonPropertyName("minimize_to_tray")] bool MinimizeToTray,
+    [property: JsonPropertyName("theme")] string Theme);
 
 public record PreferencesUpdateRequest(
     [property: JsonPropertyName("inactivity_timeout_seconds")] long? InactivityTimeoutSeconds = null,
@@ -291,7 +292,8 @@ public record PreferencesUpdateRequest(
     [property: JsonPropertyName("auto_classification_group_gap_seconds")] int? AutoClassificationGroupGapSeconds = null,
     [property: JsonPropertyName("logging_enabled")] bool? LoggingEnabled = null,
     [property: JsonPropertyName("log_level")] string? LogLevel = null,
-    [property: JsonPropertyName("minimize_to_tray")] bool? MinimizeToTray = null);
+    [property: JsonPropertyName("minimize_to_tray")] bool? MinimizeToTray = null,
+    [property: JsonPropertyName("theme")] string? Theme = null);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Timer

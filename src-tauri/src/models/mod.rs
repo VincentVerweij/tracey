@@ -107,6 +107,7 @@ pub struct UserPreferences {
     pub logging_enabled: bool,
     pub log_level: String,
     pub minimize_to_tray: bool,
+    pub theme: String,
 }
 
 // SQL: id is INTEGER AUTOINCREMENT (not TEXT)

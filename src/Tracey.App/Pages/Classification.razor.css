@@ -9,12 +9,12 @@
     font-size: 1rem;
     font-weight: 600;
     margin-bottom: 0.75rem;
-    color: var(--text-primary, #222);
+    color: var(--tracey-text);
 }
 
 .live-card {
-    background: var(--card-bg, #f9f9f9);
-    border: 1px solid var(--border-color, #e0e0e0);
+    background: var(--tracey-surface);
+    border: 1px solid var(--tracey-border);
     border-radius: 8px;
     padding: 1rem;
     display: flex;
@@ -23,8 +23,8 @@
 }
 
 .live-app { font-weight: 600; }
-.live-title { color: var(--text-muted, #555); font-size: 0.875rem; }
-.live-assignment { font-size: 0.8125rem; color: var(--accent, #0070f3); }
+.live-title { color: var(--tracey-text-muted); font-size: 0.875rem; }
+.live-assignment { font-size: 0.8125rem; color: var(--tracey-accent); }
 
 .live-meta {
     display: flex;
@@ -36,7 +36,7 @@
 .confidence-bar-wrap {
     width: 80px;
     height: 6px;
-    background: var(--bg-subtle, #eee);
+    background: var(--tracey-surface-alt);
     border-radius: 3px;
     overflow: hidden;
 }
@@ -44,17 +44,17 @@
 .confidence-bar {
     display: block;
     height: 100%;
-    background: var(--accent, #0070f3);
+    background: var(--tracey-accent);
     border-radius: 3px;
 }
 
-.confidence-value { font-size: 0.75rem; color: var(--text-muted, #666); }
+.confidence-value { font-size: 0.75rem; color: var(--tracey-text-muted); }
 
 .source-badge, .outcome-badge {
     font-size: 0.75rem;
     padding: 0.1rem 0.4rem;
     border-radius: 4px;
-    background: var(--bg-subtle, #eee);
+    background: var(--tracey-surface-alt);
 }
 
 .outcome-badge.outcome-auto { background: #d4edda; color: #155724; }
@@ -64,7 +64,7 @@
 .outcome-badge.outcome-user_corrected { background: #e2d9f3; color: #432874; }
 
 .live-ocr { margin-top: 0.25rem; font-size: 0.8125rem; }
-.live-ocr-text { font-size: 0.75rem; white-space: pre-wrap; color: var(--text-muted, #555); margin: 0.25rem 0 0; }
+.live-ocr-text { font-size: 0.75rem; white-space: pre-wrap; color: var(--tracey-text-muted); margin: 0.25rem 0 0; }
 
 .history-table {
     width: 100%;
@@ -75,27 +75,28 @@
 .history-table th {
     text-align: left;
     padding: 0.5rem 0.75rem;
-    border-bottom: 2px solid var(--border-color, #e0e0e0);
-    color: var(--text-muted, #555);
+    border-bottom: 2px solid var(--tracey-border);
+    color: var(--tracey-text-muted);
     font-weight: 600;
 }
 
 .history-table td {
     padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid var(--border-color, #f0f0f0);
+    border-bottom: 1px solid var(--tracey-border);
     vertical-align: middle;
 }
 
-.history-row:hover td { background: var(--bg-hover, #f5f5f5); }
-.history-row.correcting td { background: var(--bg-selected, #eef4ff); }
+.history-row:hover td { background: var(--tracey-surface-alt); }
+.history-row.correcting td { background: rgba(99, 102, 241, 0.08); }
 
 .btn-correct {
     background: none;
-    border: 1px solid var(--border-color, #ccc);
+    border: 1px solid var(--tracey-border);
     border-radius: 4px;
     padding: 0.2rem 0.5rem;
     cursor: pointer;
     font-size: 0.75rem;
+    color: var(--tracey-text);
 }
 
 .correction-row td { padding: 0; }
@@ -106,7 +107,7 @@
     flex-wrap: wrap;
     gap: 0.5rem;
     padding: 0.5rem 0.75rem;
-    background: var(--bg-selected, #eef4ff);
+    background: rgba(99, 102, 241, 0.08);
     font-size: 0.875rem;
 }
 
@@ -114,9 +115,11 @@
     flex: 1;
     min-width: 160px;
     padding: 0.3rem 0.5rem;
-    border: 1px solid var(--border-color, #ccc);
+    border: 1px solid var(--tracey-border);
     border-radius: 4px;
     font-size: 0.875rem;
+    background: var(--tracey-surface);
+    color: var(--tracey-text);
 }
 
 .correction-matches {
@@ -126,24 +129,25 @@
 }
 
 .correction-match-btn {
-    background: var(--card-bg, #fff);
-    border: 1px solid var(--border-color, #ccc);
+    background: var(--tracey-surface);
+    border: 1px solid var(--tracey-border);
     border-radius: 4px;
     padding: 0.2rem 0.5rem;
     cursor: pointer;
     font-size: 0.8125rem;
+    color: var(--tracey-text);
 }
 
 .correction-match-btn.selected {
-    background: var(--accent, #0070f3);
+    background: var(--tracey-accent);
     color: #fff;
-    border-color: var(--accent, #0070f3);
+    border-color: var(--tracey-accent);
 }
 
 .correction-form .error { color: #c00; font-size: 0.8125rem; }
 
 .empty-state {
-    color: var(--text-muted, #888);
+    color: var(--tracey-text-muted);
     font-size: 0.875rem;
 }
 
@@ -157,11 +161,12 @@
 
 .pagination button {
     padding: 0.3rem 0.75rem;
-    border: 1px solid var(--border-color, #ccc);
+    border: 1px solid var(--tracey-border);
     border-radius: 4px;
     background: none;
     cursor: pointer;
     font-size: 0.875rem;
+    color: var(--tracey-text);
 }
 
 .pagination button:disabled { opacity: 0.4; cursor: default; }

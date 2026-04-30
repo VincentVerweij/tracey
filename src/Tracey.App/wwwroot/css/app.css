@@ -18,6 +18,31 @@
     --tracey-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
+/* ── Dark theme tokens ─────────────────── */
+
+[data-theme="dark"] {
+    --tracey-surface: #161b22;
+    --tracey-surface-alt: #0d1117;
+    --tracey-border: #30363d;
+    --tracey-text: #e6edf3;
+    --tracey-text-muted: #8b949e;
+    --tracey-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+    color-scheme: dark;
+}
+
+/* System preference: apply dark tokens when OS is dark and no explicit theme is set */
+@media (prefers-color-scheme: dark) {
+    [data-theme="system"] {
+        --tracey-surface: #161b22;
+        --tracey-surface-alt: #0d1117;
+        --tracey-border: #30363d;
+        --tracey-text: #e6edf3;
+        --tracey-text-muted: #8b949e;
+        --tracey-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+        color-scheme: dark;
+    }
+}
+
 /* =========================================
    Global Base
    ========================================= */
@@ -437,4 +462,54 @@ button[aria-label="Add client"] {
     background-color: var(--tracey-accent-hover) !important;
     color: #ffffff !important;
     border-color: var(--tracey-accent-hover) !important;
+}
+
+/* =========================================
+   Dark-mode overrides for hardcoded colours
+   ========================================= */
+
+:is([data-theme="dark"]) a,
+:is([data-theme="dark"]) .btn-link {
+    color: #58a6ff;
+}
+
+:is([data-theme="dark"]) .t-error-banner {
+    background: #3d1f1f;
+    border-color: #6e3630;
+    color: #f48771;
+}
+
+:is([data-theme="dark"]) .t-btn-danger-outline:hover:not(:disabled) {
+    background: #3d1f1f;
+}
+
+:is([data-theme="dark"]) .btn:focus,
+:is([data-theme="dark"]) .btn:active:focus,
+:is([data-theme="dark"]) .btn-link.nav-link:focus,
+:is([data-theme="dark"]) .form-control:focus,
+:is([data-theme="dark"]) .form-check-input:focus {
+    box-shadow: 0 0 0 0.1rem var(--tracey-surface), 0 0 0 0.25rem #258cfb;
+}
+
+/* Override system-theme dark rules so they only apply when OS is dark */
+@media (prefers-color-scheme: dark) {
+    [data-theme="system"] a,
+    [data-theme="system"] .btn-link {
+        color: #58a6ff;
+    }
+    [data-theme="system"] .t-error-banner {
+        background: #3d1f1f;
+        border-color: #6e3630;
+        color: #f48771;
+    }
+    [data-theme="system"] .t-btn-danger-outline:hover:not(:disabled) {
+        background: #3d1f1f;
+    }
+    [data-theme="system"] .btn:focus,
+    [data-theme="system"] .btn:active:focus,
+    [data-theme="system"] .btn-link.nav-link:focus,
+    [data-theme="system"] .form-control:focus,
+    [data-theme="system"] .form-check-input:focus {
+        box-shadow: 0 0 0 0.1rem var(--tracey-surface), 0 0 0 0.25rem #258cfb;
+    }
 }

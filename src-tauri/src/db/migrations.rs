@@ -39,7 +39,33 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "009_minimize_to_tray",
         include_str!("migrations/009_minimize_to_tray.sql"),
     ),
+    (
+        "010_theme_preference",
+        include_str!("migrations/010_theme_preference.sql"),
+    ),
 ];
+
+const THEME_PREFERENCE_MIGRATION_VERSION: &str = "010_theme_preference";
+
+fn table_has_column(conn: &Connection, table_name: &str, column_name: &str) -> SqlResult<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table_name})"))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?;
+        if name == column_name {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn mark_migration_applied(conn: &Connection, version: &str) -> SqlResult<()> {
+    conn.execute(
+        "INSERT INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
+        rusqlite::params![version, chrono::Utc::now().to_rfc3339()],
+    )?;
+    Ok(())
+}
 
 pub fn run(conn: &Connection) -> SqlResult<()> {
     // Bootstrap the tracking table before we query it.
@@ -59,6 +85,17 @@ pub fn run(conn: &Connection) -> SqlResult<()> {
         )?;
 
         if !already_applied {
+            if *version == THEME_PREFERENCE_MIGRATION_VERSION
+                && table_has_column(conn, "user_preferences", "theme")?
+            {
+                log::warn!(
+                    "Skipping migration {} because user_preferences.theme already exists; marking as applied",
+                    version
+                );
+                mark_migration_applied(conn, version)?;
+                continue;
+            }
+
             log::info!("Applying migration: {}", version);
 
             // Run in a transaction — rollback on any failure

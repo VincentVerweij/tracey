@@ -87,7 +87,7 @@ pub fn preferences_get(state: State<'_, AppState>) -> Result<UserPreferences, St
                 notification_channels_json, process_deny_list_json,
                 auto_classification_enabled, auto_classification_confidence_threshold,
                 auto_classification_group_gap_seconds,
-                logging_enabled, log_level, minimize_to_tray
+                logging_enabled, log_level, minimize_to_tray, theme
          FROM user_preferences LIMIT 1",
         [],
         |row| {
@@ -110,6 +110,7 @@ pub fn preferences_get(state: State<'_, AppState>) -> Result<UserPreferences, St
                 logging_enabled: row.get(15)?,
                 log_level: row.get(16)?,
                 minimize_to_tray: row.get(17)?,
+                theme: row.get(18)?,
             })
         },
     )
@@ -136,6 +137,7 @@ pub struct PreferencesUpdateRequest {
     pub logging_enabled: Option<bool>,
     pub log_level: Option<String>,
     pub minimize_to_tray: Option<bool>,
+    pub theme: Option<String>,
 }
 
 #[tauri::command]
@@ -154,7 +156,7 @@ pub fn preferences_update(
                 notification_channels_json, process_deny_list_json,
                 auto_classification_enabled, auto_classification_confidence_threshold,
                 auto_classification_group_gap_seconds,
-                logging_enabled, log_level, minimize_to_tray
+                logging_enabled, log_level, minimize_to_tray, theme
          FROM user_preferences LIMIT 1",
         [],
         |row| {
@@ -177,6 +179,7 @@ pub fn preferences_update(
                 logging_enabled: row.get(15)?,
                 log_level: row.get(16)?,
                 minimize_to_tray: row.get(17)?,
+                theme: row.get(18)?,
             })
         },
     )
@@ -199,6 +202,7 @@ pub fn preferences_update(
     if let Some(v) = update.logging_enabled { current.logging_enabled = v; }
     if let Some(v) = update.log_level { current.log_level = v; }
     if let Some(v) = update.minimize_to_tray { current.minimize_to_tray = v; }
+    if let Some(v) = update.theme { current.theme = v; }
     // external_db_uri_stored is NOT updated here — managed exclusively by sync_configure command
 
     conn.execute(
@@ -218,8 +222,9 @@ pub fn preferences_update(
             auto_classification_group_gap_seconds = ?13,
             logging_enabled = ?14,
             log_level = ?15,
-            minimize_to_tray = ?16
-         WHERE id = ?17",
+            minimize_to_tray = ?16,
+            theme = ?17
+         WHERE id = ?18",
         rusqlite::params![
             current.local_timezone,
             current.inactivity_timeout_seconds,
@@ -237,6 +242,7 @@ pub fn preferences_update(
             current.logging_enabled,
             current.log_level,
             current.minimize_to_tray,
+            current.theme,
             current.id,
         ],
     )
