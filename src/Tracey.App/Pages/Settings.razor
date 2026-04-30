@@ -5,6 +5,7 @@
 @using System.Text.Json
 @inject TauriIpcService Tauri
 @inject IEnumerable<INotificationChannel> NotificationChannels
+@inject IJSRuntime JS
 
 <PageTitle>Settings — Tracey</PageTitle>
 
@@ -61,6 +62,20 @@
                                @bind="_pageSize"
                                @bind:after="SavePageSizeAsync" />
                         <span class="settings-hint">Number of time entries shown per page in the timer list.</span>
+                    </div>
+                </div>
+                <div class="settings-row">
+                    <label for="theme-select" class="settings-label">Theme</label>
+                    <div class="settings-control-group">
+                        <select id="theme-select"
+                                class="settings-input settings-select"
+                                @bind="_theme"
+                                @bind:after="SaveThemeAsync">
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                            <option value="system">System</option>
+                        </select>
+                        <span class="settings-hint">Choose light, dark, or match your operating system theme.</span>
                     </div>
                 </div>
             </div>
@@ -588,6 +603,7 @@
     // ── General ───────────────────────────────────────────────────────────────────
     private string _timezone = "Europe/Amsterdam";
     private int _pageSize = 25;
+    private string _theme = "system";
 
     // ── Screenshots ─────────────────────────────────────────────────────────────
     private int _screenshotIntervalMinutes = 5;
@@ -671,6 +687,7 @@
             // ── General ─────────────────────────────────────────────────────
             _timezone = string.IsNullOrEmpty(prefs.Timezone) ? "Europe/Amsterdam" : prefs.Timezone;
             _pageSize = (int)(prefs.EntriesPerPage > 0 ? prefs.EntriesPerPage : 25);
+            _theme = string.IsNullOrEmpty(prefs.Theme) ? "system" : prefs.Theme;
 
             // ── Screenshots ──────────────────────────────────────────────────
             _screenshotIntervalMinutes = (int)(prefs.ScreenshotIntervalSeconds > 0 ? prefs.ScreenshotIntervalSeconds / 60 : 5);
@@ -806,6 +823,26 @@
 
     private Task SaveTimezoneAsync() => SaveGeneralAsync();
     private Task SavePageSizeAsync() => SaveGeneralAsync();
+
+    private async Task SaveThemeAsync()
+    {
+        _saveError   = null;
+        _saveSuccess = false;
+        try
+        {
+            await Tauri.PreferencesUpdateAsync(new PreferencesUpdateRequest(Theme: _theme));
+            await JS.InvokeVoidAsync("traceySetTheme", _theme);
+            _saveSuccess = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _saveSuccess = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
+    }
 
     private async Task SaveGeneralAsync()
     {

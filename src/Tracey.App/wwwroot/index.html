@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="system">
 
 <head>
     <meta charset="utf-8" />
@@ -39,6 +39,10 @@
         </details>
     </div>
     <script>
+        // Theme helper — sets data-theme on <html> so CSS tokens respond immediately.
+        window.traceySetTheme = function (theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+        };
         // Capture unhandled errors from the Blazor WASM runtime and surface them
         // in #blazor-error-message so users can copy and report them without DevTools.
         (function () {
