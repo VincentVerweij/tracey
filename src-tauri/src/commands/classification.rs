@@ -461,6 +461,9 @@ pub struct ClassificationEventItem {
     pub client_id: Option<String>,
     pub project_id: Option<String>,
     pub task_id: Option<String>,
+    pub client_name: Option<String>,
+    pub project_name: Option<String>,
+    pub task_name: Option<String>,
     pub confidence: f64,
     pub classification_source: String,
     pub outcome: String,
@@ -495,10 +498,15 @@ pub fn classification_event_list(
     ).unwrap_or(0);
 
     let mut stmt = conn.prepare(
-        "SELECT id, war_id, process_name, window_title, client_id, project_id, task_id, \
-                confidence, classification_source, outcome, ocr_text, created_at \
-         FROM classification_events \
-         ORDER BY created_at DESC \
+        "SELECT ce.id, ce.war_id, ce.process_name, ce.window_title, \
+                ce.client_id, ce.project_id, ce.task_id, \
+                c.name, p.name, t.name, \
+                ce.confidence, ce.classification_source, ce.outcome, ce.ocr_text, ce.created_at \
+         FROM classification_events ce \
+         LEFT JOIN clients c ON ce.client_id = c.id \
+         LEFT JOIN projects p ON ce.project_id = p.id \
+         LEFT JOIN tasks t ON ce.task_id = t.id \
+         ORDER BY ce.created_at DESC \
          LIMIT ?1 OFFSET ?2",
     ).map_err(|e| e.to_string())?;
 
@@ -512,11 +520,14 @@ pub fn classification_event_list(
             client_id:             r.get(4)?,
             project_id:            r.get(5)?,
             task_id:               r.get(6)?,
-            confidence:            r.get(7)?,
-            classification_source: r.get(8)?,
-            outcome:               r.get(9)?,
-            ocr_text:              r.get(10)?,
-            created_at:            r.get(11)?,
+            client_name:           r.get(7)?,
+            project_name:          r.get(8)?,
+            task_name:             r.get(9)?,
+            confidence:            r.get(10)?,
+            classification_source: r.get(11)?,
+            outcome:               r.get(12)?,
+            ocr_text:              r.get(13)?,
+            created_at:            r.get(14)?,
         }),
     ).map_err(|e| e.to_string())?
     .filter_map(|r| r.ok())

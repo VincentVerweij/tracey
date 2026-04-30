@@ -152,6 +152,9 @@ public record ClassificationSuggestion(
     [property: JsonPropertyName("client_id")] string? ClientId,
     [property: JsonPropertyName("project_id")] string? ProjectId,
     [property: JsonPropertyName("task_id")] string? TaskId,
+    [property: JsonPropertyName("client_name")] string? ClientName,
+    [property: JsonPropertyName("project_name")] string? ProjectName,
+    [property: JsonPropertyName("task_name")] string? TaskName,
     [property: JsonPropertyName("confidence")] float Confidence,
     [property: JsonPropertyName("source")] string Source);
 

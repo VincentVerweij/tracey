@@ -155,7 +155,10 @@
         title.Length > 60 ? title[..57] + "…" : title;
 
     private static string FormatLabel(ClassificationSuggestion s) =>
-        string.Join(" / ", new[] { s.ClientId, s.ProjectId, s.TaskId }
+        string.Join(" / ", new[] { s.ClientName, s.ProjectName, s.TaskName }
+            .Where(x => !string.IsNullOrEmpty(x)))
+        is { Length: > 0 } label ? label
+        : string.Join(" / ", new[] { s.ClientId, s.ProjectId, s.TaskId }
             .Where(x => !string.IsNullOrEmpty(x)));
 
     public void Dispose()
