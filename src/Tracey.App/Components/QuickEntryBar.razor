@@ -57,8 +57,10 @@
     {
         <div role="dialog"
              aria-label="Confirm discard time entry"
+             aria-modal="true"
+             aria-describedby="discard-confirm-msg"
              class="entry-inline-confirm">
-            <p>Discard this running time entry?</p>
+            <p id="discard-confirm-msg">Discard this running time entry?</p>
             <div class="entry-inline-confirm-actions">
                 <BbButton Variant="ButtonVariant.Destructive"
                           Size="ButtonSize.Small"
