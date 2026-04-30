@@ -23,6 +23,13 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             "exit" => {
+                // Destroy all webview windows before exiting so WebView2 / Chromium can
+                // properly unregister its window classes. Calling app.exit(0) while windows
+                // are hidden (minimize-to-tray) leaves Chrome_WidgetWin_0 still registered
+                // and produces ERROR_CLASS_HAS_WINDOWS (1412) in the log.
+                for (_, window) in app.webview_windows() {
+                    let _ = window.destroy();
+                }
                 app.exit(0);
             }
             _ => {}
