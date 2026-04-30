@@ -35,6 +35,12 @@
                       OnClick="StopTimer">
                 Stop
             </BbButton>
+            <BbButton Variant="ButtonVariant.Ghost"
+                      Size="ButtonSize.Small"
+                      AriaLabel="Discard timer"
+                      OnClick="() => { _confirmDiscard = true; StateHasChanged(); }">
+                Discard
+            </BbButton>
         }
         else
         {
@@ -46,6 +52,29 @@
             </BbButton>
         }
     </div>
+
+    @if (_confirmDiscard)
+    {
+        <div role="dialog"
+             aria-label="Confirm discard time entry"
+             class="entry-inline-confirm">
+            <p>Discard this running time entry?</p>
+            <div class="entry-inline-confirm-actions">
+                <BbButton Variant="ButtonVariant.Destructive"
+                          Size="ButtonSize.Small"
+                          AriaLabel="Confirm discard"
+                          OnClick="DiscardTimer">
+                    Discard
+                </BbButton>
+                <BbButton Variant="ButtonVariant.Ghost"
+                          Size="ButtonSize.Small"
+                          AriaLabel="Cancel discard"
+                          OnClick="() => { _confirmDiscard = false; StateHasChanged(); }">
+                    Cancel
+                </BbButton>
+            </div>
+        </div>
+    }
 
     @* Client disambiguation dropdown — shown BEFORE project is resolved *@
     @if (_disambiguationItems.Count > 1 && _resolvedProject is null)
@@ -180,6 +209,10 @@
     // ─── Tag selection ────────────────────────────────────────────────────
 
     private List<string> _selectedTagIds = new();
+
+    // ─── Discard confirmation state ───────────────────────────────────────
+
+    private bool _confirmDiscard = false;
 
     // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -673,6 +706,14 @@
         await OnTimerStopped.InvokeAsync();
     }
 
+    private async Task DiscardTimer()
+    {
+        _confirmDiscard = false;
+        await Timer.DiscardAsync();
+        ResetAll();
+        await OnTimerStopped.InvokeAsync();
+    }
+
     private async Task HandleTagsChanged(List<string> newTagIds)
     {
         _selectedTagIds = newTagIds;
@@ -703,6 +744,7 @@
         _projectQuery = string.Empty;
         _taskQuery    = string.Empty;
         _selectedTagIds = new();
+        _confirmDiscard = false;
         ClearDropdowns();
     }
 

@@ -36,6 +36,9 @@ public class TauriIpcService
     public Task<TimerStopResponse> TimerStopAsync() =>
         Invoke<TimerStopResponse>("timer_stop");
 
+    public Task TimerDiscardAsync() =>
+        Invoke<object>("timer_discard");
+
     public Task<ActiveTimerResponse> TimerGetActiveAsync() =>
         Invoke<ActiveTimerResponse>("timer_get_active");
 
