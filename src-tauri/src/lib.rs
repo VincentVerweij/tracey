@@ -116,6 +116,7 @@ pub fn run() {
             commands::timer::time_entry_continue,
             commands::timer::time_entry_update,
             commands::timer::time_entry_delete,
+            commands::timer::timer_discard,
             commands::idle::idle_get_status,
             commands::idle::idle_resolve,
             commands::hierarchy::client_list,

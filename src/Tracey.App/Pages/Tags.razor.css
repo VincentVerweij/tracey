@@ -1,0 +1,127 @@
+/* =========================================
+   Tags — Management page
+   ========================================= */
+
+.tags-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+/* ── Header ──────────────────────────────── */
+
+.tags-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.tags-header-text .page-title {
+    margin: 0;
+}
+
+.tags-header-text .page-subtitle {
+    /* inherits global .page-subtitle values */
+    margin: 0.25rem 0 0;
+}
+
+/* ── Create form ─────────────────────────── */
+
+.tag-create-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.tag-name-input {
+    /* width override — base styles handled by .t-input */
+    width: 220px;
+}
+
+/* ── State messages ──────────────────────── */
+
+/* ── Tag list ────────────────────────────── */
+
+.tag-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.tag-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--tracey-surface);
+    border: 1px solid var(--tracey-border);
+    border-radius: 8px;
+    transition: border-color 0.15s;
+}
+
+.tag-row:hover {
+    border-color: #d1d5db;
+}
+
+.tag-row--confirming {
+    border-color: #fca5a5;
+    background: #fef2f2;
+}
+
+/* Normal state */
+.tag-chip {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--tracey-text);
+    flex: 1;
+}
+
+.tag-count {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--tracey-text-muted);
+    background: var(--tracey-surface-alt);
+    border: 1px solid var(--tracey-border);
+    border-radius: 99px;
+    padding: 0.1em 0.6em;
+    line-height: 1.6;
+    min-width: 1.4em;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* Confirm state */
+.tag-row-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #9b1c1c;
+    flex-shrink: 0;
+}
+
+.tag-confirm-text {
+    font-size: 0.84rem;
+    color: #991b1b;
+    flex: 1;
+}
+
+/* ── Buttons ────────────────────────────── */
+
+/* ── Buttons ── Action buttons use global .t-btn + .t-btn-* classes.
+   Only .tag-btn--remove has page-specific behaviour (hidden until row hover). */
+
+.tag-btn--remove {
+    /* base appearance from .t-btn .t-btn-secondary */
+    margin-left: auto;
+    opacity: 0;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s, opacity 0.12s;
+}
+
+.tag-row:hover .tag-btn--remove {
+    opacity: 1;
+}

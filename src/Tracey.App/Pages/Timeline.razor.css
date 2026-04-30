@@ -71,10 +71,28 @@
 .timeline-bar-inner {
     position: relative;
     height: 80px;
-    cursor: ns-resize;
+    cursor: crosshair;
     background: linear-gradient(to bottom, #1e1e2e 0%, #16213e 100%);
     user-select: none;
     overflow: hidden;
+}
+
+/* ─── Zoom drag range ────────────────────────────────────────── */
+.timeline-zoom-range-overlay {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    cursor: grab;
+    z-index: 1;
+}
+
+.timeline-zoom-range-overlay-dragging {
+    cursor: grabbing;
+    background: rgba(255, 255, 255, 0.14);
 }
 
 /* ─── Hour markers ─────────────────────────────────────────── */
@@ -302,4 +320,156 @@
     background: var(--tracey-accent, #6366f1);
     color: #ffffff;
     border-color: var(--tracey-accent, #6366f1);
+}
+
+/* ─── Activity list panel ──────────────────────────────────── */
+.activity-list-panel {
+    background: var(--tracey-surface);
+    border: 1px solid var(--tracey-border);
+    border-radius: var(--tracey-radius);
+    overflow: hidden;
+}
+
+.activity-list-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.6rem 1rem;
+    background: var(--tracey-surface);
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--tracey-text);
+    text-align: left;
+    transition: background 0.15s;
+}
+
+.activity-list-header:hover {
+    background: var(--tracey-surface-alt, #f9fafb);
+}
+
+.activity-list-title {
+    flex: 1;
+}
+
+.activity-filter-badge {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 9999px;
+    background: rgba(99, 102, 241, 0.12);
+    color: var(--tracey-accent, #6366f1);
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.activity-list-count {
+    font-size: 0.75rem;
+    color: var(--tracey-text-muted, #6b7280);
+    font-weight: 400;
+    white-space: nowrap;
+}
+
+.activity-list-chevron {
+    font-size: 0.65rem;
+    color: var(--tracey-text-muted, #6b7280);
+    flex-shrink: 0;
+}
+
+.activity-list-body {
+    border-top: 1px solid var(--tracey-border);
+    max-height: 280px;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+
+.activity-list-empty {
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--tracey-text-muted, #6b7280);
+    font-size: 0.875rem;
+}
+
+.activity-table-wrapper {
+    overflow-x: auto;
+}
+
+.activity-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+
+.activity-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--tracey-surface);
+    padding: 0.4rem 0.75rem;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.75rem;
+    color: var(--tracey-text-muted, #6b7280);
+    border-bottom: 1px solid var(--tracey-border);
+    white-space: nowrap;
+    z-index: 1;
+}
+
+.activity-table tbody tr {
+    transition: background 0.1s;
+}
+
+.activity-table tbody tr:hover {
+    background: var(--tracey-surface-alt, #f9fafb);
+}
+
+.activity-table tbody tr + tr td {
+    border-top: 1px solid var(--tracey-border);
+}
+
+.activity-table td {
+    padding: 0.4rem 0.75rem;
+    vertical-align: middle;
+}
+
+.act-process {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--tracey-accent, #6366f1);
+    white-space: nowrap;
+}
+
+.act-title {
+    color: var(--tracey-text);
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.act-time {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 0.75rem;
+    color: var(--tracey-text-muted, #6b7280);
+    white-space: nowrap;
+}
+
+.act-row {
+    cursor: pointer;
+}
+
+.act-row:focus-visible {
+    outline: 2px solid var(--tracey-accent, #6366f1);
+    outline-offset: -2px;
+}
+
+.act-row-selected td {
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--tracey-text);
+}
+
+.act-row-selected .act-process {
+    color: var(--tracey-accent, #6366f1);
 }
