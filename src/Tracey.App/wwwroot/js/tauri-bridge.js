@@ -82,5 +82,13 @@
         return document.querySelector('.timeline-bar-inner')?.clientWidth ?? 800;
     }
 
-    window.traceyBridge = { initializeTauriBridge, disposeTauriBridge, convertFileSrc, getTimelineBarWidth };
+    function getTimelineBarPercent(clientX) {
+        var bar = document.querySelector('.timeline-bar-inner');
+        if (!bar) return 0;
+        var rect = bar.getBoundingClientRect();
+        if (rect.width <= 0) return 0;
+        return Math.max(0, Math.min(100, (clientX - rect.left) / rect.width * 100));
+    }
+
+    window.traceyBridge = { initializeTauriBridge, disposeTauriBridge, convertFileSrc, getTimelineBarWidth, getTimelineBarPercent };
 })();

@@ -282,7 +282,7 @@
             return;
         }
 
-        var pct = await GetMousePercentAsync(e.OffsetX);
+        var pct = await GetMousePercentAsync(e.ClientX);
         _hoverPct = pct;
 
         var actualHours = _viewStartHours + pct / 100.0 * _zoomHours;
@@ -314,7 +314,7 @@
             return;
         }
 
-        var pct = await GetMousePercentAsync(e.OffsetX);
+        var pct = await GetMousePercentAsync(e.ClientX);
         var nearest = FindNearestScreenshot(pct);
         if (nearest != null)
             await SelectScreenshot(nearest);
@@ -328,12 +328,11 @@
             .FirstOrDefault();
     }
 
-    private async Task<double> GetMousePercentAsync(double offsetX)
+    private async Task<double> GetMousePercentAsync(double clientX)
     {
         try
         {
-            var width = await JS.InvokeAsync<double>("traceyBridge.getTimelineBarWidth");
-            return Math.Clamp(offsetX / Math.Max(width, 1) * 100.0, 0, 100);
+            return await JS.InvokeAsync<double>("traceyBridge.getTimelineBarPercent", clientX);
         }
         catch
         {
@@ -394,7 +393,7 @@
         if (Math.Abs(newZoom - _zoomHours) < 0.001) return;
 
         // Get mouse position as fraction [0,1] within bar
-        var rawPct = await GetMousePercentAsync(e.OffsetX);
+        var rawPct = await GetMousePercentAsync(e.ClientX);
         // Mouse is at this hour in the current view
         var mouseHours = _viewStartHours + rawPct / 100.0 * _zoomHours;
 
