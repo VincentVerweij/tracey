@@ -45,6 +45,26 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ),
 ];
 
+fn user_preferences_has_theme_column(conn: &Connection) -> SqlResult<bool> {
+    let mut stmt = conn.prepare("PRAGMA table_info(user_preferences)")?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let column_name: String = row.get(1)?;
+        if column_name == "theme" {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn mark_migration_applied(conn: &Connection, version: &str) -> SqlResult<()> {
+    conn.execute(
+        "INSERT INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
+        rusqlite::params![version, chrono::Utc::now().to_rfc3339()],
+    )?;
+    Ok(())
+}
+
 pub fn run(conn: &Connection) -> SqlResult<()> {
     // Bootstrap the tracking table before we query it.
     // Migration 002 also creates it with IF NOT EXISTS, so the two are idempotent.
@@ -63,6 +83,15 @@ pub fn run(conn: &Connection) -> SqlResult<()> {
         )?;
 
         if !already_applied {
+            if *version == "010_theme_preference" && user_preferences_has_theme_column(conn)? {
+                log::warn!(
+                    "Skipping migration {} because user_preferences.theme already exists; marking as applied",
+                    version
+                );
+                mark_migration_applied(conn, version)?;
+                continue;
+            }
+
             log::info!("Applying migration: {}", version);
 
             // Run in a transaction — rollback on any failure
