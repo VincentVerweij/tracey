@@ -169,9 +169,14 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var entry in _visibleActivityEntries)
+                                     @foreach (var entry in _visibleActivityEntries)
                                     {
-                                        <tr>
+                                        <tr class="act-row @(_selected?.Id == entry.Screenshot.Id ? "act-row-selected" : "")"
+                                            @onclick="() => SelectScreenshot(entry.Screenshot)"
+                                            role="button"
+                                            tabindex="0"
+                                            title="Show screenshot at @FormatActivityTime(entry.Start)"
+                                            data-testid="activity-row">
                                             <td class="act-process" data-testid="process-name">@entry.ProcessName</td>
                                             <td class="act-title" data-testid="window-title">@entry.WindowTitle</td>
                                             <td class="act-time">@FormatActivityTime(entry.Start)</td>
@@ -475,7 +480,7 @@
                 j++;
             }
             var endDto = j < sorted.Count ? sorted[j].dto : (DateTimeOffset?)null;
-            entries.Add(new ActivityEntry(s.ProcessName, s.WindowTitle, startDto!.Value, endDto));
+            entries.Add(new ActivityEntry(s.ProcessName, s.WindowTitle, startDto!.Value, endDto, s));
             i = j;
         }
         _allActivityEntries = entries;
@@ -509,7 +514,8 @@
         string ProcessName,
         string WindowTitle,
         DateTimeOffset Start,
-        DateTimeOffset? End);
+        DateTimeOffset? End,
+        ScreenshotItem Screenshot);
 
     public void Dispose()
     {
