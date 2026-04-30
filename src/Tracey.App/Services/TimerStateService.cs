@@ -23,6 +23,7 @@ public interface ITimerStateService
         string? projectName = null, string? clientId = null, string? clientName = null,
         string? taskName = null, string[]? tagIds = null);
     Task StopAsync();
+    Task DiscardAsync();
     event Action? OnStateChanged;
 }
 
@@ -184,6 +185,36 @@ public class TimerStateService : ITimerStateService
         catch (Exception ex) when (ex.Message.Contains("no_active_timer"))
         {
             // Already stopped — sync local state
+        }
+
+        _isRunning = false;
+        _currentEntryId = null;
+        _currentDescription = null;
+        _currentProjectId = null;
+        _currentTaskId = null;
+        _currentProjectName = null;
+        _currentClientId = null;
+        _currentClientName = null;
+        _currentTaskName = null;
+        _currentTagIds = [];
+        _startedAt = null;
+        _elapsedSeconds = 0;
+
+        OnStateChanged?.Invoke();
+    }
+
+    public async Task DiscardAsync()
+    {
+        if (!_isRunning) return;
+        StopLocalTicker();
+
+        try
+        {
+            await _tauri.TimerDiscardAsync();
+        }
+        catch (Exception ex) when (ex.Message.Contains("no_active_timer"))
+        {
+            // Already gone — sync local state
         }
 
         _isRunning = false;
