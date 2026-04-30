@@ -831,8 +831,8 @@
         try
         {
             await Tauri.PreferencesUpdateAsync(new PreferencesUpdateRequest(Theme: _theme));
-            await JS.InvokeVoidAsync("traceySetTheme", _theme);
             _saveSuccess = true;
+            await JS.InvokeVoidAsync("traceySetTheme", _theme);
             StateHasChanged();
             await Task.Delay(2000);
             _saveSuccess = false;

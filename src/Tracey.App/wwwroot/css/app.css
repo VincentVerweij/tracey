@@ -468,48 +468,48 @@ button[aria-label="Add client"] {
    Dark-mode overrides for hardcoded colours
    ========================================= */
 
-:is([data-theme="dark"], [data-theme="system"]) a,
-:is([data-theme="dark"], [data-theme="system"]) .btn-link {
+:is([data-theme="dark"]) a,
+:is([data-theme="dark"]) .btn-link {
     color: #58a6ff;
 }
 
-:is([data-theme="dark"], [data-theme="system"]) .t-error-banner {
+:is([data-theme="dark"]) .t-error-banner {
     background: #3d1f1f;
     border-color: #6e3630;
     color: #f48771;
 }
 
-:is([data-theme="dark"], [data-theme="system"]) .t-btn-danger-outline:hover:not(:disabled) {
+:is([data-theme="dark"]) .t-btn-danger-outline:hover:not(:disabled) {
     background: #3d1f1f;
 }
 
-:is([data-theme="dark"], [data-theme="system"]) .btn:focus,
-:is([data-theme="dark"], [data-theme="system"]) .btn:active:focus,
-:is([data-theme="dark"], [data-theme="system"]) .btn-link.nav-link:focus,
-:is([data-theme="dark"], [data-theme="system"]) .form-control:focus,
-:is([data-theme="dark"], [data-theme="system"]) .form-check-input:focus {
+:is([data-theme="dark"]) .btn:focus,
+:is([data-theme="dark"]) .btn:active:focus,
+:is([data-theme="dark"]) .btn-link.nav-link:focus,
+:is([data-theme="dark"]) .form-control:focus,
+:is([data-theme="dark"]) .form-check-input:focus {
     box-shadow: 0 0 0 0.1rem var(--tracey-surface), 0 0 0 0.25rem #258cfb;
 }
 
 /* Override system-theme dark rules so they only apply when OS is dark */
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: dark) {
     [data-theme="system"] a,
     [data-theme="system"] .btn-link {
-        color: #0071c1;
+        color: #58a6ff;
     }
     [data-theme="system"] .t-error-banner {
-        background: #fef2f2;
-        border-color: #fecaca;
-        color: #991b1b;
+        background: #3d1f1f;
+        border-color: #6e3630;
+        color: #f48771;
     }
     [data-theme="system"] .t-btn-danger-outline:hover:not(:disabled) {
-        background: #fef2f2;
+        background: #3d1f1f;
     }
     [data-theme="system"] .btn:focus,
     [data-theme="system"] .btn:active:focus,
     [data-theme="system"] .btn-link.nav-link:focus,
     [data-theme="system"] .form-control:focus,
     [data-theme="system"] .form-check-input:focus {
-        box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
+        box-shadow: 0 0 0 0.1rem var(--tracey-surface), 0 0 0 0.25rem #258cfb;
     }
 }
