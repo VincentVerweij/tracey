@@ -376,8 +376,8 @@ pub fn start_screenshot_loop(app: AppHandle) {
                 }
             }
 
-            // Hourly cleanup (every 3600 ticks ≈ 1 hour)
-            if cleanup_tick % 3600 == 0 {
+            // Cleanup on startup (tick 1) and then every hour (every 3600 ticks)
+            if cleanup_tick == 1 || cleanup_tick % 3600 == 0 {
                 cleanup_expired(&app).await;
             }
         }
