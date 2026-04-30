@@ -63,6 +63,15 @@
                         <span class="settings-hint">Number of time entries shown per page in the timer list.</span>
                     </div>
                 </div>
+                <div class="settings-row">
+                    <label class="settings-label">Minimize to tray</label>
+                    <div class="settings-control-group">
+                        <label class="settings-toggle">
+                            <input type="checkbox" @bind="_minimizeToTray" @bind:after="SaveMinimizeToTrayAsync" />
+                            Minimize to system tray instead of closing
+                        </label>
+                    </div>
+                </div>
             </div>
         </section>
         <!-- ── Inactivity Detection ──────────────────────────────────── -->
@@ -614,6 +623,9 @@
     private bool _loggingEnabled;
     private string _logLevel = "info";
 
+    // ── System Tray ─────────────────────────────────────────────────────────
+    private bool _minimizeToTray;
+
     private static readonly string[] _ianaTimezones =
     [
         "Africa/Abidjan", "Africa/Cairo", "Africa/Johannesburg", "Africa/Lagos", "Africa/Nairobi",
@@ -697,6 +709,9 @@
             // ── Logging ──────────────────────────────────────────────────────
             _loggingEnabled = prefs.LoggingEnabled;
             _logLevel = string.IsNullOrEmpty(prefs.LogLevel) ? "info" : prefs.LogLevel;
+
+            // ── System Tray ─────────────────────────────────────────────────
+            _minimizeToTray = prefs.MinimizeToTray;
         }
         catch
         {
@@ -806,6 +821,7 @@
 
     private Task SaveTimezoneAsync() => SaveGeneralAsync();
     private Task SavePageSizeAsync() => SaveGeneralAsync();
+    private Task SaveMinimizeToTrayAsync() => SaveMinimizeToTrayPrefsAsync();
 
     private async Task SaveGeneralAsync()
     {
@@ -816,6 +832,26 @@
             await Tauri.PreferencesUpdateAsync(new PreferencesUpdateRequest(
                 Timezone:      _timezone,
                 EntriesPerPage: (long)_pageSize));
+            _saveSuccess = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _saveSuccess = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
+    }
+
+    private async Task SaveMinimizeToTrayPrefsAsync()
+    {
+        _saveError   = null;
+        _saveSuccess = false;
+        try
+        {
+            await Tauri.PreferencesUpdateAsync(new PreferencesUpdateRequest(
+                MinimizeToTray: _minimizeToTray));
             _saveSuccess = true;
             StateHasChanged();
             await Task.Delay(2000);

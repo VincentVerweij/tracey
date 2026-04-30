@@ -35,6 +35,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "008_logging_preferences",
         include_str!("migrations/008_logging_preferences.sql"),
     ),
+    (
+        "009_minimize_to_tray",
+        include_str!("migrations/009_minimize_to_tray.sql"),
+    ),
 ];
 
 pub fn run(conn: &Connection) -> SqlResult<()> {

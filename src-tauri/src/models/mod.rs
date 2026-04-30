@@ -106,6 +106,7 @@ pub struct UserPreferences {
     pub auto_classification_group_gap_seconds: i64,
     pub logging_enabled: bool,
     pub log_level: String,
+    pub minimize_to_tray: bool,
 }
 
 // SQL: id is INTEGER AUTOINCREMENT (not TEXT)
