@@ -127,6 +127,35 @@ async fn classify_record(app: &AppHandle, rec: &UnclassifiedRecord) {
             // Auto-create/extend time entry — conn passed directly, no second lock
             auto_create_or_extend_time_entry(&conn, &rec.id, &rec.recorded_at, &event_id, &result, group_gap);
         } else {
+            // Build suggestions with names while conn is still held, before locking ALQ
+            let mut all_suggestions_raw = vec![result.top.clone()];
+            all_suggestions_raw.extend(result.suggestions.clone());
+
+            // Collect unique IDs and fetch names in batch (one query per entity type)
+            let project_ids: Vec<&str> = all_suggestions_raw.iter()
+                .filter_map(|s| s.project_id.as_deref()).collect();
+            let client_ids: Vec<&str> = all_suggestions_raw.iter()
+                .filter_map(|s| s.client_id.as_deref()).collect();
+            let task_ids: Vec<&str> = all_suggestions_raw.iter()
+                .filter_map(|s| s.task_id.as_deref()).collect();
+
+            let project_names = fetch_names_by_ids(&conn, "projects", &project_ids);
+            let client_names = fetch_names_by_ids(&conn, "clients", &client_ids);
+            let task_names = fetch_names_by_ids(&conn, "tasks", &task_ids);
+
+            let suggestions_json: serde_json::Value = all_suggestions_raw.iter().map(|s| {
+                serde_json::json!({
+                    "client_id": s.client_id,
+                    "project_id": s.project_id,
+                    "task_id": s.task_id,
+                    "client_name": s.client_id.as_deref().and_then(|id| client_names.get(id).cloned()),
+                    "project_name": s.project_id.as_deref().and_then(|id| project_names.get(id).cloned()),
+                    "task_name": s.task_id.as_deref().and_then(|id| task_names.get(id).cloned()),
+                    "confidence": s.confidence,
+                    "source": s.source,
+                })
+            }).collect::<Vec<_>>().into();
+
             // Enqueue for active learning — release conn before locking ALQ
             drop(conn);
             let pattern_key = make_pattern_key(&rec.process_name, &rec.window_title);
@@ -141,9 +170,6 @@ async fn classify_record(app: &AppHandle, rec: &UnclassifiedRecord) {
             };
 
             if should_prompt {
-                let mut all_suggestions = vec![result.top.clone()];
-                all_suggestions.extend(result.suggestions.clone());
-                let suggestions_json = serde_json::to_value(&all_suggestions).unwrap_or_default();
                 if let Err(e) = app.emit(
                     "tracey://classification-needed",
                     serde_json::json!({
@@ -251,4 +277,27 @@ fn auto_create_or_extend_time_entry(
     }
     update_event_outcome(conn, event_id, "auto");
     let _ = war_id; // war_id used by caller for mark_classified
+}
+
+/// Fetch a map of id → name for the given `table` and list of IDs.
+/// Returns an empty map if `ids` is empty or the query fails.
+fn fetch_names_by_ids(
+    conn: &rusqlite::Connection,
+    table: &str,
+    ids: &[&str],
+) -> std::collections::HashMap<String, String> {
+    if ids.is_empty() {
+        return std::collections::HashMap::new();
+    }
+    let placeholders = (1..=ids.len()).map(|i| format!("?{i}")).collect::<Vec<_>>().join(", ");
+    let sql = format!("SELECT id, name FROM {table} WHERE id IN ({placeholders})");
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(_) => return std::collections::HashMap::new(),
+    };
+    stmt.query_map(rusqlite::params_from_iter(ids.iter()), |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })
+    .map(|rows| rows.filter_map(|r| r.ok()).collect())
+    .unwrap_or_default()
 }
