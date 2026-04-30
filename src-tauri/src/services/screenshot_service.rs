@@ -231,7 +231,7 @@ async fn capture_and_save(
 
 async fn cleanup_expired(app: &AppHandle) {
     // Phase 1: query what needs deleting — lock released before file I/O awaits
-    let (paths_to_delete, ids_to_delete): (Vec<String>, Vec<String>) = {
+    let (ids_to_delete, paths_to_delete): (Vec<String>, Vec<String>) = {
         let state = app.state::<AppState>();
         let conn = match state.db.lock() {
             Ok(c) => c,
@@ -376,8 +376,8 @@ pub fn start_screenshot_loop(app: AppHandle) {
                 }
             }
 
-            // Hourly cleanup (every 3600 ticks ≈ 1 hour)
-            if cleanup_tick % 3600 == 0 {
+            // Cleanup on startup (tick 1) and then every hour (every 3600 ticks)
+            if cleanup_tick == 1 || cleanup_tick % 3600 == 0 {
                 cleanup_expired(&app).await;
             }
         }
