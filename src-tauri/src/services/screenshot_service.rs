@@ -25,6 +25,10 @@ fn make_screenshot_filename() -> String {
     format!("{}.jpg", Ulid::new().to_string().to_lowercase())
 }
 
+// Sentinel returned by capture_screen_full_res_jpeg when the session is locked
+// (Win32 ERROR_INVALID_HANDLE / 0x80070006). Callers must skip silently.
+const ERR_SESSION_LOCKED: &str = "session_locked";
+
 // ─── T043 — Test double (no real GDI) ────────────────────────────────────────
 
 #[cfg(feature = "test")]
@@ -84,6 +88,11 @@ fn capture_screen_full_res_jpeg() -> Result<Vec<u8>, String> {
             let _ = DeleteObject(HGDIOBJ(hbm.0));
             let _ = DeleteDC(hdc_mem);
             ReleaseDC(desktop, hdc_screen);
+            // 0x80070006 = ERROR_INVALID_HANDLE: the desktop DC is inaccessible
+            // because the session is locked — treat as a silent skip condition.
+            if e.code().0 as u32 == 0x80070006 {
+                return Err(ERR_SESSION_LOCKED.to_string());
+            }
             return Err(e.to_string());
         }
 
@@ -365,14 +374,18 @@ pub fn start_screenshot_loop(app: AppHandle) {
                 if interval_elapsed { last_interval_capture = now; }
 
                 if let Err(e) = capture_and_save(&app, trigger, window_info).await {
-                    let _ = app.emit(
-                        "tracey://error",
-                        serde_json::json!({
-                            "component": "screenshot_service",
-                            "event": "screenshot_write_failed",
-                            "error": e,
-                        }),
-                    );
+                    if e == ERR_SESSION_LOCKED {
+                        log::debug!("[screenshot] skipped — session is locked");
+                    } else {
+                        let _ = app.emit(
+                            "tracey://error",
+                            serde_json::json!({
+                                "component": "screenshot_service",
+                                "event": "screenshot_write_failed",
+                                "error": e,
+                            }),
+                        );
+                    }
                 }
             }
 

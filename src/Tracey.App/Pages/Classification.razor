@@ -19,7 +19,7 @@
                     <span class="confidence-bar-wrap">
                         <span class="confidence-bar" style="width: @(Math.Round(_liveEvent.Confidence * 100))%"></span>
                     </span>
-                    <span class="confidence-value">@Math.Round(_liveEvent.Confidence * 100)%</span>
+                    <span class="confidence-value">@(_liveEvent.Confidence <= 0f ? "–" : $"{Math.Round(_liveEvent.Confidence * 100)}%")</span>
                     <span class="outcome-badge outcome-@_liveEvent.Outcome">@_liveEvent.Outcome</span>
                 </div>
                 @if (!string.IsNullOrEmpty(_liveEvent.ProjectId))
@@ -74,7 +74,7 @@
                             <td class="col-app">@item.ProcessName</td>
                             <td class="col-title" title="@item.WindowTitle">@TruncateTitle(item.WindowTitle)</td>
                             <td class="col-assignment">@FormatAssignment(item)</td>
-                            <td class="col-confidence">@Math.Round(item.Confidence * 100)%</td>
+                            <td class="col-confidence">@FormatConfidence(item)</td>
                             <td class="col-outcome">
                                 <span class="outcome-badge outcome-@item.Outcome">@item.Outcome</span>
                             </td>
@@ -259,9 +259,19 @@
     private static string TruncateTitle(string title) =>
         title.Length > 50 ? title[..47] + "…" : title;
 
-    private static string FormatAssignment(ClassificationEventItem item) =>
-        string.Join(" / ", new[] { item.ClientId, item.ProjectId, item.TaskId }
+    private static string FormatAssignment(ClassificationEventItem item)
+    {
+        var names = new[] { item.ClientName, item.ProjectName, item.TaskName }
+            .Where(x => !string.IsNullOrEmpty(x));
+        if (names.Any())
+            return string.Join(" / ", names);
+        // Fallback to IDs if names are not available
+        return string.Join(" / ", new[] { item.ClientId, item.ProjectId, item.TaskId }
             .Where(x => !string.IsNullOrEmpty(x)));
+    }
+
+    private static string FormatConfidence(ClassificationEventItem item) =>
+        item.Confidence <= 0f ? "–" : $"{Math.Round(item.Confidence * 100)}%";
 
     private static string FormatSource(string source) => source switch {
         "heuristic" => "Rule",

@@ -11,9 +11,33 @@ mod services;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::init();
+    // Register the composite logger (env_logger for stderr + our file writer).
+    // Must come before any log::*!() calls, including those inside db::open().
+    // Do NOT call env_logger::init() — this replaces it.
+    services::logger::init_early_logger();
+
     commands::init_health();
     let conn = db::open().expect("DB init failed");
+
+    // Initialise file logger from persisted preferences (non-fatal if the query fails)
+    {
+        let logging_enabled: bool = conn
+            .query_row("SELECT logging_enabled FROM user_preferences LIMIT 1", [], |r| r.get(0))
+            .unwrap_or(false);
+        let log_level: String = conn
+            .query_row("SELECT log_level FROM user_preferences LIMIT 1", [], |r| r.get(0))
+            .unwrap_or_else(|_| "info".to_string());
+        let log_path = db::resolve_db_path_for(None)
+            .parent()
+            .map(|d| d.join("tracey.log"))
+            .unwrap_or_else(|| {
+                // Extremely unlikely — only if the DB path itself has no parent directory.
+                // Fall back to the same APPDATA location used by the DB.
+                let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+                std::path::PathBuf::from(appdata).join("tracey").join("tracey.log")
+            });
+        services::logger::init_file_logger(logging_enabled, &log_level, &log_path);
+    }
 
     use platform::windows::WindowsPlatformHooks;
     use std::sync::Arc;
