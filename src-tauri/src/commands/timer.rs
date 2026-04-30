@@ -809,3 +809,40 @@ pub fn time_entry_delete(
 
     Ok(())
 }
+
+// ─────────────────────────────────────────────────────────────
+// timer_discard
+// ─────────────────────────────────────────────────────────────
+
+/// Stop and permanently delete the currently running timer entry without saving it.
+/// Returns `Err("no_active_timer")` if no timer is running.
+#[tauri::command]
+pub fn timer_discard(state: State<'_, AppState>) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+
+    let running_id: String = conn
+        .query_row(
+            "SELECT id FROM time_entries WHERE ended_at IS NULL LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => "no_active_timer".to_string(),
+            other => other.to_string(),
+        })?;
+
+    conn.execute(
+        "DELETE FROM time_entry_tags WHERE time_entry_id = ?1",
+        params![running_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "DELETE FROM time_entries WHERE id = ?1",
+        params![running_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    log::info!("timer_discard: discarded running entry {}", running_id);
+    Ok(())
+}
