@@ -133,6 +133,58 @@
                 </div>
             }
         </div>
+
+        @* Active window/title activity list *@
+        <div class="activity-list-panel" data-testid="activity-list-panel">
+            <button class="activity-list-header"
+                    @onclick="ToggleActivity"
+                    aria-expanded="@_activityExpanded"
+                    aria-controls="activity-list-body">
+                <span class="activity-list-title">🪟 Active Windows &amp; Titles</span>
+                @if (_zoomHours < 23.9)
+                {
+                    <span class="activity-filter-badge">@FormatZoomLevel()</span>
+                }
+                <span class="activity-list-count">@_visibleActivityEntries.Count @(_visibleActivityEntries.Count == 1 ? "entry" : "entries")</span>
+                <span class="activity-list-chevron" aria-hidden="true">@(_activityExpanded ? "▲" : "▼")</span>
+            </button>
+            @if (_activityExpanded)
+            {
+                <div class="activity-list-body" id="activity-list-body" role="region"
+                     aria-label="Active windows and titles">
+                    @if (_visibleActivityEntries.Count == 0)
+                    {
+                        <div class="activity-list-empty">No activity data for this period.</div>
+                    }
+                    else
+                    {
+                        <div class="activity-table-wrapper">
+                            <table class="activity-table" data-testid="activity-list">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Process</th>
+                                        <th scope="col">Title</th>
+                                        <th scope="col">Start</th>
+                                        <th scope="col">End</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var entry in _visibleActivityEntries)
+                                    {
+                                        <tr>
+                                            <td class="act-process" data-testid="process-name">@entry.ProcessName</td>
+                                            <td class="act-title" data-testid="window-title">@entry.WindowTitle</td>
+                                            <td class="act-time">@FormatActivityTime(entry.Start)</td>
+                                            <td class="act-time">@(entry.End.HasValue ? FormatActivityTime(entry.End.Value) : "—")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
     }
 </div>
 
@@ -151,6 +203,11 @@
     // Zoom state
     private double _zoomHours = 24.0;    // hours visible in the window (24 = full day)
     private double _viewStartHours = 0.0; // hours from midnight where view starts
+
+    // Activity list state
+    private bool _activityExpanded = true;
+    private List<ActivityEntry> _allActivityEntries = new();
+    private List<ActivityEntry> _visibleActivityEntries = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -178,6 +235,7 @@
             var to = _dateFilter.ToDateTime(TimeOnly.MaxValue).ToUniversalTime().ToString("o");
             var result = await Tauri.ScreenshotListAsync(from, to);
             _screenshots = (result ?? Array.Empty<ScreenshotItem>()).ToList();
+            BuildActivityEntries();
         }
         catch (Exception ex)
         {
@@ -368,6 +426,7 @@
 
         // Clamp so we don't scroll past midnight
         _viewStartHours = Math.Clamp(_viewStartHours, 0.0, Math.Max(0.0, 24.0 - _zoomHours));
+        RefreshVisibleEntries();
         StateHasChanged();
     }
 
@@ -375,6 +434,7 @@
     {
         _zoomHours = 24.0;
         _viewStartHours = 0.0;
+        RefreshVisibleEntries();
         StateHasChanged();
     }
 
@@ -384,6 +444,72 @@
         if (_zoomHours < 1.5) return "1h window";
         return $"{_zoomHours:F0}h window";
     }
+
+    private void ToggleActivity() => _activityExpanded = !_activityExpanded;
+
+    private void BuildActivityEntries()
+    {
+        if (_screenshots.Count == 0)
+        {
+            _allActivityEntries = new();
+            _visibleActivityEntries = new();
+            return;
+        }
+
+        var sorted = _screenshots
+            .Select(s => (s, dto: DateTimeOffset.TryParse(s.CapturedAt, out var d) ? d : (DateTimeOffset?)null))
+            .Where(x => x.dto.HasValue)
+            .OrderBy(x => x.dto!.Value)
+            .ToList();
+
+        var entries = new List<ActivityEntry>();
+        int i = 0;
+        while (i < sorted.Count)
+        {
+            var (s, startDto) = sorted[i];
+            int j = i + 1;
+            while (j < sorted.Count &&
+                   sorted[j].s.ProcessName == s.ProcessName &&
+                   sorted[j].s.WindowTitle == s.WindowTitle)
+            {
+                j++;
+            }
+            var endDto = j < sorted.Count ? sorted[j].dto : (DateTimeOffset?)null;
+            entries.Add(new ActivityEntry(s.ProcessName, s.WindowTitle, startDto!.Value, endDto));
+            i = j;
+        }
+        _allActivityEntries = entries;
+        RefreshVisibleEntries();
+    }
+
+    private void RefreshVisibleEntries()
+    {
+        if (_zoomHours >= 23.9)
+        {
+            _visibleActivityEntries = _allActivityEntries;
+            return;
+        }
+
+        var date = _dateFilter.ToDateTime(TimeOnly.MinValue, DateTimeKind.Local);
+        var viewStart = date.AddHours(_viewStartHours);
+        var viewEnd = date.AddHours(_viewStartHours + _zoomHours);
+
+        _visibleActivityEntries = _allActivityEntries.Where(e =>
+        {
+            var entryStart = e.Start.LocalDateTime;
+            var entryEnd = e.End.HasValue ? e.End.Value.LocalDateTime : DateTime.MaxValue;
+            return entryStart < viewEnd && entryEnd > viewStart;
+        }).ToList();
+    }
+
+    private static string FormatActivityTime(DateTimeOffset dto) =>
+        dto.LocalDateTime.ToString("HH:mm:ss");
+
+    private record ActivityEntry(
+        string ProcessName,
+        string WindowTitle,
+        DateTimeOffset Start,
+        DateTimeOffset? End);
 
     public void Dispose()
     {
