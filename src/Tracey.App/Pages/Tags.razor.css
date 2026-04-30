@@ -1,0 +1,111 @@
+/* =========================================
+   Tags — Management page
+   ========================================= */
+
+.tags-page {
+}
+
+.tags-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+}
+
+/* Add-tag form */
+.add-tag-form {
+    background: var(--tracey-surface);
+    border: 1px solid var(--tracey-border);
+    border-radius: 0.5rem;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.add-tag-form h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 0.75rem;
+}
+
+.form-group label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--tracey-text-muted);
+}
+
+.form-group input[type="text"] {
+    padding: 0.375rem 0.625rem;
+    border: 1px solid var(--tracey-border);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    background: var(--tracey-input-bg, transparent);
+    color: inherit;
+}
+
+.form-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Tag list */
+.tag-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.tag-card {
+    margin-bottom: 0 !important;
+}
+
+.tag-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0.75rem;
+}
+
+.tag-name {
+    font-weight: 500;
+    flex: 1;
+}
+
+.tag-meta {
+    font-size: 0.8125rem;
+    color: var(--tracey-text-muted);
+    white-space: nowrap;
+}
+
+/* Inline delete confirmation */
+.inline-confirm {
+    border-top: 1px solid var(--tracey-border);
+    padding: 0.75rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.inline-confirm p {
+    flex: 1 1 100%;
+    margin: 0 0 0.25rem;
+    font-size: 0.875rem;
+}
+
+.warn-icon {
+    font-size: 1.125rem;
+}
+
+/* Shared */
+.loading-text,
+.empty-state {
+    color: var(--tracey-text-muted);
+    font-size: 0.875rem;
+    padding: 1rem 0;
+}

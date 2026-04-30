@@ -1,0 +1,190 @@
+@page "/tags"
+@inject TauriIpcService Tauri
+
+<PageTitle>Tags — Tracey</PageTitle>
+
+<div class="tags-page">
+    <div class="tags-header">
+        <h1 class="page-title">Tags</h1>
+        <BbButton Variant="ButtonVariant.Default" Size="ButtonSize.Small"
+                  OnClick="ToggleAddTag"
+                  AriaLabel="Add tag">
+            + Add tag
+        </BbButton>
+    </div>
+
+    @if (_errorMessage != null)
+    {
+        <BbAlert Variant="AlertVariant.Danger" AccentBorder Dismissible
+                 OnDismiss="@(() => { _errorMessage = null; })">
+            <BbAlertTitle>Error</BbAlertTitle>
+            <BbAlertDescription>@_errorMessage</BbAlertDescription>
+        </BbAlert>
+    }
+
+    @if (_showAddTag)
+    {
+        <div class="add-tag-form">
+            <h3>New Tag</h3>
+            <div class="form-group">
+                <label for="new-tag-name">Name</label>
+                <input id="new-tag-name"
+                       type="text"
+                       @ref="_tagNameRef"
+                       @bind="_newTagName"
+                       @bind:event="oninput"
+                       @onkeydown="HandleNewTagKey"
+                       placeholder="Tag name"
+                       aria-label="Tag name" />
+            </div>
+            <div class="form-actions">
+                <BbButton OnClick="SaveNewTag" AriaLabel="Save tag">Save</BbButton>
+                <BbButton Variant="ButtonVariant.Outline" OnClick="CancelAddTag" AriaLabel="Cancel add tag">Cancel</BbButton>
+            </div>
+        </div>
+    }
+
+    @if (_loading)
+    {
+        <p class="loading-text">Loading…</p>
+    }
+    else if (_tags.Count == 0)
+    {
+        <p class="empty-state">No tags yet. Add your first tag above.</p>
+    }
+    else
+    {
+        <div class="tag-list">
+            @foreach (var tag in _tags)
+            {
+                <BbCard Class="tag-card">
+                    <div class="tag-row">
+                        <span class="tag-name">@tag.Name</span>
+                        <span class="tag-meta">@tag.EntryCount @(tag.EntryCount == 1 ? "entry" : "entries")</span>
+                        <BbButton Variant="ButtonVariant.Destructive" Size="ButtonSize.Small"
+                                  OnClick="() => ConfirmDeleteTag(tag)"
+                                  AriaLabel="@($"Delete {tag.Name}")">Delete</BbButton>
+                    </div>
+
+                    @if (_pendingDeleteTag?.Id == tag.Id)
+                    {
+                        <div role="dialog"
+                             aria-label="@($"Confirm delete {tag.Name}")"
+                             class="inline-confirm">
+                            <span class="warn-icon">⚠️</span>
+                            <p>This tag will be removed from <strong>@_pendingDeleteAffected</strong> time @(_pendingDeleteAffected == 1 ? "entry" : "entries"). The entries themselves will not be deleted.</p>
+                            <div class="form-actions">
+                                <BbButton Variant="ButtonVariant.Destructive"
+                                          OnClick="() => DeleteTag(tag.Id)"
+                                          AriaLabel="@($"Confirm delete {tag.Name}")">Delete tag</BbButton>
+                                <BbButton Variant="ButtonVariant.Outline"
+                                          OnClick="@(() => { _pendingDeleteTag = null; })"
+                                          AriaLabel="Cancel delete">Cancel</BbButton>
+                            </div>
+                        </div>
+                    }
+                </BbCard>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<TagItem> _tags = new();
+    private bool _loading = true;
+    private string? _errorMessage;
+
+    // Add-tag form
+    private bool _showAddTag;
+    private string _newTagName = string.Empty;
+    private ElementReference _tagNameRef;
+
+    // Delete confirmation
+    private TagItem? _pendingDeleteTag;
+    private long _pendingDeleteAffected;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTags();
+    }
+
+    private async Task LoadTags()
+    {
+        _loading = true;
+        try
+        {
+            var response = await Tauri.TagListAsync();
+            _tags = response.Tags.ToList();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // ── Add tag ───────────────────────────────────────────────────────────
+
+    private void ToggleAddTag()
+    {
+        _showAddTag = !_showAddTag;
+        _newTagName = string.Empty;
+    }
+
+    private void CancelAddTag()
+    {
+        _showAddTag = false;
+        _newTagName = string.Empty;
+    }
+
+    private async Task HandleNewTagKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SaveNewTag();
+        if (e.Key == "Escape") CancelAddTag();
+    }
+
+    private async Task SaveNewTag()
+    {
+        var name = _newTagName.Trim();
+        if (string.IsNullOrEmpty(name)) return;
+
+        try
+        {
+            await Tauri.TagCreateAsync(name);
+            _showAddTag = false;
+            _newTagName = string.Empty;
+            await LoadTags();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message == "name_conflict"
+                ? $"A tag named \"{name}\" already exists."
+                : ex.Message;
+        }
+    }
+
+    // ── Delete tag ────────────────────────────────────────────────────────
+
+    private void ConfirmDeleteTag(TagItem tag)
+    {
+        _pendingDeleteTag = tag;
+        _pendingDeleteAffected = tag.EntryCount;
+    }
+
+    private async Task DeleteTag(string id)
+    {
+        try
+        {
+            await Tauri.TagDeleteAsync(id);
+            _pendingDeleteTag = null;
+            await LoadTags();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+    }
+}
