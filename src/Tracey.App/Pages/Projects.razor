@@ -83,9 +83,8 @@
             @foreach (var client in _clients)
             {
                 var isClientExpanded = _expandedClients.Contains(client.Id);
-                <BbCard Class="@($"client-card{(client.IsArchived ? " archived" : "")}")">
-
-                    <div class="client-header">
+                <RowElement Class="@($"client-card{(client.IsArchived ? " archived" : "")}")">
+                    <ChildContent>
                         <BbButton Variant="ButtonVariant.Ghost"
                                   Size="ButtonSize.Small"
                                   OnClick="() => ToggleClientExpand(client.Id)"
@@ -102,47 +101,46 @@
                         {
                             <span class="archive-badge">Archived</span>
                         }
-                        <div class="client-actions">
-                            @if (client.IsArchived)
-                            {
-                                <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
-                                          OnClick="() => UnarchiveClient(client.Id)"
-                                          AriaLabel="@($"Unarchive {client.Name}")">Unarchive</BbButton>
-                            }
-                            else
-                            {
-                                <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
-                                          OnClick="() => ArchiveClient(client.Id)"
-                                          AriaLabel="@($"Archive {client.Name}")">Archive</BbButton>
-                            }
-                            <BbButton Variant="ButtonVariant.Destructive" Size="ButtonSize.Small"
-                                      OnClick="() => ConfirmDeleteClient(client)"
-                                      AriaLabel="@($"Delete {client.Name}")">Delete</BbButton>
-                        </div>
-                    </div>
-
-                    @if (_pendingDeleteClient?.Id == client.Id)
-                    {
-                        <div role="dialog"
-                             aria-label="@($"Confirm delete {client.Name}")"
-                             class="inline-confirm">
-                            <span class="warn-icon">⚠️</span>
-                            <p>All projects and tasks under <strong>@client.Name</strong> will be deleted. Time entries will be kept but unlinked.</p>
-                            <div class="form-actions">
-                                <BbButton Variant="ButtonVariant.Destructive"
-                                          OnClick="() => DeleteClient(client.Id)"
-                                          AriaLabel="@($"Confirm delete {client.Name}")">Delete client</BbButton>
-                                <BbButton Variant="ButtonVariant.Outline"
-                                          OnClick="@(() => { _pendingDeleteClient = null; })"
-                                          AriaLabel="Cancel delete">Cancel</BbButton>
+                    </ChildContent>
+                    <Actions>
+                        @if (client.IsArchived)
+                        {
+                            <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                      OnClick="() => UnarchiveClient(client.Id)"
+                                      AriaLabel="@($"Unarchive {client.Name}")">Unarchive</BbButton>
+                        }
+                        else
+                        {
+                            <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                      OnClick="() => ArchiveClient(client.Id)"
+                                      AriaLabel="@($"Archive {client.Name}")">Archive</BbButton>
+                        }
+                        <BbButton Variant="ButtonVariant.Destructive" Size="ButtonSize.Small"
+                                  OnClick="() => ConfirmDeleteClient(client)"
+                                  AriaLabel="@($"Delete {client.Name}")">Delete</BbButton>
+                    </Actions>
+                    <Body>
+                        @if (_pendingDeleteClient?.Id == client.Id)
+                        {
+                            <div role="dialog"
+                                 aria-label="@($"Confirm delete {client.Name}")"
+                                 class="inline-confirm">
+                                <span class="warn-icon">⚠️</span>
+                                <p>All projects and tasks under <strong>@client.Name</strong> will be deleted. Time entries will be kept but unlinked.</p>
+                                <div class="form-actions">
+                                    <BbButton Variant="ButtonVariant.Destructive"
+                                              OnClick="() => DeleteClient(client.Id)"
+                                              AriaLabel="@($"Confirm delete {client.Name}")">Delete client</BbButton>
+                                    <BbButton Variant="ButtonVariant.Outline"
+                                              OnClick="@(() => { _pendingDeleteClient = null; })"
+                                              AriaLabel="Cancel delete">Cancel</BbButton>
+                                </div>
                             </div>
-                        </div>
-                    }
-
-                    @if (isClientExpanded)
-                    {
-                        <div class="project-list">
-                            @if (_projectsLoading.Contains(client.Id))
+                        }
+                        @if (isClientExpanded)
+                        {
+                            <div class="project-list">
+                                @if (_projectsLoading.Contains(client.Id))
                             {
                                 <p class="loading-text">Loading projects…</p>
                             }
@@ -155,9 +153,8 @@
                                 @foreach (var project in projects)
                                 {
                                     var isProjectExpanded = _expandedProjects.Contains(project.Id);
-                                    <div class="project-row @(project.IsArchived ? "archived" : "")">
-
-                                        <div class="project-header">
+                                    <RowElement Class="@(project.IsArchived ? "archived" : "")">
+                                        <ChildContent>
                                             <BbButton Variant="ButtonVariant.Ghost"
                                                       Size="ButtonSize.Small"
                                                       OnClick="() => ToggleProjectExpand(project.Id)"
@@ -171,89 +168,93 @@
                                             {
                                                 <span class="archive-badge">Archived</span>
                                             }
-                                            <div class="project-actions">
-                                                @if (project.IsArchived)
-                                                {
-                                                    <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
-                                                              OnClick="() => UnarchiveProject(project.Id, client.Id)"
-                                                              AriaLabel="@($"Unarchive {project.Name}")">Unarchive</BbButton>
-                                                }
-                                                else
-                                                {
-                                                    <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
-                                                              OnClick="() => ArchiveProject(project.Id, client.Id)"
-                                                              AriaLabel="@($"Archive {project.Name}")">Archive</BbButton>
-                                                }
-                                                <BbButton Variant="ButtonVariant.Destructive" Size="ButtonSize.Small"
-                                                          OnClick="() => ConfirmDeleteProject(project)"
-                                                          AriaLabel="@($"Delete {project.Name}")">Delete</BbButton>
-                                            </div>
-                                        </div>
-
-                                        @if (_pendingDeleteProject?.Id == project.Id)
-                                        {
-                                            <div role="dialog"
-                                                 aria-label="@($"Confirm delete {project.Name}")"
-                                                 class="inline-confirm">
-                                                <span class="warn-icon">⚠️</span>
-                                                <p>All tasks under <strong>@project.Name</strong> will be deleted. Time entries will be kept but unlinked.</p>
-                                                <div class="form-actions">
-                                                    <BbButton Variant="ButtonVariant.Destructive"
-                                                              OnClick="() => DeleteProject(project.Id, client.Id)"
-                                                              AriaLabel="@($"Confirm delete {project.Name}")">Delete project</BbButton>
-                                                    <BbButton Variant="ButtonVariant.Outline"
-                                                              OnClick="@(() => { _pendingDeleteProject = null; })"
-                                                              AriaLabel="Cancel delete">Cancel</BbButton>
+                                        </ChildContent>
+                                        <Actions>
+                                            @if (project.IsArchived)
+                                            {
+                                                <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                                          OnClick="() => UnarchiveProject(project.Id, client.Id)"
+                                                          AriaLabel="@($"Unarchive {project.Name}")">Unarchive</BbButton>
+                                            }
+                                            else
+                                            {
+                                                <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                                          OnClick="() => ArchiveProject(project.Id, client.Id)"
+                                                          AriaLabel="@($"Archive {project.Name}")">Archive</BbButton>
+                                            }
+                                            <BbButton Variant="ButtonVariant.Destructive" Size="ButtonSize.Small"
+                                                      OnClick="() => ConfirmDeleteProject(project)"
+                                                      AriaLabel="@($"Delete {project.Name}")">Delete</BbButton>
+                                        </Actions>
+                                        <Body>
+                                            @if (_pendingDeleteProject?.Id == project.Id)
+                                            {
+                                                <div role="dialog"
+                                                     aria-label="@($"Confirm delete {project.Name}")"
+                                                     class="inline-confirm">
+                                                    <span class="warn-icon">⚠️</span>
+                                                    <p>All tasks under <strong>@project.Name</strong> will be deleted. Time entries will be kept but unlinked.</p>
+                                                    <div class="form-actions">
+                                                        <BbButton Variant="ButtonVariant.Destructive"
+                                                                  OnClick="() => DeleteProject(project.Id, client.Id)"
+                                                                  AriaLabel="@($"Confirm delete {project.Name}")">Delete project</BbButton>
+                                                        <BbButton Variant="ButtonVariant.Outline"
+                                                                  OnClick="@(() => { _pendingDeleteProject = null; })"
+                                                                  AriaLabel="Cancel delete">Cancel</BbButton>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        }
-
-                                        @if (isProjectExpanded)
-                                        {
-                                            <div class="task-list">
-                                                @if (_tasksLoading.Contains(project.Id))
-                                                {
-                                                    <p class="loading-text">Loading tasks…</p>
-                                                }
-                                                else if (_tasks.TryGetValue(project.Id, out var tasks))
-                                                {
-                                                    @if (tasks.Count == 0)
+                                            }
+                                            @if (isProjectExpanded)
+                                            {
+                                                <div class="task-list">
+                                                    @if (_tasksLoading.Contains(project.Id))
                                                     {
-                                                        <p class="empty-state">No tasks yet. Add one above.</p>
+                                                        <p class="loading-text">Loading tasks…</p>
                                                     }
-                                                    @foreach (var task in tasks)
+                                                    else if (_tasks.TryGetValue(project.Id, out var tasks))
                                                     {
-                                                        <div class="task-row">
-                                                            <span class="task-name">@task.Name</span>
-                                                            <BbButton Variant="ButtonVariant.Destructive" Size="ButtonSize.Small"
-                                                                      OnClick="() => DeleteTask(task.Id, project.Id)"
-                                                                      AriaLabel="@($"Delete task {task.Name}")">Delete</BbButton>
+                                                        @if (tasks.Count == 0)
+                                                        {
+                                                            <p class="empty-state">No tasks yet. Add one above.</p>
+                                                        }
+                                                        @foreach (var task in tasks)
+                                                        {
+                                                            <RowElement>
+                                                                <ChildContent>
+                                                                    <span class="task-name">@task.Name</span>
+                                                                </ChildContent>
+                                                                <Actions>
+                                                                    <BbButton Variant="ButtonVariant.Destructive" Size="ButtonSize.Small"
+                                                                              OnClick="() => DeleteTask(task.Id, project.Id)"
+                                                                              AriaLabel="@($"Delete task {task.Name}")">Delete</BbButton>
+                                                                </Actions>
+                                                            </RowElement>
+                                                        }
+                                                    }
+                                                    @if (_showAddTask.TryGetValue(project.Id, out var showTask) && showTask)
+                                                    {
+                                                        <div class="add-task-form">
+                                                            <input type="text"
+                                                                   @ref="_taskNameRefs[project.Id]"
+                                                                   @bind="_newTaskName[project.Id]"
+                                                                   @bind:event="oninput"
+                                                                   @onkeydown="@(e => HandleNewTaskKey(e, project.Id))"
+                                                                   placeholder="Task name"
+                                                                   aria-label="New task name for @project.Name" />
+                                                            <BbButton OnClick="() => SaveNewTask(project.Id)" AriaLabel="Save task">Save</BbButton>
+                                                            <BbButton Variant="ButtonVariant.Outline" OnClick="() => HideAddTask(project.Id)" AriaLabel="Cancel add task">Cancel</BbButton>
                                                         </div>
                                                     }
-                                                }
-                                                @if (_showAddTask.TryGetValue(project.Id, out var showTask) && showTask)
-                                                {
-                                                    <div class="add-task-form">
-                                                        <input type="text"
-                                                               @ref="_taskNameRefs[project.Id]"
-                                                               @bind="_newTaskName[project.Id]"
-                                                               @bind:event="oninput"
-                                                               @onkeydown="@(e => HandleNewTaskKey(e, project.Id))"
-                                                               placeholder="Task name"
-                                                               aria-label="New task name for @project.Name" />
-                                                        <BbButton OnClick="() => SaveNewTask(project.Id)" AriaLabel="Save task">Save</BbButton>
-                                                        <BbButton Variant="ButtonVariant.Outline" OnClick="() => HideAddTask(project.Id)" AriaLabel="Cancel add task">Cancel</BbButton>
-                                                    </div>
-                                                }
-                                                else
-                                                {
-                                                    <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
-                                                              OnClick="() => ShowAddTask(project.Id)"
-                                                              AriaLabel="@($"Add task to {project.Name}")">+ Add task</BbButton>
-                                                }
-                                            </div>
-                                        }
-                                    </div>
+                                                    else
+                                                    {
+                                                        <BbButton Variant="ButtonVariant.Ghost" Size="ButtonSize.Small"
+                                                                  OnClick="() => ShowAddTask(project.Id)"
+                                                                  AriaLabel="@($"Add task to {project.Name}")">+ Add task</BbButton>
+                                                    }
+                                                </div>
+                                            }
+                                        </Body>
+                                    </RowElement>
                                 }
                             }
 
@@ -279,7 +280,8 @@
                             }
                         </div>
                     }
-                </BbCard>
+                    </Body>
+                </RowElement>
             }
         </div>
     }

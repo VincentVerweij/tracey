@@ -30,11 +30,11 @@
 
 /* Client card */
 .client-card {
-    margin-bottom: 0.75rem !important;
+    margin-bottom: 0.75rem;
 }
 
 .client-card.archived {
-    opacity: 0.65;
+    /* .archived modifier on RowElement handles opacity */
 }
 
 .client-header {
@@ -70,13 +70,6 @@
     border-radius: 99px;
 }
 
-.client-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    margin-left: auto;
-}
-
 /* Animated chevron */
 .chevron-btn {
     padding: 0 !important;
@@ -97,52 +90,22 @@
     transform: rotate(90deg);
 }
 
-/* Project list */
+/* Project list — nested inside client RowElement body */
 .project-list {
-    padding: 0.375rem 0.75rem 0.75rem 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.5rem 0.75rem 0.75rem;
     border-top: 1px solid var(--tracey-border);
 }
 
-.project-row {
-    margin-bottom: 0.125rem;
-}
-
-.project-row.archived .project-name {
-    opacity: 0.6;
-}
-
-.project-header {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.25rem 0;
-}
-
-.project-name {
-    flex: 1;
-    font-size: 0.875rem;
-    color: var(--tracey-text);
-}
-
-.project-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-}
-
-/* Task list */
+/* Task list — nested inside project RowElement body */
 .task-list {
-    padding-left: 2rem;
-    padding-top: 0.125rem;
-    padding-bottom: 0.375rem;
-}
-
-.task-row {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.2rem 0;
-    gap: 0.5rem;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.5rem 0.75rem 0.5rem;
+    border-top: 1px solid var(--tracey-border);
 }
 
 .task-name {

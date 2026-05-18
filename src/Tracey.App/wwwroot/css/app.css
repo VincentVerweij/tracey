@@ -291,6 +291,22 @@ code {
 }
 
 /* =========================================
+   RowElement cross-component utilities
+   (CSS isolation cannot cross component
+   boundaries, so these live here globally)
+   ========================================= */
+
+/* Fade-in on row hover — apply to actions that should only appear on hover */
+.row-element-hover-show {
+    opacity: 0;
+    transition: opacity 0.12s;
+}
+
+.row-element:hover .row-element-hover-show {
+    opacity: 1;
+}
+
+/* =========================================
    Shared Tracey Buttons (t-btn-*)
    Use for native <button> elements that
    are outside the BbButton component system.

@@ -1,0 +1,20 @@
+<div class="row-element @Class" role="listitem">
+    <div class="row-element-main">
+        <div class="row-element-content">@ChildContent</div>
+        @if (Actions != null)
+        {
+            <div class="row-element-actions">@Actions</div>
+        }
+    </div>
+    @if (Body != null)
+    {
+        <div class="row-element-body">@Body</div>
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+    [Parameter] public RenderFragment? Body { get; set; }
+    [Parameter] public string? Class { get; set; }
+}

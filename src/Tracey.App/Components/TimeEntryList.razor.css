@@ -103,35 +103,15 @@
 
 /* Entry list */
 .entry-list {
-    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
     padding: 0;
     margin: 0;
 }
 
-.entry-row {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-    padding: 0.375rem 0.75rem;
-    background: var(--tracey-surface);
-    border-radius: 6px;
-    margin-bottom: 0.125rem;
-    transition: background-color 0.1s ease;
-    min-height: 2.5rem;
-}
-
-.entry-row:hover {
-    background-color: var(--tracey-surface-alt);
-}
-
-.entry-row.is-editing {
-    background: var(--tracey-surface);
-    border: 1px solid var(--tracey-border);
-    padding: 0.75rem;
-    align-items: flex-start;
-    flex-direction: column;
-    border-radius: var(--tracey-radius);
-    margin-bottom: 0.375rem;
+.entry-row-gap {
+    /* spacing between rows handled by gap on .entry-list */
 }
 
 /* Entry description — raw button, styled as text */
@@ -467,8 +447,4 @@
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
-}
-
-.aggregate-child {
-    padding-left: 2.5rem;
 }
