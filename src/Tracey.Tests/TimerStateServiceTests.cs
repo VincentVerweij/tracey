@@ -35,6 +35,7 @@ internal sealed class TimerStateServiceStub : ITimerStateService
     public string? CurrentClientName => _currentClientName;
     public string? CurrentTaskName => _currentTaskName;
     public string[] CurrentTagIds => _currentTagIds;
+    public string? StartedAt => null;
 
     public event Action? OnStateChanged;
 
@@ -74,6 +75,8 @@ internal sealed class TimerStateServiceStub : ITimerStateService
         OnStateChanged?.Invoke();
         return Task.CompletedTask;
     }
+
+    public Task DiscardAsync() => Task.CompletedTask;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

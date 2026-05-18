@@ -341,7 +341,8 @@ public record TimeEntryListRequest(
 public record TimeEntryListResponse(
     [property: JsonPropertyName("entries")] TimeEntryItem[] Entries,
     [property: JsonPropertyName("total_count")] long TotalCount,
-    [property: JsonPropertyName("has_more")] bool HasMore);
+    [property: JsonPropertyName("has_more")] bool HasMore,
+    [property: JsonPropertyName("day_totals")] Dictionary<string, long>? DayTotals);
 
 public record TimeEntryItem(
     [property: JsonPropertyName("id")] string Id,

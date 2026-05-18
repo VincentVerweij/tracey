@@ -18,6 +18,7 @@ public interface ITimerStateService
     string? CurrentClientName { get; }
     string? CurrentTaskName { get; }
     string[] CurrentTagIds { get; }
+    string? StartedAt { get; }
 
     Task StartAsync(string description, string? projectId = null, string? taskId = null,
         string? projectName = null, string? clientId = null, string? clientName = null,
@@ -55,6 +56,7 @@ public class TimerStateService : ITimerStateService
     public string? CurrentClientName => _currentClientName;
     public string? CurrentTaskName => _currentTaskName;
     public string[] CurrentTagIds => _currentTagIds;
+    public string? StartedAt => _startedAt;
 
     public TimeSpan Elapsed => TimeSpan.FromSeconds(_elapsedSeconds);
 

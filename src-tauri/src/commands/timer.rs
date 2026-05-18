@@ -303,6 +303,7 @@ pub struct TimeEntryListResponse {
     pub entries: Vec<TimeEntryListItem>,
     pub total_count: i64,
     pub has_more: bool,
+    pub day_totals: std::collections::HashMap<String, i64>,
 }
 
 #[tauri::command]
@@ -402,10 +403,33 @@ pub fn time_entry_list(
 
     let has_more = (offset + page_size) < total_count;
 
+    // Compute total seconds per day across ALL completed non-break entries (not paginated).
+    let mut day_totals: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    let mut day_stmt = conn
+        .prepare(
+            "SELECT date(started_at) as day,
+                    CAST(SUM((julianday(ended_at) - julianday(started_at)) * 86400) AS INTEGER) as seconds
+             FROM time_entries
+             WHERE ended_at IS NOT NULL AND is_break = 0
+             GROUP BY day",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let day_rows: Vec<(String, i64)> = day_stmt
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    for (day, seconds) in day_rows {
+        day_totals.insert(day, seconds);
+    }
+
     Ok(TimeEntryListResponse {
         entries,
         total_count,
         has_more,
+        day_totals,
     })
 }
 
