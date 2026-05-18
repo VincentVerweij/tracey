@@ -153,8 +153,8 @@
 
 /* Inline confirm (delete warning card) */
 .inline-confirm {
-    background: #fef9c3;
-    border: 1px solid #fbbf24;
+    background: var(--tracey-warning-bg);
+    border: 1px solid var(--tracey-warning-border);
     border-radius: var(--tracey-radius);
     padding: 0.875rem 1rem;
     margin: 0 0.75rem 0.5rem;
@@ -171,7 +171,7 @@
 .inline-confirm p {
     margin: 0;
     font-size: 0.875rem;
-    color: #78350f;
+    color: var(--tracey-warning-text);
 }
 
 /* Add forms */
