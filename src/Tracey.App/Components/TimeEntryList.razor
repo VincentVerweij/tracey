@@ -13,11 +13,15 @@
     }
     else
     {
-        @* Completed entries grouped by date *@
-        @foreach (var group in _groupedEntries)
+        @* Completed entries grouped by week, then by date *@
+        @foreach (var week in _weekGroups)
         {
+            <section class="week-group">
+                <h2 class="week-header">@week.Label</h2>
+                @foreach (var group in week.Days)
+                {
             <section class="date-group">
-                <h2 class="date-header">@FormatDate(group.Key)</h2>
+                <h3 class="date-header">@FormatDate(group.Key)</h3>
                 <ul class="entry-list" role="list">
                     @foreach (var ag in group.Value)
                     {
@@ -266,6 +270,8 @@
                     }
                 </ul>
             </section>
+                }
+            </section>
         }
 
         @if (_hasMore)
@@ -286,7 +292,7 @@
 
     private bool _loading = true;
     private List<TimeEntryItem> _entries = new();
-    private Dictionary<string, List<AggregatedGroup>> _groupedEntries = new();
+    private List<WeekGroup> _weekGroups = new();
     private bool _hasMore = false;
     private int _currentPage = 1;
     private string? _editingId;
@@ -356,17 +362,52 @@
 
     private void RebuildGroups()
     {
-        _groupedEntries = _entries
-            .GroupBy(e => DateOnly.Parse(e.StartedAt[..10]))
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        _weekGroups = _entries
+            .GroupBy(e => GetWeekStart(DateOnly.Parse(e.StartedAt[..10])))
             .OrderByDescending(g => g.Key)
-            .ToDictionary(
-                g => g.Key.ToString("yyyy-MM-dd"),
-                g => g
-                    .GroupBy(e => new AggregateKey(e.Description, e.ClientName, e.ProjectName, e.TaskName))
-                    .Select(ag => new AggregatedGroup(ag.Key, ag.ToList()))
-                    .OrderByDescending(ag => ag.Entries.Max(e => e.StartedAt))
-                    .ToList()
-            );
+            .Select(wg => new WeekGroup(
+                Label: FormatWeekLabel(wg.Key, today),
+                WeekStart: wg.Key,
+                Days: wg
+                    .GroupBy(e => DateOnly.Parse(e.StartedAt[..10]))
+                    .OrderByDescending(g => g.Key)
+                    .ToDictionary(
+                        g => g.Key.ToString("yyyy-MM-dd"),
+                        g => g
+                            .GroupBy(e => new AggregateKey(e.Description, e.ClientName, e.ProjectName, e.TaskName))
+                            .Select(ag => new AggregatedGroup(ag.Key, ag.ToList()))
+                            .OrderByDescending(ag => ag.Entries.Max(e => e.StartedAt))
+                            .ToList()
+                    )
+            ))
+            .ToList();
+    }
+
+    private static DateOnly GetWeekStart(DateOnly date)
+    {
+        int dow = (int)date.DayOfWeek; // Sunday=0, Monday=1
+        int daysBack = dow == 0 ? 6 : dow - 1;
+        return date.AddDays(-daysBack);
+    }
+
+    private static string FormatWeekLabel(DateOnly weekStart, DateOnly today)
+    {
+        var thisWeekStart = GetWeekStart(today);
+        if (weekStart == thisWeekStart) return "This week";
+        if (weekStart == thisWeekStart.AddDays(-7)) return "Last week";
+
+        var weekEnd = weekStart.AddDays(6);
+        int currentYear = today.Year;
+
+        if (weekStart.Year != currentYear || weekEnd.Year != currentYear)
+        {
+            if (weekStart.Year == weekEnd.Year)
+                return $"{weekStart:MMM d} \u2013 {weekEnd:MMM d}, {weekStart.Year}";
+            return $"{weekStart:MMM d, yyyy} \u2013 {weekEnd:MMM d, yyyy}";
+        }
+
+        return $"{weekStart:MMM d} \u2013 {weekEnd:MMM d}";
     }
 
     private async Task LoadMore() => await LoadPage(_currentPage + 1);
@@ -635,6 +676,11 @@
         }
         catch { }
     }
+
+    private record WeekGroup(
+        string Label,
+        DateOnly WeekStart,
+        Dictionary<string, List<AggregatedGroup>> Days);
 
     private record AggregateKey(
         string Description,
