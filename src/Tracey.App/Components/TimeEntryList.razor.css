@@ -49,6 +49,23 @@
     flex-shrink: 0;
 }
 
+/* Week group */
+.week-group {
+    margin-bottom: 2rem;
+}
+
+.week-header {
+    font-size: 0.85rem;
+    font-weight: 700;
+    font-variant: small-caps;
+    color: var(--tracey-text);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--tracey-border);
+    margin: 0 0 0.75rem;
+}
+
 /* Date group */
 .date-group {
     margin-bottom: 1.25rem;
