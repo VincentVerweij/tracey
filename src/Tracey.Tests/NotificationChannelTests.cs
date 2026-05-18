@@ -56,12 +56,13 @@ file class FakeTimerStateService : ITimerStateService
     public string? CurrentDescription { get; set; }
     public TimeSpan Elapsed { get; set; }
     public string? CurrentProjectId => null;
-    public string? CurrentTaskId    => null;
+    public string? CurrentTaskId => null;
     public string? CurrentProjectName => null;
-    public string? CurrentClientId   => null;
+    public string? CurrentClientId => null;
     public string? CurrentClientName => null;
-    public string? CurrentTaskName   => null;
-    public string[] CurrentTagIds    => Array.Empty<string>();
+    public string? CurrentTaskName => null;
+    public string[] CurrentTagIds => Array.Empty<string>();
+    public string? StartedAt => null;
 
     public event Action? OnStateChanged;
 
@@ -71,6 +72,7 @@ file class FakeTimerStateService : ITimerStateService
         => Task.CompletedTask;
 
     public Task StopAsync() => Task.CompletedTask;
+    public Task DiscardAsync() => Task.CompletedTask;
 }
 
 // ── Helper: recording HttpMessageHandler ─────────────────────────────────────
@@ -108,10 +110,10 @@ file class FakeHttpClientFactory : IHttpClientFactory
 public class EmailNotificationChannelTests
 {
     private static NotificationMessage SampleMessage() => new(
-        Title:       "Timer Running for 8h 0m",
-        Body:        "Your timer has been running for 8 hours.",
+        Title: "Timer Running for 8h 0m",
+        Body: "Your timer has been running for 8 hours.",
         TriggeredAt: DateTimeOffset.UtcNow,
-        Duration:    TimeSpan.FromHours(8));
+        Duration: TimeSpan.FromHours(8));
 
     [Fact]
     public void ChannelId_IsEmail()
@@ -143,7 +145,7 @@ public class EmailNotificationChannelTests
     [Fact]
     public async Task SendAsync_ThrowsNotSupportedException_InWasmRuntime()
     {
-        var channel  = new EmailNotificationChannel();
+        var channel = new EmailNotificationChannel();
         var settings = TestSettings.Enabled();
 
         await Assert.ThrowsAsync<NotSupportedException>(
@@ -153,7 +155,7 @@ public class EmailNotificationChannelTests
     [Fact]
     public async Task SendAsync_ErrorMessage_MentionsTauriProcess()
     {
-        var channel  = new EmailNotificationChannel();
+        var channel = new EmailNotificationChannel();
         var settings = TestSettings.Enabled();
 
         var ex = await Assert.ThrowsAsync<NotSupportedException>(
@@ -170,15 +172,15 @@ public class EmailNotificationChannelTests
 public class TelegramNotificationChannelTests
 {
     private static NotificationMessage SampleMessage() => new(
-        Title:       "Timer Running for 8h 0m",
-        Body:        "Your timer has been running for 8 hours.",
+        Title: "Timer Running for 8h 0m",
+        Body: "Your timer has been running for 8 hours.",
         TriggeredAt: DateTimeOffset.UtcNow,
-        Duration:    TimeSpan.FromHours(8));
+        Duration: TimeSpan.FromHours(8));
 
     private static NotificationChannelSettings ValidSettings() => TestSettings.Enabled(new()
     {
         ["bot_token"] = "123456:TESTTOKEN",
-        ["chat_id"]   = "987654321"
+        ["chat_id"] = "987654321"
     });
 
     [Fact]
@@ -227,8 +229,8 @@ public class TelegramNotificationChannelTests
     [Fact]
     public async Task SendAsync_ThrowsInvalidOperationException_WhenBotTokenMissing()
     {
-        var handler  = new RecordingHttpMessageHandler();
-        var channel  = new TelegramNotificationChannel(new FakeHttpClientFactory(handler));
+        var handler = new RecordingHttpMessageHandler();
+        var channel = new TelegramNotificationChannel(new FakeHttpClientFactory(handler));
         var settings = TestSettings.Enabled(new() { ["bot_token"] = "", ["chat_id"] = "123" });
 
         await Assert.ThrowsAsync<InvalidOperationException>(
@@ -238,8 +240,8 @@ public class TelegramNotificationChannelTests
     [Fact]
     public async Task SendAsync_ThrowsInvalidOperationException_WhenChatIdMissing()
     {
-        var handler  = new RecordingHttpMessageHandler();
-        var channel  = new TelegramNotificationChannel(new FakeHttpClientFactory(handler));
+        var handler = new RecordingHttpMessageHandler();
+        var channel = new TelegramNotificationChannel(new FakeHttpClientFactory(handler));
         var settings = TestSettings.Enabled(new() { ["bot_token"] = "tok", ["chat_id"] = "" });
 
         await Assert.ThrowsAsync<InvalidOperationException>(
@@ -252,7 +254,7 @@ public class TelegramNotificationChannelTests
         var handler = new RecordingHttpMessageHandler
         {
             ResponseStatus = HttpStatusCode.Unauthorized,
-            ResponseBody   = """{"ok":false,"error_code":401,"description":"Unauthorized"}"""
+            ResponseBody = """{"ok":false,"error_code":401,"description":"Unauthorized"}"""
         };
         var channel = new TelegramNotificationChannel(new FakeHttpClientFactory(handler));
 
@@ -291,18 +293,18 @@ file class FakeTauriIpcService : TauriIpcService
     public new Task<UserPreferences> PreferencesGetAsync()
     {
         var prefs = PreferencesToReturn ?? new UserPreferences(
-            Id:                             1,
-            InactivityTimeoutSeconds:       300,
-            ScreenshotIntervalSeconds:      60,
-            ScreenshotRetentionDays:        30,
-            ScreenshotStoragePath:          null,
-            Timezone:                       "UTC",
-            EntriesPerPage:                 50,
-            ProcessDenyListJson:            "[]",
-            ExternalDbEnabled:              false,
+            Id: 1,
+            InactivityTimeoutSeconds: 300,
+            ScreenshotIntervalSeconds: 60,
+            ScreenshotRetentionDays: 30,
+            ScreenshotStoragePath: null,
+            Timezone: "UTC",
+            EntriesPerPage: 50,
+            ProcessDenyListJson: "[]",
+            ExternalDbEnabled: false,
             TimerNotificationThresholdHours: 8.0,
-            NotificationChannelsJson:       null,
-            AutoClassificationEnabled:      true,
+            NotificationChannelsJson: null,
+            AutoClassificationEnabled: true,
             AutoClassificationConfidenceThreshold: 0.7f,
             AutoClassificationGroupGapSeconds: 120);
         return Task.FromResult(prefs);
@@ -316,10 +318,10 @@ public class NotificationOrchestrationServiceTests
     // methods indirectly through a short-lived cancellation scope.
 
     private static NotificationMessage BuildMessage(TimeSpan elapsed) => new(
-        Title:       "Test",
-        Body:        "Test body",
+        Title: "Test",
+        Body: "Test body",
         TriggeredAt: DateTimeOffset.UtcNow,
-        Duration:    elapsed);
+        Duration: elapsed);
 
     private static string ChannelsJsonFor(string channelId, bool enabled,
         Dictionary<string, string>? config = null)
@@ -332,11 +334,11 @@ public class NotificationOrchestrationServiceTests
     public async Task BelowThreshold_NoChannelsNotified()
     {
         var fakeChannel = new FakeNotificationChannel("telegram");
-        var timerState  = new FakeTimerStateService
+        var timerState = new FakeTimerStateService
         {
-            IsRunning       = true,
-            CurrentEntryId  = "entry-1",
-            Elapsed         = TimeSpan.FromHours(2), // below 8h threshold
+            IsRunning = true,
+            CurrentEntryId = "entry-1",
+            Elapsed = TimeSpan.FromHours(2), // below 8h threshold
             CurrentDescription = "Test task"
         };
         var tauri = new FakeTauriIpcService
@@ -423,18 +425,18 @@ public class NotificationOrchestrationServiceTests
     }
 
     private static UserPreferences MakePrefs(double thresholdHours, string? channelsJson) =>
-        new(Id:                              1,
-            InactivityTimeoutSeconds:        300,
-            ScreenshotIntervalSeconds:       60,
-            ScreenshotRetentionDays:         30,
-            ScreenshotStoragePath:           null,
-            Timezone:                        "UTC",
-            EntriesPerPage:                  50,
-            ProcessDenyListJson:             "[]",
-            ExternalDbEnabled:               false,
+        new(Id: 1,
+            InactivityTimeoutSeconds: 300,
+            ScreenshotIntervalSeconds: 60,
+            ScreenshotRetentionDays: 30,
+            ScreenshotStoragePath: null,
+            Timezone: "UTC",
+            EntriesPerPage: 50,
+            ProcessDenyListJson: "[]",
+            ExternalDbEnabled: false,
             TimerNotificationThresholdHours: thresholdHours,
-            NotificationChannelsJson:        channelsJson,
-            AutoClassificationEnabled:       true,
+            NotificationChannelsJson: channelsJson,
+            AutoClassificationEnabled: true,
             AutoClassificationConfidenceThreshold: 0.7f,
             AutoClassificationGroupGapSeconds: 120);
 }

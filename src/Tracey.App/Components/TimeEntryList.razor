@@ -1,6 +1,8 @@
 @inject TauriIpcService Tauri
 @inject FuzzyMatchService Fuzzy
 @inject IJSRuntime JS
+@inject ITimerStateService TimerState
+@implements IDisposable
 
 <div class="time-entry-list" @ref="_listRef">
     @if (_loading)
@@ -17,11 +19,17 @@
         @foreach (var week in _weekGroups)
         {
             <section class="week-group">
-                <h2 class="week-header">@week.Label</h2>
+                <h2 class="week-header">
+                    <span>@week.Label</span>
+                    <span class="period-total">Week total: @FormatTotalDuration(GetWeekTotal(week.WeekStart))</span>
+                </h2>
                 @foreach (var group in week.Days)
                 {
             <section class="date-group">
-                <h3 class="date-header">@FormatDate(group.Key)</h3>
+                <h3 class="date-header">
+                    <span>@FormatDate(group.Key)</span>
+                    <span class="period-total">Total: @FormatTotalDuration(GetDayTotal(group.Key))</span>
+                </h3>
                 <ul class="entry-list" role="list">
                     @foreach (var ag in group.Value)
                     {
@@ -293,6 +301,7 @@
     private bool _loading = true;
     private List<TimeEntryItem> _entries = new();
     private List<WeekGroup> _weekGroups = new();
+    private Dictionary<string, long> _dayTotalsFromServer = new();
     private bool _hasMore = false;
     private int _currentPage = 1;
     private string? _editingId;
@@ -324,6 +333,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        TimerState.OnStateChanged += OnTimerChanged;
         await LoadPage(1);
     }
 
@@ -347,6 +357,7 @@
             _entries.AddRange(result.Entries);
             _hasMore = result.HasMore;
             _currentPage = page;
+            _dayTotalsFromServer = result.DayTotals ?? new();
             RebuildGroups();
         }
         catch (Exception ex)
@@ -358,6 +369,33 @@
             _loading = false;
             StateHasChanged();
         }
+    }
+
+    private void OnTimerChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        TimerState.OnStateChanged -= OnTimerChanged;
+    }
+
+    private TimeSpan GetDayTotal(string isoDay)
+    {
+        var total = TimeSpan.FromSeconds(_dayTotalsFromServer.GetValueOrDefault(isoDay));
+        if (TimerState.IsRunning && TimerState.StartedAt is not null
+            && TimerState.StartedAt.Length >= 10
+            && TimerState.StartedAt[..10] == isoDay)
+        {
+            total += TimerState.Elapsed;
+        }
+        return total;
+    }
+
+    private TimeSpan GetWeekTotal(DateOnly weekStart)
+    {
+        var total = TimeSpan.Zero;
+        for (var d = weekStart; d <= weekStart.AddDays(6); d = d.AddDays(1))
+            total += GetDayTotal(d.ToString("yyyy-MM-dd"));
+        return total;
     }
 
     private void RebuildGroups()
