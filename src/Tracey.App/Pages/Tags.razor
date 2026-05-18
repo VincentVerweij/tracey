@@ -45,46 +45,56 @@
     }
     else
     {
-        <ul class="tag-list" role="list" aria-label="Tags">
+        <div class="tag-list" role="list" aria-label="Tags">
             @foreach (var tag in _tags)
             {
                 var isConfirming = _pendingDeleteTag?.Id == tag.Id;
-                <li class="tag-row @(isConfirming ? "tag-row--confirming" : "")" role="listitem">
-                    @if (isConfirming)
-                    {
-                        <span class="tag-row-name">@tag.Name</span>
-                        <span class="tag-confirm-text">
-                            @(tag.EntryCount > 0
-                                ? $"Removes from {tag.EntryCount} {(tag.EntryCount == 1 ? "entry" : "entries")}."
-                                : "Delete this tag?")
-                        </span>
-                        <button class="t-btn t-btn-danger"
-                                @onclick="ExecuteDelete"
-                                disabled="@_deleting"
-                                aria-label="@($"Confirm delete {tag.Name}")">
-                            Delete
-                        </button>
-                        <button class="t-btn t-btn-secondary"
-                                @onclick="() => _pendingDeleteTag = null"
-                                aria-label="Cancel">
-                            Cancel
-                        </button>
-                    }
-                    else
-                    {
-                        <span class="tag-chip">@tag.Name</span>
-                        <span class="tag-count" aria-label="@tag.EntryCount @(tag.EntryCount == 1 ? "entry" : "entries")">
-                            @tag.EntryCount @(tag.EntryCount == 1 ? "entry" : "entries")
-                        </span>
-                        <button class="tag-btn--remove t-btn t-btn-secondary"
-                                @onclick="() => ConfirmDelete(tag)"
-                                aria-label="@($"Delete {tag.Name}")">
-                            Remove
-                        </button>
-                    }
-                </li>
+                <RowElement Class="@(isConfirming ? "confirming" : "")">
+                    <ChildContent>
+                        @if (isConfirming)
+                        {
+                            <span class="tag-row-name">@tag.Name</span>
+                            <span class="tag-confirm-text">
+                                @(tag.EntryCount > 0
+                                    ? $"Removes from {tag.EntryCount} {(tag.EntryCount == 1 ? "entry" : "entries")}."
+                                    : "Delete this tag?")
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="tag-chip">@tag.Name</span>
+                            <span class="tag-count" aria-label="@tag.EntryCount @(tag.EntryCount == 1 ? "entry" : "entries")">
+                                @tag.EntryCount @(tag.EntryCount == 1 ? "entry" : "entries")
+                            </span>
+                        }
+                    </ChildContent>
+                    <Actions>
+                        @if (isConfirming)
+                        {
+                            <button class="t-btn t-btn-danger"
+                                    @onclick="ExecuteDelete"
+                                    disabled="@_deleting"
+                                    aria-label="@($"Confirm delete {tag.Name}")">
+                                Delete
+                            </button>
+                            <button class="t-btn t-btn-secondary"
+                                    @onclick="() => _pendingDeleteTag = null"
+                                    aria-label="Cancel">
+                                Cancel
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="row-element-hover-show t-btn t-btn-secondary"
+                                    @onclick="() => ConfirmDelete(tag)"
+                                    aria-label="@($"Delete {tag.Name}")">
+                                Remove
+                            </button>
+                        }
+                    </Actions>
+                </RowElement>
             }
-        </ul>
+        </div>
     }
 </div>
 

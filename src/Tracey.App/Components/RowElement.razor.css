@@ -1,0 +1,66 @@
+/* =========================================
+   RowElement — Shared entry row component
+   ========================================= */
+
+.row-element {
+    background: var(--tracey-surface);
+    border: 1px solid var(--tracey-border);
+    border-radius: var(--tracey-radius);
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+    overflow: hidden;
+}
+
+.row-element:hover {
+    border-color: #d1d5db;
+}
+
+.row-element-main {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.5rem 0.75rem;
+    min-height: 2.5rem;
+}
+
+.row-element-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+}
+
+.row-element-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+}
+
+/* ── Modifiers ──────────────────────────── */
+
+/* Warning / delete-confirmation state */
+.row-element.confirming {
+    border-color: #fca5a5;
+    background: #fef2f2;
+}
+
+.row-element.confirming:hover {
+    border-color: #fca5a5;
+}
+
+/* Editing state (TimeEntryList inline edit form) */
+.row-element.is-editing .row-element-main {
+    align-items: flex-start;
+    padding: 0.75rem;
+}
+
+/* Aggregate child — indent within an expanded group */
+.row-element.aggregate-child .row-element-main {
+    padding-left: 2.5rem;
+}
+
+/* Archived items (Projects) */
+.row-element.archived {
+    opacity: 0.65;
+}

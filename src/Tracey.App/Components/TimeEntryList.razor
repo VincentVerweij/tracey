@@ -30,253 +30,102 @@
                     <span>@FormatDate(group.Key)</span>
                     <span class="period-total">Total: @FormatTotalDuration(GetDayTotal(group.Key))</span>
                 </h3>
-                <ul class="entry-list" role="list">
+                <div class="entry-list" role="list">
                     @foreach (var ag in group.Value)
                     {
                         @if (ag.Entries.Count > 1)
                         {
-                            <li class="entry-row aggregate-header" role="listitem">
-                                <button type="button"
-                                        class="aggregate-toggle @(ag.IsExpanded ? "is-expanded" : "")"
-                                        @onclick="() => { ag.IsExpanded = !ag.IsExpanded; StateHasChanged(); }"
-                                        aria-label="@(ag.IsExpanded ? "Collapse group" : "Expand group")"
-                                        aria-expanded="@(ag.IsExpanded ? "true" : "false")">
-                                    ›
-                                </button>
-                                <span class="aggregate-count">@ag.Entries.Count×</span>
-                                <span class="aggregate-description @(string.IsNullOrEmpty(ag.Key.Description) ? "entry-description-empty" : "")">
-                                    @(string.IsNullOrEmpty(ag.Key.Description) ? "(no description)" : ag.Key.Description)
-                                </span>
-                                <span class="entry-times">
-                                    <span class="entry-duration">@FormatTotalDuration(ag.TotalDuration)</span>
-                                </span>
-                                @if (ag.Key.ProjectName != null)
-                                {
-                                    <span class="entry-project">
-                                        @ag.Key.ClientName / @ag.Key.ProjectName@(ag.Key.TaskName != null ? $" ‣ {ag.Key.TaskName}" : "")
+                            <RowElement Class="aggregate-header">
+                                <ChildContent>
+                                    <button type="button"
+                                            class="aggregate-toggle @(ag.IsExpanded ? "is-expanded" : "")"
+                                            @onclick="() => { ag.IsExpanded = !ag.IsExpanded; StateHasChanged(); }"
+                                            aria-label="@(ag.IsExpanded ? "Collapse group" : "Expand group")"
+                                            aria-expanded="@(ag.IsExpanded ? "true" : "false")">
+                                        ›
+                                    </button>
+                                    <span class="aggregate-count">@ag.Entries.Count×</span>
+                                    <span class="aggregate-description @(string.IsNullOrEmpty(ag.Key.Description) ? "entry-description-empty" : "")">
+                                        @(string.IsNullOrEmpty(ag.Key.Description) ? "(no description)" : ag.Key.Description)
                                     </span>
-                                }
-                                <BbButton Variant="ButtonVariant.Outline"
-                                          Size="ButtonSize.Small"
-                                          AriaLabel="@($"Continue: {ag.Key.Description}")"
-                                          OnClick="() => ContinueEntry(ag.MostRecentEntryId)">
-                                    Continue
-                                </BbButton>
-                            </li>
+                                    <span class="entry-times">
+                                        <span class="entry-duration">@FormatTotalDuration(ag.TotalDuration)</span>
+                                    </span>
+                                    @if (ag.Key.ProjectName != null)
+                                    {
+                                        <span class="entry-project">
+                                            @ag.Key.ClientName / @ag.Key.ProjectName@(ag.Key.TaskName != null ? $" ‣ {ag.Key.TaskName}" : "")
+                                        </span>
+                                    }
+                                </ChildContent>
+                                <Actions>
+                                    <BbButton Variant="ButtonVariant.Outline"
+                                              Size="ButtonSize.Small"
+                                              AriaLabel="@($"Continue: {ag.Key.Description}")"
+                                              OnClick="() => ContinueEntry(ag.MostRecentEntryId)">
+                                        Continue
+                                    </BbButton>
+                                </Actions>
+                                <Body>
+                                    @if (ag.IsExpanded)
+                                    {
+                                        @foreach (var entry in ag.Entries)
+                                        {
+                                            @if (_editingId == entry.Id)
+                                            {
+                                                <RowElement Class="aggregate-child is-editing">
+                                                    <ChildContent>
+                                                        @EditForm(entry)
+                                                    </ChildContent>
+                                                </RowElement>
+                                            }
+                                            else
+                                            {
+                                                <RowElement Class="aggregate-child">
+                                                    <ChildContent>
+                                                        @EntryViewContent(entry)
+                                                    </ChildContent>
+                                                    <Actions>
+                                                        @EntryViewActions(entry)
+                                                    </Actions>
+                                                    <Body>
+                                                        @EntryDeleteConfirm(entry)
+                                                    </Body>
+                                                </RowElement>
+                                            }
+                                        }
+                                    }
+                                </Body>
+                            </RowElement>
                         }
-                        @if (ag.Entries.Count == 1 || ag.IsExpanded)
+                        else
                         {
-                            @foreach (var entry in ag.Entries)
-                            {
-                        <li class="entry-row @(ag.Entries.Count > 1 ? "aggregate-child" : "") @(_editingId == entry.Id ? "is-editing" : "")"
-                            role="listitem">
+                            var entry = ag.Entries[0];
                             @if (_editingId == entry.Id)
                             {
-                                <div class="entry-edit-form" role="form" aria-label="Edit time entry">
-                                    <div class="edit-field">
-                                        <label for="desc-@entry.Id">Description</label>
-                                        <input id="desc-@entry.Id"
-                                               type="text"
-                                               @bind="_editDescription"
-                                               @bind:event="oninput"
-                                               aria-label="Entry description"
-                                               @onblur="() => AutoSave(entry)" />
-                                    </div>
-
-                                    @* Project / Task assignment *@
-                                    <div class="edit-field">
-                                        <label>Project / Task</label>
-                                        <div class="edit-assignment">
-                                            @if (_editProjectId != null)
-                                            {
-                                                <span class="edit-chip edit-chip-project">
-                                                    @_editClientName / @_editProjectName
-                                                    <button type="button" @onclick="ClearEditProject" aria-label="Remove project">✕</button>
-                                                </span>
-                                                @if (_editTaskId != null)
-                                                {
-                                                    <span class="edit-chip edit-chip-task">
-                                                        @_editTaskName
-                                                        <button type="button" @onclick="ClearEditTask" aria-label="Remove task">✕</button>
-                                                    </span>
-                                                }
-                                                else if (!_editTaskSearchActive)
-                                                {
-                                                    <button type="button" class="edit-add-link" @onclick="() => { _editTaskSearchActive = true; StateHasChanged(); }">+ task</button>
-                                                }
-                                            }
-                                            else if (!_editProjectSearchActive)
-                                            {
-                                                <button type="button" class="edit-add-link" @onclick="() => { _editProjectSearchActive = true; StateHasChanged(); }">+ project</button>
-                                            }
-                                        </div>
-
-                                        @if (_editProjectSearchActive && _editProjectId == null)
-                                        {
-                                            <div class="edit-search-wrapper">
-                                                <input type="text"
-                                                       placeholder="Search project…"
-                                                       value="@_editProjectQuery"
-                                                       @oninput="OnEditProjectInput"
-                                                       @onkeydown="HandleEditProjectKey"
-                                                       class="edit-search-input"
-                                                       aria-label="Search project" />
-                                                @if (_editProjectMatches.Count > 0)
-                                                {
-                                                    <ul class="edit-dropdown" role="listbox">
-                                                        @for (int pi = 0; pi < _editProjectMatches.Count; pi++)
-                                                        {
-                                                            var pidx = pi;
-                                                            var pm = _editProjectMatches[pi];
-                                                            <li class="edit-dropdown-item" role="option"
-                                                                @onclick="() => ConfirmEditProject(pidx)">
-                                                                @pm.ProjectName
-                                                                <span class="edit-dropdown-meta">@pm.ClientName</span>
-                                                            </li>
-                                                        }
-                                                    </ul>
-                                                }
-                                            </div>
-                                        }
-
-                                        @if (_editTaskSearchActive && _editProjectId != null && _editTaskId == null)
-                                        {
-                                            <div class="edit-search-wrapper">
-                                                <input type="text"
-                                                       placeholder="Search task…"
-                                                       value="@_editTaskQuery"
-                                                       @oninput="OnEditTaskInput"
-                                                       @onkeydown="HandleEditTaskKey"
-                                                       class="edit-search-input"
-                                                       aria-label="Search task" />
-                                                @if (_editTaskMatches.Count > 0)
-                                                {
-                                                    <ul class="edit-dropdown" role="listbox">
-                                                        @for (int ti = 0; ti < _editTaskMatches.Count; ti++)
-                                                        {
-                                                            var tidx = ti;
-                                                            var tm = _editTaskMatches[ti];
-                                                            <li class="edit-dropdown-item" role="option"
-                                                                @onclick="() => ConfirmEditTask(tidx)">
-                                                                @tm.TaskName
-                                                            </li>
-                                                        }
-                                                    </ul>
-                                                }
-                                            </div>
-                                        }
-                                    </div>
-
-                                    @* Tag assignment *@
-                                    <div class="edit-field">
-                                        <label>Tags</label>
-                                        <TagPicker SelectedIds="_editTagIds"
-                                                   SelectedIdsChanged="ids => { _editTagIds = ids; StateHasChanged(); }" />
-                                    </div>
-
-                                    <div class="edit-times">
-                                        <div class="edit-field">
-                                            <label for="start-@entry.Id">Start</label>
-                                            <input id="start-@entry.Id"
-                                                   type="datetime-local"
-                                                   @bind="_editStarted"
-                                                   @onblur="() => AutoSave(entry)"
-                                                   aria-label="Start time" />
-                                        </div>
-                                        <div class="edit-field">
-                                            <label for="end-@entry.Id">End</label>
-                                            <input id="end-@entry.Id"
-                                                   type="datetime-local"
-                                                   @bind="_editEnded"
-                                                   @onblur="() => AutoSave(entry)"
-                                                   aria-label="End time" />
-                                        </div>
-                                    </div>
-                                    @if (_editError != null)
-                                    {
-                                        <p class="edit-error" role="alert">@_editError</p>
-                                    }
-                                    <div class="edit-actions">
-                                        <BbButton Variant="ButtonVariant.Outline"
-                                                  Size="ButtonSize.Small"
-                                                  AriaLabel="Save changes"
-                                                  OnClick="() => AutoSave(entry)">
-                                            Save
-                                        </BbButton>
-                                        <BbButton Variant="ButtonVariant.Ghost"
-                                                  Size="ButtonSize.Small"
-                                                  AriaLabel="Cancel edit"
-                                                  OnClick="CancelEdit">
-                                            Cancel
-                                        </BbButton>
-                                    </div>
-                                </div>
+                                <RowElement Class="is-editing">
+                                    <ChildContent>
+                                        @EditForm(entry)
+                                    </ChildContent>
+                                </RowElement>
                             }
                             else
                             {
-                                <button type="button"
-                                        class="entry-description-btn @(string.IsNullOrEmpty(entry.Description) ? "entry-description-empty" : "")"
-                                        @onclick="() => StartInlineEdit(entry)"
-                                        aria-label="@(string.IsNullOrEmpty(entry.Description) ? "Add description (click to edit)" : $"{entry.Description} (click to edit)")">
-                                    @(string.IsNullOrEmpty(entry.Description) ? "(no description)" : entry.Description)
-                                </button>
-                                @if (entry.Source == "auto")
-                                {
-                                    <span class="auto-badge" title="Created automatically by classification">auto</span>
-                                }
-                                    <span class="entry-times">
-                                        @FormatTime(entry.StartedAt) – @FormatTime(entry.EndedAt)
-                                        @if (!string.IsNullOrEmpty(FormatDuration(entry.StartedAt, entry.EndedAt)))
-                                        {
-                                            <span class="entry-duration"> @FormatDuration(entry.StartedAt, entry.EndedAt)</span>
-                                        }
-                                    </span>
-                                @if (entry.ProjectName != null)
-                                {
-                                    <span class="entry-project">
-                                        @entry.ClientName / @entry.ProjectName@(entry.TaskName != null ? $" ‣ {entry.TaskName}" : "")
-                                    </span>
-                                }
-                                <BbButton Variant="ButtonVariant.Outline"
-                                          Size="ButtonSize.Small"
-                                          AriaLabel="@($"Continue: {entry.Description}")"
-                                          OnClick="() => ContinueEntry(entry.Id)">
-                                    Continue
-                                </BbButton>
-                                <BbButton Variant="ButtonVariant.Ghost"
-                                          Size="ButtonSize.Small"
-                                          AriaLabel="Delete entry"
-                                          OnClick="() => { _pendingDeleteId = entry.Id; StateHasChanged(); }">
-                                    ✕
-                                </BbButton>
-                            }
-                            @if (_pendingDeleteId == entry.Id)
-                            {
-                                <div role="dialog"
-                                     aria-label="Confirm delete time entry"
-                                     class="entry-inline-confirm">
-                                    <p>Delete this entry?</p>
-                                    <div class="entry-inline-confirm-actions">
-                                        <BbButton Variant="ButtonVariant.Destructive"
-                                                  Size="ButtonSize.Small"
-                                                  AriaLabel="Confirm delete"
-                                                  OnClick="() => ConfirmDeleteEntry(entry.Id)">
-                                            Delete
-                                        </BbButton>
-                                        <BbButton Variant="ButtonVariant.Ghost"
-                                                  Size="ButtonSize.Small"
-                                                  AriaLabel="Cancel delete"
-                                                  OnClick="() => { _pendingDeleteId = null; StateHasChanged(); }">
-                                            Cancel
-                                        </BbButton>
-                                    </div>
-                                </div>
-                            }
-                        </li>
+                                <RowElement>
+                                    <ChildContent>
+                                        @EntryViewContent(entry)
+                                    </ChildContent>
+                                    <Actions>
+                                        @EntryViewActions(entry)
+                                    </Actions>
+                                    <Body>
+                                        @EntryDeleteConfirm(entry)
+                                    </Body>
+                                </RowElement>
                             }
                         }
                     }
-                </ul>
+                </div>
             </section>
                 }
             </section>
@@ -485,6 +334,214 @@
             Console.Error.WriteLine($"[TimeEntryList] Delete failed: {ex.Message}");
         }
     }
+
+    // ─── Entry row render fragment helpers ──────────────────────────────────
+
+    private RenderFragment EditForm(TimeEntryItem entry) => @<div class="entry-edit-form" role="form" aria-label="Edit time entry">
+        <div class="edit-field">
+            <label for="desc-@entry.Id">Description</label>
+            <input id="desc-@entry.Id"
+                   type="text"
+                   @bind="_editDescription"
+                   @bind:event="oninput"
+                   aria-label="Entry description"
+                   @onblur="() => AutoSave(entry)" />
+        </div>
+
+        @* Project / Task assignment *@
+        <div class="edit-field">
+            <label>Project / Task</label>
+            <div class="edit-assignment">
+                @if (_editProjectId != null)
+                {
+                    <span class="edit-chip edit-chip-project">
+                        @_editClientName / @_editProjectName
+                        <button type="button" @onclick="ClearEditProject" aria-label="Remove project">✕</button>
+                    </span>
+                    @if (_editTaskId != null)
+                    {
+                        <span class="edit-chip edit-chip-task">
+                            @_editTaskName
+                            <button type="button" @onclick="ClearEditTask" aria-label="Remove task">✕</button>
+                        </span>
+                    }
+                    else if (!_editTaskSearchActive)
+                    {
+                        <button type="button" class="edit-add-link" @onclick="() => { _editTaskSearchActive = true; StateHasChanged(); }">+ task</button>
+                    }
+                }
+                else if (!_editProjectSearchActive)
+                {
+                    <button type="button" class="edit-add-link" @onclick="() => { _editProjectSearchActive = true; StateHasChanged(); }">+ project</button>
+                }
+            </div>
+
+            @if (_editProjectSearchActive && _editProjectId == null)
+            {
+                <div class="edit-search-wrapper">
+                    <input type="text"
+                           placeholder="Search project…"
+                           value="@_editProjectQuery"
+                           @oninput="OnEditProjectInput"
+                           @onkeydown="HandleEditProjectKey"
+                           class="edit-search-input"
+                           aria-label="Search project" />
+                    @if (_editProjectMatches.Count > 0)
+                    {
+                        <ul class="edit-dropdown" role="listbox">
+                            @for (int pi = 0; pi < _editProjectMatches.Count; pi++)
+                            {
+                                var pidx = pi;
+                                var pm = _editProjectMatches[pi];
+                                <li class="edit-dropdown-item" role="option"
+                                    @onclick="() => ConfirmEditProject(pidx)">
+                                    @pm.ProjectName
+                                    <span class="edit-dropdown-meta">@pm.ClientName</span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            }
+
+            @if (_editTaskSearchActive && _editProjectId != null && _editTaskId == null)
+            {
+                <div class="edit-search-wrapper">
+                    <input type="text"
+                           placeholder="Search task…"
+                           value="@_editTaskQuery"
+                           @oninput="OnEditTaskInput"
+                           @onkeydown="HandleEditTaskKey"
+                           class="edit-search-input"
+                           aria-label="Search task" />
+                    @if (_editTaskMatches.Count > 0)
+                    {
+                        <ul class="edit-dropdown" role="listbox">
+                            @for (int ti = 0; ti < _editTaskMatches.Count; ti++)
+                            {
+                                var tidx = ti;
+                                var tm = _editTaskMatches[ti];
+                                <li class="edit-dropdown-item" role="option"
+                                    @onclick="() => ConfirmEditTask(tidx)">
+                                    @tm.TaskName
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            }
+        </div>
+
+        @* Tag assignment *@
+        <div class="edit-field">
+            <label>Tags</label>
+            <TagPicker SelectedIds="_editTagIds"
+                       SelectedIdsChanged="ids => { _editTagIds = ids; StateHasChanged(); }" />
+        </div>
+
+        <div class="edit-times">
+            <div class="edit-field">
+                <label for="start-@entry.Id">Start</label>
+                <input id="start-@entry.Id"
+                       type="datetime-local"
+                       @bind="_editStarted"
+                       @onblur="() => AutoSave(entry)"
+                       aria-label="Start time" />
+            </div>
+            <div class="edit-field">
+                <label for="end-@entry.Id">End</label>
+                <input id="end-@entry.Id"
+                       type="datetime-local"
+                       @bind="_editEnded"
+                       @onblur="() => AutoSave(entry)"
+                       aria-label="End time" />
+            </div>
+        </div>
+        @if (_editError != null)
+        {
+            <p class="edit-error" role="alert">@_editError</p>
+        }
+        <div class="edit-actions">
+            <BbButton Variant="ButtonVariant.Outline"
+                      Size="ButtonSize.Small"
+                      AriaLabel="Save changes"
+                      OnClick="() => AutoSave(entry)">
+                Save
+            </BbButton>
+            <BbButton Variant="ButtonVariant.Ghost"
+                      Size="ButtonSize.Small"
+                      AriaLabel="Cancel edit"
+                      OnClick="CancelEdit">
+                Cancel
+            </BbButton>
+        </div>
+    </div>;
+
+    private RenderFragment EntryViewContent(TimeEntryItem entry) => @<text>
+        <button type="button"
+                class="entry-description-btn @(string.IsNullOrEmpty(entry.Description) ? "entry-description-empty" : "")"
+                @onclick="() => StartInlineEdit(entry)"
+                aria-label="@(string.IsNullOrEmpty(entry.Description) ? "Add description (click to edit)" : $"{entry.Description} (click to edit)")">
+            @(string.IsNullOrEmpty(entry.Description) ? "(no description)" : entry.Description)
+        </button>
+        @if (entry.Source == "auto")
+        {
+            <span class="auto-badge" title="Created automatically by classification">auto</span>
+        }
+        <span class="entry-times">
+            @FormatTime(entry.StartedAt) – @FormatTime(entry.EndedAt)
+            @if (!string.IsNullOrEmpty(FormatDuration(entry.StartedAt, entry.EndedAt)))
+            {
+                <span class="entry-duration"> @FormatDuration(entry.StartedAt, entry.EndedAt)</span>
+            }
+        </span>
+        @if (entry.ProjectName != null)
+        {
+            <span class="entry-project">
+                @entry.ClientName / @entry.ProjectName@(entry.TaskName != null ? $" ‣ {entry.TaskName}" : "")
+            </span>
+        }
+    </text>;
+
+    private RenderFragment EntryViewActions(TimeEntryItem entry) => @<text>
+        <BbButton Variant="ButtonVariant.Outline"
+                  Size="ButtonSize.Small"
+                  AriaLabel="@($"Continue: {entry.Description}")"
+                  OnClick="() => ContinueEntry(entry.Id)">
+            Continue
+        </BbButton>
+        <BbButton Variant="ButtonVariant.Ghost"
+                  Size="ButtonSize.Small"
+                  AriaLabel="Delete entry"
+                  OnClick="() => { _pendingDeleteId = entry.Id; StateHasChanged(); }">
+            ✕
+        </BbButton>
+    </text>;
+
+    private RenderFragment EntryDeleteConfirm(TimeEntryItem entry) => @<text>
+        @if (_pendingDeleteId == entry.Id)
+        {
+            <div role="dialog"
+                 aria-label="Confirm delete time entry"
+                 class="entry-inline-confirm">
+                <p>Delete this entry?</p>
+                <div class="entry-inline-confirm-actions">
+                    <BbButton Variant="ButtonVariant.Destructive"
+                              Size="ButtonSize.Small"
+                              AriaLabel="Confirm delete"
+                              OnClick="() => ConfirmDeleteEntry(entry.Id)">
+                        Delete
+                    </BbButton>
+                    <BbButton Variant="ButtonVariant.Ghost"
+                              Size="ButtonSize.Small"
+                              AriaLabel="Cancel delete"
+                              OnClick="() => { _pendingDeleteId = null; StateHasChanged(); }">
+                        Cancel
+                    </BbButton>
+                </div>
+            </div>
+        }
+    </text>;
 
     private void StartInlineEdit(TimeEntryItem entry)
     {
