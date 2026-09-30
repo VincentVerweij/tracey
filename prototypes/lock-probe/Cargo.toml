@@ -1,0 +1,24 @@
+# PROTOTYPE — throwaway. Answers issue #66 (map #65): what does Windows report
+# across a real lock/unlock cycle? Delete this whole directory once #66 is closed.
+[workspace]
+
+[package]
+name = "lock-probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+chrono = "0.4"
+
+[dependencies.windows]
+version = "0.58"
+features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_System_SystemInformation",
+  "Win32_System_ProcessStatus",
+  "Win32_System_Threading",
+]
