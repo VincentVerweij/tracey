@@ -62,7 +62,7 @@ The rule becomes: **the query reconciles `Locked` before any loop records an obs
 
 - Lock-screen rows stop appearing in `window_activity_records`, and with them the stray auto entries classification derived from them.
 - Existing lock-screen rows are left as they are. Nothing has been synced and classification has been off, so no migration is planned.
-- When `Locked` clears and the user returns to the same window they left, the tracker's change detection may write no row. The lock then leaves no boundary in the activity data. Whether clearing `Locked` should force a fresh row belongs to resume semantics ([#71](https://github.com/VincentVerweij/tracey/issues/71)).
+- When `Locked` clears and the user returns to the same window they left, the tracker's change detection may write no row. The lock then leaves no boundary in the activity data. Whether clearing `Locked` should force a fresh row belongs to resume semantics ([#71](https://github.com/VincentVerweij/tracey/issues/71)). **Settled by [ADR-0004](0004-suspension-ends-with-a-per-loop-re-entry.md):** when suspension ends, the tracker forces one fresh row.
 
 ## Alternatives considered
 

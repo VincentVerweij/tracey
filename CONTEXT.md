@@ -51,7 +51,20 @@ foreground process (`LockApp.exe`) is *not* a lock signal, and the reactive
 `BitBlt` skip only drops a frame; it never raises or clears `Locked`.
 
 **Resume** — clearing the `Paused` reason. There is no user resume for
-`Locked`; unlocking is not a resume.
+`Locked`; unlocking is not a resume. A resume is one way *suspension ends*,
+but only when no other reason still holds.
+
+**Suspension ends** — the edge, per loop, on the first tick where that loop
+was suspended and no longer is, whichever reason cleared last and however it
+cleared (unlock, resume, or the session-state reconcile). Unlocking while
+`Paused` holds is not a suspension end. Startup is not one either. Settled by
+[ADR-0004](docs/adr/0004-suspension-ends-with-a-per-loop-re-entry.md).
+
+**Re-entry** — what a loop does when its suspension ends, before observing
+anything. Window activity tracking forces one fresh row (subject to the
+deny-list). Screenshot capture takes one settled capture about 2s later, with
+trigger `suspension_end`, and restarts its interval clock from it. Re-entry
+for idle detection and classification belongs to #62.
 
 ### The test for a new loop
 
