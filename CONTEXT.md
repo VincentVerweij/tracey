@@ -27,7 +27,7 @@ today. Reasons are independent, and each may be cleared only by its own owner.
 | Reason | Raised by | Suspends | Durability | Visible |
 |---|---|---|---|---|
 | **Paused** | The user, from the tray | **All tracking** | Persisted as an absolute deadline; survives restart | Yes — tray and in-app indicator |
-| **Locked** | The Windows session-lock signal | **Screenshot capture only** | In-memory; re-seeded at startup, never persisted | No — logged only |
+| **Locked** | The session watch: WTS lock/unlock notifications, reconciled by a session-state query ([ADR-0002](docs/adr/0002-wts-session-notifications-detect-lock.md)) | **Screenshot capture only** | In-memory; re-seeded at startup, never persisted | No — logged only |
 
 **Paused** — the user-initiated reason. The UI word is *pause*: "Pause
 tracking", "Continue paused tracking".
@@ -39,8 +39,14 @@ mattering, because suspension is already in force.
 Its capture-only scope is inherited from map #65 and is **not final** —
 [#70](https://github.com/VincentVerweij/tracey/issues/70) carries an open
 question about widening it to window activity tracking, which records
-`LockApp.exe` throughout every lock today. The detection mechanism is
-[#69](https://github.com/VincentVerweij/tracey/issues/69)'s.
+`LockApp.exe` throughout every lock today.
+
+**Session watch** — the sole owner of `Locked`. It raises and clears the
+reason from WTS session notifications, seeds it at startup, and reconciles it
+before each capture from a session-state query. Settled by
+[ADR-0002](docs/adr/0002-wts-session-notifications-detect-lock.md). The
+foreground process (`LockApp.exe`) is *not* a lock signal, and the reactive
+`BitBlt` skip only drops a frame; it never raises or clears `Locked`.
 
 **Resume** — clearing the `Paused` reason. There is no user resume for
 `Locked`; unlocking is not a resume.
