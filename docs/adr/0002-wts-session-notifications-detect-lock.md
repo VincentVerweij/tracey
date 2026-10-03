@@ -53,7 +53,7 @@ WTS events report only transitions. At startup the producer seeds `Locked` from 
 
 Failing closed is how the standing decision *"a missed signal must degrade, not silently reopen"* applies to the seed. It replaces the map's earlier candidate, `WTSConnectState`. Learn defines that only as correlated with the lock screen ("such as when the user has chosen to exit to the lock screen"), never as a lock query. `SessionFlags` *is* documented as lock state. Learn notes the `LOCK`/`UNLOCK` values are reversed on Windows 7 / Server 2008 R2. Tracey doesn't target either, but the implementation should not paper over it if it does.
 
-**Conditional on evidence.** Nobody has yet observed how reliable `SessionFlags` is on the Windows builds this app runs on. A probe is ticketed under map #65 for that (see *Open question* below). If it shows the flag is unreliable, decisions 4 and 5 need revisiting before the spec relies on them.
+~~**Conditional on evidence.**~~ **Confirmed by [#73](https://github.com/VincentVerweij/tracey/issues/73).** On Windows 11 the flag matched the lock state on every observation and never read `UNKNOWN`. That covers a seed taken while already locked, Win+L, `LockWorkStation`, Ctrl+Alt+Del required, and sleep/wake. Decisions 4 and 5 stand as written.
 
 ### 5. Before each capture, the query reconciles the reason
 
@@ -95,6 +95,8 @@ This settles the logging and event branch of map #65's observability question, w
 ## Open question this creates
 
 **Is `WTSINFOEX_LEVEL1.SessionFlags` accurate on Windows 10/11, through the same phases #66 observed** (lock instant, steady LockApp, credential UI, unlock), and ideally also under Ctrl+Alt+Del required and inside RDP? Decisions 4 and 5 depend on it. It is an empirical question, like #66, and is ticketed under map #65.
+
+> **Resolved by [#73](https://github.com/VincentVerweij/tracey/issues/73):** yes. It held through every phase and under Ctrl+Alt+Del required, and the query's transitions lined up with the events. RDP was not run, and remote session states are out of scope under #70. One timing fact matters for decision 5: after sleep, the queued `LOCK` and `UNLOCK` events arrived together, 20 ms apart, and only *after* the unlock. The query already read `UNLOCK` inside the `LOCK` handler. Events report history, the query reports the present, and that is why the query wins.
 
 ## Alternatives considered
 
