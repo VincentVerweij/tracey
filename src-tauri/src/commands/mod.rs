@@ -15,6 +15,7 @@ use crate::platform::PlatformHooks;
 use crate::services::classification::tfidf::TfIdfModel;
 use crate::services::classification::heuristic::HeuristicRule;
 use crate::services::active_learning_queue::ActiveLearningQueue;
+use crate::services::suspension::Suspension;
 
 /// Shared classification state: loaded model + rule cache + sample counter.
 #[derive(Default)]
@@ -45,6 +46,8 @@ pub struct AppState {
     pub sync_state: Arc<std::sync::Mutex<SyncState>>,
     /// Notify fired to wake the sync background loop for an immediate sync cycle.
     pub sync_notify: Arc<tokio::sync::Notify>,
+    /// Which tracking loops are suspended, and why. In-memory only (ADR-0001).
+    pub suspension: Arc<Suspension>,
     pub classification_state: Arc<std::sync::Mutex<ClassificationState>>,
     pub active_learning_queue: Arc<std::sync::Mutex<ActiveLearningQueue>>,
 }

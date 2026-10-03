@@ -45,6 +45,7 @@ pub fn run() {
     let platform: Arc<dyn platform::PlatformHooks + Send + Sync> = Arc::new(WindowsPlatformHooks);
     let sync_state = Arc::new(std::sync::Mutex::new(SyncState::default()));
     let sync_notify = Arc::new(tokio::sync::Notify::new());
+    let suspension = Arc::new(services::suspension::Suspension::new());
 
     // Load persisted classification model and rules at startup
     let classification_state = {
@@ -72,6 +73,7 @@ pub fn run() {
             db: std::sync::Mutex::new(conn),
             platform,
             sync_state,
+            suspension,
             sync_notify,
             classification_state,
             active_learning_queue,

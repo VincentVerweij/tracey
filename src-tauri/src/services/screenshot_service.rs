@@ -4,6 +4,7 @@ use chrono::Utc;
 use ulid::Ulid;
 
 use crate::commands::AppState;
+use crate::services::suspension::{Suspension, TrackingLoop};
 
 // ─── T045 — Storage path resolution ──────────────────────────────────────────
 
@@ -301,13 +302,76 @@ async fn cleanup_expired(app: &AppHandle) {
     }
 }
 
+// ─── T046 — Capture schedule ──────────────────────────────────────────────────
+
+/// Per-tick capture decision: an elapsed interval, or a 2-second-debounced
+/// window change. Consults suspension before observing anything.
+struct CaptureSchedule {
+    last_window_key: Option<String>,
+    last_interval_capture: tokio::time::Instant,
+    debounce_until: Option<tokio::time::Instant>,
+}
+
+impl CaptureSchedule {
+    fn new(now: tokio::time::Instant) -> Self {
+        Self { last_window_key: None, last_interval_capture: now, debounce_until: None }
+    }
+
+    /// Returns the trigger and window info to capture with, or `None` to skip
+    /// this tick. A suspended tick skips everything, including `observe` (the
+    /// foreground window query) and change-detection updates.
+    fn tick(
+        &mut self,
+        now: tokio::time::Instant,
+        interval_secs: u64,
+        suspension: &Suspension,
+        observe: impl FnOnce() -> Option<(String, String)>,
+    ) -> Option<(&'static str, Option<(String, String)>)> {
+        if suspension.is_suspended(TrackingLoop::ScreenshotCapture) {
+            return None;
+        }
+
+        let window_info = observe();
+        let current_key = window_info
+            .as_ref()
+            .map(|(p, t)| format!("{}|{}", p, t));
+
+        // Window-change detection with 2-second debounce
+        if current_key != self.last_window_key {
+            self.last_window_key = current_key;
+            self.debounce_until = Some(now + tokio::time::Duration::from_secs(2));
+        }
+
+        let interval_elapsed =
+            now.duration_since(self.last_interval_capture).as_secs() >= interval_secs;
+        let debounce_fired = self.debounce_until.map(|d| now >= d).unwrap_or(false);
+
+        if !(interval_elapsed || debounce_fired) {
+            return None;
+        }
+        let trigger = if debounce_fired { "window_change" } else { "interval" };
+        if debounce_fired {
+            self.debounce_until = None;
+        }
+        if interval_elapsed {
+            self.last_interval_capture = now;
+        }
+        Some((trigger, window_info))
+    }
+}
+
+/// The reactive skip: a capture that failed because the desktop is locked drops
+/// that frame silently. Defence in depth behind suspension; it never raises or
+/// clears `Locked` (ADR-0002).
+fn is_reactive_lock_skip(error: &str) -> bool {
+    error == ERR_SESSION_LOCKED
+}
+
 // ─── T046 — Main service loop ─────────────────────────────────────────────────
 
 pub fn start_screenshot_loop(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let mut last_window_key: Option<String> = None;
-        let mut last_interval_capture = tokio::time::Instant::now();
-        let mut debounce_until: Option<tokio::time::Instant> = None;
+        let mut schedule = CaptureSchedule::new(tokio::time::Instant::now());
         let mut cleanup_tick: u64 = 0;
 
         loop {
@@ -340,41 +404,24 @@ pub fn start_screenshot_loop(app: AppHandle) {
                 }; x
             }; // db lock released
 
-            // Get current foreground window info — platform access (no DB lock)
-            let window_info = {
-                let state = app.state::<AppState>();
-                // get_foreground_window_info returns Option<WindowInfo>; title field is `title`
-                state.platform.get_foreground_window_info().map(|w| {
-                    (w.process_name.clone(), w.title.clone())
-                })
-            };
+            // Get current foreground window info — platform access (no DB lock),
+            // queried only when capture is not suspended
+            let state = app.state::<AppState>();
+            let decision = schedule.tick(
+                tokio::time::Instant::now(),
+                interval_secs,
+                &state.suspension,
+                || {
+                    // get_foreground_window_info returns Option<WindowInfo>; title field is `title`
+                    state.platform.get_foreground_window_info().map(|w| {
+                        (w.process_name.clone(), w.title.clone())
+                    })
+                },
+            );
 
-            let current_key = window_info
-                .as_ref()
-                .map(|(p, t)| format!("{}|{}", p, t));
-
-            // Window-change detection with 2-second debounce
-            if current_key != last_window_key {
-                last_window_key = current_key.clone();
-                debounce_until = Some(
-                    tokio::time::Instant::now() + tokio::time::Duration::from_secs(2),
-                );
-            }
-
-            let now = tokio::time::Instant::now();
-            let interval_elapsed =
-                now.duration_since(last_interval_capture).as_secs() >= interval_secs;
-            let debounce_fired = debounce_until.map(|d| now >= d).unwrap_or(false);
-
-            if interval_elapsed || debounce_fired {
-                let trigger = if debounce_fired { "window_change" } else { "interval" };
-                if debounce_fired {
-                    debounce_until = None;
-                }
-                if interval_elapsed { last_interval_capture = now; }
-
+            if let Some((trigger, window_info)) = decision {
                 if let Err(e) = capture_and_save(&app, trigger, window_info).await {
-                    if e == ERR_SESSION_LOCKED {
+                    if is_reactive_lock_skip(&e) {
                         log::debug!("[screenshot] skipped — session is locked");
                     } else {
                         let _ = app.emit(
@@ -400,6 +447,7 @@ pub fn start_screenshot_loop(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::time::{Duration, Instant};
 
     #[test]
     fn downscale_jpeg_halves_dimensions() {
@@ -416,6 +464,79 @@ mod tests {
         let decoded = image::load_from_memory_with_format(&small, image::ImageFormat::Jpeg).unwrap();
         assert_eq!(decoded.width(), 50);
         assert_eq!(decoded.height(), 50);
+    }
+
+
+    fn window(title: &str) -> Option<(String, String)> {
+        Some(("app.exe".to_string(), title.to_string()))
+    }
+
+    /// Ticks once per second from `start` for `secs` ticks, returning each capture trigger.
+    fn run_ticks(
+        schedule: &mut CaptureSchedule,
+        suspension: &Suspension,
+        start: Instant,
+        secs: std::ops::RangeInclusive<u64>,
+        title: &str,
+    ) -> Vec<&'static str> {
+        secs.filter_map(|s| {
+            schedule
+                .tick(start + Duration::from_secs(s), 60, suspension, || window(title))
+                .map(|(trigger, _)| trigger)
+        })
+        .collect()
+    }
+
+    #[test]
+    fn captures_on_interval_when_not_suspended() {
+        let start = Instant::now();
+        let suspension = Suspension::new();
+        let mut schedule = CaptureSchedule::new(start);
+        // First observation counts as a window change, so one window_change capture at ~2s.
+        let triggers = run_ticks(&mut schedule, &suspension, start, 1..=60, "doc");
+        assert_eq!(triggers, vec!["window_change", "interval"]);
+    }
+
+    #[test]
+    fn no_capture_while_locked() {
+        let start = Instant::now();
+        let suspension = Suspension::new();
+        suspension.raise_locked();
+        let mut schedule = CaptureSchedule::new(start);
+        let triggers = run_ticks(&mut schedule, &suspension, start, 1..=300, "doc");
+        assert!(triggers.is_empty(), "captured while Locked: {triggers:?}");
+    }
+
+    #[test]
+    fn locked_tick_does_not_query_the_foreground_window() {
+        let start = Instant::now();
+        let suspension = Suspension::new();
+        suspension.raise_locked();
+        let mut schedule = CaptureSchedule::new(start);
+        let mut queried = false;
+        schedule.tick(start + Duration::from_secs(120), 60, &suspension, || {
+            queried = true;
+            window("doc")
+        });
+        assert!(!queried);
+    }
+
+    #[test]
+    fn capture_continues_once_suspension_ends() {
+        let start = Instant::now();
+        let suspension = Suspension::new();
+        let mut schedule = CaptureSchedule::new(start);
+        suspension.raise_locked();
+        assert!(run_ticks(&mut schedule, &suspension, start, 1..=120, "doc").is_empty());
+        suspension.clear_locked();
+        let triggers = run_ticks(&mut schedule, &suspension, start, 121..=125, "doc");
+        assert!(!triggers.is_empty(), "no capture after Locked cleared");
+    }
+
+    #[test]
+    fn locked_desktop_capture_failure_is_skipped_silently() {
+        assert!(is_reactive_lock_skip(ERR_SESSION_LOCKED));
+        assert!(!is_reactive_lock_skip("GetMonitorInfoW failed"));
     }
 
     #[cfg(feature = "test")]
