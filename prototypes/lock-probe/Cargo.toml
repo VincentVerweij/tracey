@@ -1,5 +1,5 @@
-# PROTOTYPE — throwaway. Answers issue #66 (map #65): what does Windows report
-# across a real lock/unlock cycle? Delete this whole directory once #66 is closed.
+# PROTOTYPE — throwaway. Answers issues #66 and #73 (map #65): what does Windows report
+# across a real lock/unlock cycle? Delete this whole directory once #73 is closed.
 [workspace]
 
 [package]
@@ -21,4 +21,6 @@ features = [
   "Win32_System_SystemInformation",
   "Win32_System_ProcessStatus",
   "Win32_System_Threading",
+  "Win32_System_RemoteDesktop",
+  "Win32_System_LibraryLoader",
 ]

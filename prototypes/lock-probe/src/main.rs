@@ -1,37 +1,192 @@
-//! PROTOTYPE — throwaway instrumentation for wayfinder ticket #66 (map #65).
+//! PROTOTYPE — throwaway instrumentation for wayfinder tickets #66 and #73 (map #65).
 //!
-//! Once a second it records, on one line:
+//! #66: once a second it records, on one `tick` line:
 //!   - the foreground window (process name + title), exactly as
 //!     `PlatformHooks::get_foreground_window_info()` sees it, or why it saw nothing
 //!   - the `BitBlt` outcome: OK, ERROR_INVALID_HANDLE (0x80070006), or another HRESULT
 //!   - whether the captured frame is actually non-black (mean / max / % zero pixels)
 //!   - `get_idle_seconds()`, mirroring the production idle query
 //!
+//! #73 adds, on the same timeline:
+//!   - `wts=` on every tick: `WTSQuerySessionInformationW(…, WTSSessionInfoEx, …)`
+//!     → `WTSINFOEX_LEVEL1.SessionFlags` (LOCK / UNLOCK / UNKNOWN), plus the
+//!     connect state (Active / Connected / Disconnected …) and session id
+//!   - an `EVENT` line for every `WM_WTSSESSION_CHANGE`, timestamped to the ms the
+//!     moment it is dispatched, with `SessionFlags` re-queried inside the handler
+//!
+//! Events are registered (`NOTIFY_FOR_THIS_SESSION`) on TWO windows, so the log
+//! also shows whether both kinds receive them:
+//!   - `msgonly` — a message-only window (`HWND_MESSAGE` parent)
+//!   - `toplevel` — a hidden, never-shown top-level window, the closest thing to
+//!     the real tray-hidden Tauri window that production will subclass
+//!
+//! The main thread only pumps messages; ticks run on their own thread so a slow
+//! `BitBlt` around a desktop switch cannot delay event timestamps.
+//!
 //! Capture mirrors `screenshot_service::capture_screen_full_res_jpeg()` up to the
 //! pixel buffer, then stops — nothing is encoded or written as an image.
 //!
-//! Run it, lock the machine, sit on the lock screen for a few minutes, unlock,
-//! then Ctrl-C. Every line also lands in `lock-probe.log` next to the exe, because
-//! the console is not readable while the machine is locked.
+//! Every line also lands in `lock-probe.log` next to the exe, because the console
+//! is not readable while the machine is locked.
 //!
 //! No error handling, no abstractions, no tests. It answers one question.
 
 use chrono::Local;
 use std::io::Write;
-use windows::Win32::Foundation::{GetLastError, HWND};
+use std::sync::{Mutex, OnceLock};
+use windows::core::{w, PCWSTR, PWSTR};
+use windows::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits,
     GetMonitorInfoW, GetWindowDC, MonitorFromWindow, ReleaseDC, SelectObject, BITMAPINFO,
     BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ, MONITORINFO, MONITOR_DEFAULTTONEAREST,
     RGBQUAD, SRCCOPY,
 };
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::ProcessStatus::GetModuleFileNameExW;
+use windows::Win32::System::RemoteDesktop::{
+    WTSFreeMemory, WTSQuerySessionInformationW, WTSRegisterSessionNotification, WTSSessionInfoEx,
+    NOTIFY_FOR_THIS_SESSION, WTSINFOEXW, WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION,
+    WTS_SESSIONSTATE_LOCK, WTS_SESSIONSTATE_UNKNOWN, WTS_SESSIONSTATE_UNLOCK,
+};
 use windows::Win32::System::SystemInformation::GetTickCount64;
 use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetDesktopWindow, GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetDesktopWindow, GetForegroundWindow,
+    GetMessageW, GetWindowTextW, GetWindowThreadProcessId, RegisterClassW, TranslateMessage,
+    HWND_MESSAGE, MSG, WINDOW_EX_STYLE, WM_WTSSESSION_CHANGE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
 };
+
+static LOG: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
+
+fn emit(line: &str) {
+    println!("{}", line);
+    let mut f = LOG.get().unwrap().lock().unwrap();
+    let _ = writeln!(f, "{}", line);
+    let _ = f.flush();
+}
+
+fn now() -> String {
+    Local::now().format("%H:%M:%S%.3f").to_string()
+}
+
+/// `WTSINFOEX_LEVEL1.SessionFlags` + connect state + session id, as one token.
+fn wts_state() -> String {
+    unsafe {
+        let mut buf = PWSTR::null();
+        let mut bytes = 0u32;
+        if let Err(e) = WTSQuerySessionInformationW(
+            WTS_CURRENT_SERVER_HANDLE,
+            WTS_CURRENT_SESSION,
+            WTSSessionInfoEx,
+            &mut buf,
+            &mut bytes,
+        ) {
+            return format!("wts=QUERY-FAILED 0x{:08X}", e.code().0 as u32);
+        }
+        let info = &*(buf.0 as *const WTSINFOEXW);
+        let out = if info.Level != 1 {
+            format!("wts=<level {}>", info.Level)
+        } else {
+            let l1 = info.Data.WTSInfoExLevel1;
+            let flags = match l1.SessionFlags as u32 {
+                WTS_SESSIONSTATE_LOCK => "LOCK".to_string(),
+                WTS_SESSIONSTATE_UNLOCK => "UNLOCK".to_string(),
+                WTS_SESSIONSTATE_UNKNOWN => "UNKNOWN".to_string(),
+                other => format!("<raw {}>", other),
+            };
+            let conn = match l1.SessionState.0 {
+                0 => "Active",
+                1 => "Connected",
+                2 => "ConnectQuery",
+                3 => "Shadow",
+                4 => "Disconnected",
+                5 => "Idle",
+                6 => "Listen",
+                7 => "Reset",
+                8 => "Down",
+                9 => "Init",
+                _ => "?",
+            };
+            format!("wts={} conn={} sid={}", flags, conn, l1.SessionId)
+        };
+        WTSFreeMemory(buf.0 as *mut _);
+        out
+    }
+}
+
+fn wts_code(code: usize) -> &'static str {
+    match code {
+        0x1 => "WTS_CONSOLE_CONNECT",
+        0x2 => "WTS_CONSOLE_DISCONNECT",
+        0x3 => "WTS_REMOTE_CONNECT",
+        0x4 => "WTS_REMOTE_DISCONNECT",
+        0x5 => "WTS_SESSION_LOGON",
+        0x6 => "WTS_SESSION_LOGOFF",
+        0x7 => "WTS_SESSION_LOCK",
+        0x8 => "WTS_SESSION_UNLOCK",
+        0x9 => "WTS_SESSION_REMOTE_CONTROL",
+        0xA => "WTS_SESSION_CREATE",
+        0xB => "WTS_SESSION_TERMINATE",
+        _ => "<unknown code>",
+    }
+}
+
+static MSGONLY: OnceLock<isize> = OnceLock::new();
+
+unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if msg == WM_WTSSESSION_CHANGE {
+        let which = if MSGONLY.get() == Some(&(hwnd.0 as isize)) {
+            "msgonly"
+        } else {
+            "toplevel"
+        };
+        emit(&format!(
+            "{}  EVENT {} (0x{:X}) on={} event_sid={}  {}",
+            now(),
+            wts_code(wparam.0),
+            wparam.0,
+            which,
+            lparam.0,
+            wts_state()
+        ));
+        return LRESULT(0);
+    }
+    DefWindowProcW(hwnd, msg, wparam, lparam)
+}
+
+fn make_window(class: PCWSTR, parent: Option<HWND>, label: &str) -> HWND {
+    unsafe {
+        let hwnd = CreateWindowExW(
+            WINDOW_EX_STYLE(0),
+            class,
+            w!("lock-probe"),
+            WS_OVERLAPPEDWINDOW, // never shown
+            0,
+            0,
+            0,
+            0,
+            parent.unwrap_or_default(),
+            None,
+            GetModuleHandleW(None).unwrap(),
+            None,
+        )
+        .unwrap();
+        let reg = WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION);
+        emit(&format!(
+            "{}  register {} hwnd={:?} -> {}",
+            now(),
+            label,
+            hwnd.0,
+            match reg {
+                Ok(()) => "OK".to_string(),
+                Err(e) => format!("FAILED 0x{:08X}", e.code().0 as u32),
+            }
+        ));
+        hwnd
+    }
+}
 
 fn foreground() -> String {
     unsafe {
@@ -199,40 +354,67 @@ fn main() {
         .parent()
         .unwrap()
         .join("lock-probe.log");
-    let mut log = std::fs::OpenOptions::new()
+    let log = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(&log_path)
         .unwrap();
+    LOG.set(Mutex::new(log)).unwrap();
 
-    let banner = format!(
-        "=== lock-probe started {} ===\nlog file: {}\nLock the machine, wait on the lock screen a few minutes, unlock, then Ctrl-C.\n",
+    emit(&format!(
+        "=== lock-probe started {} ===\nlog file: {}\nRun each scenario from RUNBOOK-73.md, then Ctrl-C.",
         Local::now().to_rfc3339(),
         log_path.display()
-    );
-    print!("{}", banner);
-    let _ = write!(log, "{}", banner);
+    ));
+    emit(&format!("{}  startup-seed  {}", now(), wts_state()));
 
-    loop {
+    unsafe {
+        let class = w!("lock-probe-wts");
+        let wc = WNDCLASSW {
+            lpfnWndProc: Some(wndproc),
+            hInstance: GetModuleHandleW(None).unwrap().into(),
+            lpszClassName: class,
+            ..Default::default()
+        };
+        RegisterClassW(&wc);
+        let msgonly = make_window(class, Some(HWND_MESSAGE), "msgonly");
+        MSGONLY.set(msgonly.0 as isize).unwrap();
+        let _toplevel = make_window(class, None, "toplevel");
+    }
+
+    // Type a line + Enter at any time to drop a scenario marker into the timeline.
+    std::thread::spawn(|| {
+        for line in std::io::stdin().lines() {
+            emit(&format!("{}  MARK {}", now(), line.unwrap()));
+        }
+    });
+
+    std::thread::spawn(|| loop {
         let idle = idle_seconds();
         let idle_s = if idle == u64::MAX {
             "idle=GetLastInputInfo-failed".to_string()
         } else {
             format!("idle={}s", idle)
         };
-
-        let line = format!(
-            "{}  {}  {}  {}",
-            Local::now().format("%H:%M:%S"),
+        // Query WTS first: it is the value production would reconcile against
+        // right before deciding to capture.
+        let wts = wts_state();
+        emit(&format!(
+            "{}  tick  {}  {}  {}  {}",
+            now(),
+            wts,
             foreground(),
             capture_probe(),
             idle_s
-        );
-
-        println!("{}", line);
-        let _ = writeln!(log, "{}", line);
-        let _ = log.flush();
-
+        ));
         std::thread::sleep(std::time::Duration::from_secs(1));
+    });
+
+    unsafe {
+        let mut msg = MSG::default();
+        while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+            let _ = TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
     }
 }
