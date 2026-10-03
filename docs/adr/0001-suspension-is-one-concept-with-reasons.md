@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-30
 - **Deciders:** Vincent Verweij
+- **Amended by:** [ADR-0003](0003-locked-is-lock-only-and-suspends-window-activity.md) (decision 5: `Locked` also suspends window activity tracking)
 - **Resolves:** [#68](https://github.com/VincentVerweij/tracey/issues/68), under map [#65](https://github.com/VincentVerweij/tracey/issues/65)
 - **Constrains:** [#62](https://github.com/VincentVerweij/tracey/issues/62) (Pause tracking ability)
 - **Vocabulary:** [`CONTEXT.md` § Suspension](../../CONTEXT.md#suspension)
@@ -46,6 +47,8 @@ A tray resume clears `Paused`. It cannot clear `Locked`. Unlocking clears `Locke
 ### 5. `Paused` suspends all tracking; `Locked` suspends capture only
 
 `Paused` suspends screenshot capture, window activity tracking, idle detection and classification. `Locked` suspends screenshot capture alone.
+
+> **Amended by [ADR-0003](0003-locked-is-lock-only-and-suspends-window-activity.md):** `Locked` suspends screenshot capture **and window activity tracking**, on correctness grounds (the tracker can only see the lock screen). The privacy rationale below is unchanged.
 
 The rationale for the asymmetry is privacy, and it is the user's: a pause is a statement that nothing should be observed. Stopping screenshots while window activity records keep accumulating in the database means data the user believed was not being collected is there to be found later. A lock is not that statement — it is an absence, and the desktop behind it is still the user's session.
 
@@ -97,6 +100,8 @@ Both are deliberate, and both were settled with Vincent during the #68 grilling.
 If a pause deadline expires while the screen is locked, `Paused` clears but `Locked` holds — so capture stays shut while window activity tracking, idle detection and classification resume against a locked screen, recording `LockApp.exe` as window activity. That is observation data gathered during a lock, which sits awkwardly beside the privacy rationale in decision 5.
 
 Deliberately left open rather than settled here. Graduated to [#70](https://github.com/VincentVerweij/tracey/issues/70) ("Which session states suspend capture"), which owns the scope of the `Locked` reason.
+
+**Closed by [ADR-0003](0003-locked-is-lock-only-and-suspends-window-activity.md):** window activity tracking is suspended under `Locked`, so an expiring pause during a lock resumes only idle detection and classification, neither of which records the lock screen.
 
 ## Alternatives considered
 

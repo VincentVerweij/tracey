@@ -27,7 +27,7 @@ today. Reasons are independent, and each may be cleared only by its own owner.
 | Reason | Raised by | Suspends | Durability | Visible |
 |---|---|---|---|---|
 | **Paused** | The user, from the tray | **All tracking** | Persisted as an absolute deadline; survives restart | Yes — tray and in-app indicator |
-| **Locked** | The session watch: WTS lock/unlock notifications, reconciled by a session-state query ([ADR-0002](docs/adr/0002-wts-session-notifications-detect-lock.md)) | **Screenshot capture only** | In-memory; re-seeded at startup, never persisted | No — logged only |
+| **Locked** | The session watch: WTS lock/unlock notifications, reconciled by a session-state query ([ADR-0002](docs/adr/0002-wts-session-notifications-detect-lock.md)) | **Screenshot capture and window activity tracking** ([ADR-0003](docs/adr/0003-locked-is-lock-only-and-suspends-window-activity.md)) | In-memory; re-seeded at startup, never persisted | No — logged only |
 
 **Paused** — the user-initiated reason. The UI word is *pause*: "Pause
 tracking", "Continue paused tracking".
@@ -36,10 +36,12 @@ tracking", "Continue paused tracking".
 `Paused` also holds: the lock signal keeps updating it, it simply stops
 mattering, because suspension is already in force.
 
-Its capture-only scope is inherited from map #65 and is **not final** —
-[#70](https://github.com/VincentVerweij/tracey/issues/70) carries an open
-question about widening it to window activity tracking, which records
-`LockApp.exe` throughout every lock today.
+Only a session *lock* raises it. A disconnected session is not `Locked`.
+It suspends window activity tracking as well as capture, because the only
+window visible while locked is the lock screen, which is a session state, not
+activity. Idle detection keeps running, since a lock is exactly what the idle
+prompt is for. Settled by
+[ADR-0003](docs/adr/0003-locked-is-lock-only-and-suspends-window-activity.md).
 
 **Session watch** — the sole owner of `Locked`. It raises and clears the
 reason from WTS session notifications, seeds it at startup, and reconciles it

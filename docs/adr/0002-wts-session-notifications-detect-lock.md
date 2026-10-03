@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-03
 - **Deciders:** Vincent Verweij
+- **Amended by:** [ADR-0003](0003-locked-is-lock-only-and-suspends-window-activity.md) (decision 1: only lock/unlock count; decision 5: the reconcile also runs before each activity write)
 - **Resolves:** [#69](https://github.com/VincentVerweij/tracey/issues/69), under map [#65](https://github.com/VincentVerweij/tracey/issues/65)
 - **Builds on:** [ADR-0001](0001-suspension-is-one-concept-with-reasons.md), which defines the `Locked` reason and its owner-only operations
 - **Vocabulary:** [`CONTEXT.md` § Suspension](../../CONTEXT.md#suspension)
@@ -23,6 +24,8 @@ ADR-0001 says the `Locked` reason is raised and cleared by "the Windows session-
 `WTS_SESSION_LOCK` raises `Locked`. `WTS_SESSION_UNLOCK` clears it. `LockApp.exe` plays no part in lock detection, either as a primary signal or as a cross-check. As a cross-check it would bring #72's false-lock failure back in.
 
 Which *other* WTS codes (console or remote connect and disconnect, logon and logoff) also affect `Locked` is [#70](https://github.com/VincentVerweij/tracey/issues/70)'s decision. Until #70 settles it, the producer acts on lock and unlock only. It logs any other code at debug level, and it treats a `wParam` it doesn't recognise as unknown, never as "no change" (#67: 0xC–0xE are undefined).
+
+> **Settled by [ADR-0003](0003-locked-is-lock-only-and-suspends-window-activity.md):** lock and unlock are the only codes that affect `Locked`. Every other code, recognised or not, is logged at debug level and makes no claim either way.
 
 ### 2. Notifications land in a message-only window on a dedicated thread
 
@@ -61,6 +64,8 @@ Failing closed alone could leave capture shut indefinitely: an `UNKNOWN` seed wh
 - `UNKNOWN` or failure: the reason keeps its current value.
 
 The query wins disagreements because it reports *state*, while events report *transitions*, which can be missed. With the query in place, events serve as the low-latency path that raises `Locked` the moment the lock happens, rather than at the next capture tick, and they also supply the transition log. Both inputs belong to one producer, which remains the reason's only owner.
+
+> **Amended by [ADR-0003](0003-locked-is-lock-only-and-suspends-window-activity.md):** the same reconcile also runs before each activity write. The rule is: the query reconciles `Locked` before any loop records an observation under it.
 
 ### 6. The reactive net only skips; it never touches `Locked`
 
