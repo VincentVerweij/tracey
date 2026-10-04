@@ -81,7 +81,7 @@ pub struct Screenshot {
     pub captured_at: String,
     pub window_title: String,
     pub process_name: String,
-    pub trigger: String, // "interval" | "window_change"
+    pub trigger: String, // "interval" | "window_change" | "suspension_end"
     pub device_id: String,
     pub ocr_text: Option<String>,
 }
