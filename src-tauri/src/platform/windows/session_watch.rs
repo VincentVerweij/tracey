@@ -328,8 +328,9 @@ fn seed(suspension: &Suspension, session_flags: windows::core::Result<u32>) {
 }
 
 /// Reconcile `Locked` from the session-state query (ADR-0002 decision 5).
-/// Called by the loops, through `suspension::reconcile_locked`, immediately
-/// before they record an observation. Runs on the caller's thread.
+/// The session-state query adapter `lib.rs` hands each loop's `LoopSuspension`,
+/// which calls it on suspended ticks and immediately before recording an
+/// observation. Runs on the caller's thread.
 pub fn reconcile(suspension: &Suspension) {
     reconcile_from(suspension, query_session_flags);
 }

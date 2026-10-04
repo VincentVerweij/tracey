@@ -107,19 +107,37 @@ pub fn run() {
             tray::setup_tray(app)?;
 
             // Seed and maintain `Locked` before any tracking loop starts (ADR-0002).
-            // Not started under the `test` feature: tests drive `Suspension` directly.
-            #[cfg(not(feature = "test"))]
-            {
+            // Not started under the `test` feature: tests drive `Suspension` directly,
+            // and the session-state query is a no-op so a real session state never
+            // overrides them.
+            use services::suspension::{LoopSuspension, SessionStateQuery, TrackingLoop};
+            let suspension = {
                 use tauri::Manager;
-                let suspension = app.state::<AppState>().suspension.clone();
-                platform::windows::session_watch::start(suspension);
-            }
+                app.state::<AppState>().suspension.clone()
+            };
+            #[cfg(not(feature = "test"))]
+            let session_state_query: SessionStateQuery = {
+                platform::windows::session_watch::start(suspension.clone());
+                Arc::new(platform::windows::session_watch::reconcile)
+            };
+            #[cfg(feature = "test")]
+            let session_state_query: SessionStateQuery =
+                Arc::new(|_: &services::suspension::Suspension| {});
+            let loop_suspension = |tracking_loop| {
+                LoopSuspension::new(suspension.clone(), tracking_loop, session_state_query.clone())
+            };
 
             services::timer_tick::start_tick_loop(app.handle().clone());
             services::idle_service::start_idle_loop(app.handle().clone());
-            services::screenshot_service::start_screenshot_loop(app.handle().clone());
+            services::screenshot_service::start_screenshot_loop(
+                app.handle().clone(),
+                loop_suspension(TrackingLoop::ScreenshotCapture),
+            );
             services::sync_service::start_sync_loop(app.handle().clone());
-            services::activity_tracker::start_activity_loop(app.handle().clone());
+            services::activity_tracker::start_activity_loop(
+                app.handle().clone(),
+                loop_suspension(TrackingLoop::WindowActivity),
+            );
             services::classification_loop::start_classification_loop(app.handle().clone());
             Ok(())
         })

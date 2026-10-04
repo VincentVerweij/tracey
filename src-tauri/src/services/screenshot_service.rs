@@ -4,7 +4,7 @@ use chrono::Utc;
 use ulid::Ulid;
 
 use crate::commands::AppState;
-use crate::services::suspension::{reconcile_locked, Suspension, TrackingLoop};
+use crate::services::suspension::{LoopSuspension, TickStart};
 
 // ─── T045 — Storage path resolution ──────────────────────────────────────────
 
@@ -314,52 +314,42 @@ struct CaptureSchedule {
     last_window_key: Option<String>,
     last_interval_capture: tokio::time::Instant,
     debounce_until: Option<tokio::time::Instant>,
-    /// Whether the previous tick was suspended; its falling edge is re-entry.
-    suspended_last_tick: bool,
     /// When the pending `suspension_end` capture is due. Fixed at re-entry, so
     /// window changes during the settle cannot postpone it.
     settle_until: Option<tokio::time::Instant>,
+    suspension: LoopSuspension,
 }
 
 impl CaptureSchedule {
-    fn new(now: tokio::time::Instant) -> Self {
+    fn new(now: tokio::time::Instant, suspension: LoopSuspension) -> Self {
         Self {
             last_window_key: None,
             last_interval_capture: now,
             debounce_until: None,
-            suspended_last_tick: false,
             settle_until: None,
+            suspension,
         }
     }
 
     /// Returns the trigger and window info to capture with, or `None` to skip
     /// this tick. A suspended tick skips everything, including `observe` (the
-    /// foreground window query) and change-detection updates. `reconcile`
-    /// reconciles `Locked` from the session-state query: on a suspended tick, so
-    /// a wrong `Locked` cannot hold capture shut, and immediately before each
-    /// capture attempt (ADR-0002 decision 5).
+    /// foreground window query) and change-detection updates.
     fn tick(
         &mut self,
         now: tokio::time::Instant,
         interval_secs: u64,
-        suspension: &Suspension,
-        mut reconcile: impl FnMut(),
         observe: impl FnOnce() -> Option<(String, String)>,
     ) -> Option<(&'static str, Option<(String, String)>)> {
-        if suspension.is_suspended(TrackingLoop::ScreenshotCapture) {
-            reconcile();
-            if self.still_suspended(suspension) {
-                return None;
+        match self.suspension.begin_tick() {
+            TickStart::Suspended => return None,
+            // Re-entry when suspension ends (ADR-0004 decision 5): forget the last
+            // window and arm the settle. Re-suspending before it fires is safe: a
+            // suspended tick returns above, and the next re-entry arms it again.
+            TickStart::SuspensionEnds => {
+                self.last_window_key = None;
+                self.settle_until = Some(now + DEBOUNCE);
             }
-        }
-
-        // Re-entry when suspension ends (ADR-0004 decision 5): forget the last
-        // window and arm the settle. Re-suspending before it fires is safe: a
-        // suspended tick returns above, and the next re-entry arms it again.
-        if self.suspended_last_tick {
-            self.suspended_last_tick = false;
-            self.last_window_key = None;
-            self.settle_until = Some(now + DEBOUNCE);
+            TickStart::Observing => {}
         }
 
         let window_info = observe();
@@ -374,7 +364,7 @@ impl CaptureSchedule {
         }
 
         if let Some(settle_until) = self.settle_until {
-            if now < settle_until || self.reconciled_into_suspension(suspension, reconcile) {
+            if now < settle_until || !self.suspension.may_record() {
                 return None;
             }
             return Some(self.settle(now, window_info));
@@ -388,7 +378,7 @@ impl CaptureSchedule {
             return None;
         }
         // A capture attempt. The next tick re-enters, which absorbs this one.
-        if self.reconciled_into_suspension(suspension, reconcile) {
+        if !self.suspension.may_record() {
             return None;
         }
         let trigger = if debounce_fired { "window_change" } else { "interval" };
@@ -414,25 +404,6 @@ impl CaptureSchedule {
         self.last_interval_capture = now;
         ("suspension_end", window_info)
     }
-
-    /// Runs the reconcile right before a capture attempt and reports whether it
-    /// found the session locked.
-    fn reconciled_into_suspension(
-        &mut self,
-        suspension: &Suspension,
-        reconcile: impl FnOnce(),
-    ) -> bool {
-        reconcile();
-        self.still_suspended(suspension)
-    }
-
-    /// Whether capture is suspended once the reconcile has run. A suspended
-    /// tick is remembered, so the next unsuspended one is a re-entry.
-    fn still_suspended(&mut self, suspension: &Suspension) -> bool {
-        let suspended = suspension.is_suspended(TrackingLoop::ScreenshotCapture);
-        self.suspended_last_tick |= suspended;
-        suspended
-    }
 }
 
 /// The reactive skip: a capture that failed because the desktop is locked drops
@@ -444,9 +415,9 @@ fn is_reactive_lock_skip(error: &str) -> bool {
 
 // ─── T046 — Main service loop ─────────────────────────────────────────────────
 
-pub fn start_screenshot_loop(app: AppHandle) {
+pub fn start_screenshot_loop(app: AppHandle, suspension: LoopSuspension) {
     tauri::async_runtime::spawn(async move {
-        let mut schedule = CaptureSchedule::new(tokio::time::Instant::now());
+        let mut schedule = CaptureSchedule::new(tokio::time::Instant::now(), suspension);
         let mut cleanup_tick: u64 = 0;
 
         loop {
@@ -485,8 +456,6 @@ pub fn start_screenshot_loop(app: AppHandle) {
             let decision = schedule.tick(
                 tokio::time::Instant::now(),
                 interval_secs,
-                &state.suspension,
-                || reconcile_locked(&state.suspension),
                 || {
                     // get_foreground_window_info returns Option<WindowInfo>; title field is `title`
                     state.platform.get_foreground_window_info().map(|w| {
@@ -523,7 +492,9 @@ pub fn start_screenshot_loop(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
     use tokio::time::{Duration, Instant};
+    use crate::services::suspension::{SessionStateQuery, Suspension, TrackingLoop};
 
     #[test]
     fn downscale_jpeg_halves_dimensions() {
@@ -547,32 +518,32 @@ mod tests {
         Some(("app.exe".to_string(), title.to_string()))
     }
 
-    /// Ticks once per second from `start` for `secs` ticks, returning each capture trigger.
-    /// The reconcile finds nothing to change.
-    fn run_ticks(
-        schedule: &mut CaptureSchedule,
-        suspension: &Suspension,
-        start: Instant,
-        secs: std::ops::RangeInclusive<u64>,
-        title: &str,
-    ) -> Vec<&'static str> {
-        run_ticks_reconciling(schedule, suspension, || {}, start, secs, title)
+    /// A schedule whose session-state query finds nothing to change.
+    fn schedule(start: Instant, suspension: &Arc<Suspension>) -> CaptureSchedule {
+        schedule_querying(start, suspension, Arc::new(|_: &Suspension| {}))
     }
 
-    /// As `run_ticks`, with `reconcile` standing in for the session-state query.
-    fn run_ticks_reconciling(
+    fn schedule_querying(
+        start: Instant,
+        suspension: &Arc<Suspension>,
+        query: SessionStateQuery,
+    ) -> CaptureSchedule {
+        CaptureSchedule::new(
+            start,
+            LoopSuspension::new(suspension.clone(), TrackingLoop::ScreenshotCapture, query),
+        )
+    }
+
+    /// Ticks once per second from `start` for `secs` ticks, returning each capture trigger.
+    fn run_ticks(
         schedule: &mut CaptureSchedule,
-        suspension: &Suspension,
-        mut reconcile: impl FnMut(),
         start: Instant,
         secs: std::ops::RangeInclusive<u64>,
         title: &str,
     ) -> Vec<&'static str> {
         secs.filter_map(|s| {
             schedule
-                .tick(start + Duration::from_secs(s), 60, suspension, &mut reconcile, || {
-                    window(title)
-                })
+                .tick(start + Duration::from_secs(s), 60, || window(title))
                 .map(|(trigger, _)| trigger)
         })
         .collect()
@@ -581,40 +552,40 @@ mod tests {
     /// Captures for a minute, holds `Locked` from 61s to 300s (well past the
     /// 60s interval), then clears it so suspension ends at the 301s tick.
     fn lock_past_the_interval(schedule: &mut CaptureSchedule, suspension: &Suspension, start: Instant) {
-        run_ticks(schedule, suspension, start, 1..=60, "doc");
+        run_ticks(schedule, start, 1..=60, "doc");
         suspension.raise_locked();
-        assert!(run_ticks(schedule, suspension, start, 61..=300, "doc").is_empty());
+        assert!(run_ticks(schedule, start, 61..=300, "doc").is_empty());
         suspension.clear_locked();
     }
 
     #[test]
     fn captures_on_interval_when_not_suspended() {
         let start = Instant::now();
-        let suspension = Suspension::new();
-        let mut schedule = CaptureSchedule::new(start);
+        let suspension = Arc::new(Suspension::new());
+        let mut schedule = schedule(start, &suspension);
         // First observation counts as a window change, so one window_change capture at ~2s.
-        let triggers = run_ticks(&mut schedule, &suspension, start, 1..=60, "doc");
+        let triggers = run_ticks(&mut schedule, start, 1..=60, "doc");
         assert_eq!(triggers, vec!["window_change", "interval"]);
     }
 
     #[test]
     fn no_capture_while_locked() {
         let start = Instant::now();
-        let suspension = Suspension::new();
+        let suspension = Arc::new(Suspension::new());
         suspension.raise_locked();
-        let mut schedule = CaptureSchedule::new(start);
-        let triggers = run_ticks(&mut schedule, &suspension, start, 1..=300, "doc");
+        let mut schedule = schedule(start, &suspension);
+        let triggers = run_ticks(&mut schedule, start, 1..=300, "doc");
         assert!(triggers.is_empty(), "captured while Locked: {triggers:?}");
     }
 
     #[test]
     fn locked_tick_does_not_query_the_foreground_window() {
         let start = Instant::now();
-        let suspension = Suspension::new();
+        let suspension = Arc::new(Suspension::new());
         suspension.raise_locked();
-        let mut schedule = CaptureSchedule::new(start);
+        let mut schedule = schedule(start, &suspension);
         let mut queried = false;
-        schedule.tick(start + Duration::from_secs(120), 60, &suspension, || {}, || {
+        schedule.tick(start + Duration::from_secs(120), 60, || {
             queried = true;
             window("doc")
         });
@@ -624,43 +595,43 @@ mod tests {
     #[test]
     fn capture_continues_once_suspension_ends() {
         let start = Instant::now();
-        let suspension = Suspension::new();
-        let mut schedule = CaptureSchedule::new(start);
+        let suspension = Arc::new(Suspension::new());
+        let mut schedule = schedule(start, &suspension);
         suspension.raise_locked();
-        assert!(run_ticks(&mut schedule, &suspension, start, 1..=120, "doc").is_empty());
+        assert!(run_ticks(&mut schedule, start, 1..=120, "doc").is_empty());
         suspension.clear_locked();
-        let triggers = run_ticks(&mut schedule, &suspension, start, 121..=125, "doc");
+        let triggers = run_ticks(&mut schedule, start, 121..=125, "doc");
         assert!(!triggers.is_empty(), "no capture after Locked cleared");
     }
 
     #[test]
     fn a_lock_longer_than_the_interval_yields_one_suspension_end_capture() {
         let start = Instant::now();
-        let suspension = Suspension::new();
-        let mut schedule = CaptureSchedule::new(start);
-        run_ticks(&mut schedule, &suspension, start, 1..=60, "doc");
+        let suspension = Arc::new(Suspension::new());
+        let mut schedule = schedule(start, &suspension);
+        run_ticks(&mut schedule, start, 1..=60, "doc");
 
         suspension.raise_locked();
-        assert!(run_ticks(&mut schedule, &suspension, start, 61..=300, "doc").is_empty());
+        assert!(run_ticks(&mut schedule, start, 61..=300, "doc").is_empty());
         suspension.clear_locked();
 
         // Same window as before the lock, interval long overdue: one settled capture only.
-        let triggers = run_ticks(&mut schedule, &suspension, start, 301..=310, "doc");
+        let triggers = run_ticks(&mut schedule, start, 301..=310, "doc");
         assert_eq!(triggers, vec!["suspension_end"]);
     }
 
     #[test]
     fn the_interval_clock_restarts_from_the_suspension_end_capture() {
         let start = Instant::now();
-        let suspension = Suspension::new();
-        let mut schedule = CaptureSchedule::new(start);
+        let suspension = Arc::new(Suspension::new());
+        let mut schedule = schedule(start, &suspension);
         lock_past_the_interval(&mut schedule, &suspension, start);
 
         // Re-entry at 301 settles at 303, so the next interval capture is due at 363.
         let captures: Vec<(u64, &str)> = (301..=400)
             .filter_map(|s| {
                 schedule
-                    .tick(start + Duration::from_secs(s), 60, &suspension, || {}, || window("doc"))
+                    .tick(start + Duration::from_secs(s), 60, || window("doc"))
                     .map(|(trigger, _)| (s, trigger))
             })
             .collect();
@@ -670,47 +641,45 @@ mod tests {
     #[test]
     fn re_locking_during_the_settle_defers_the_capture_to_the_next_unlock() {
         let start = Instant::now();
-        let suspension = Suspension::new();
-        let mut schedule = CaptureSchedule::new(start);
+        let suspension = Arc::new(Suspension::new());
+        let mut schedule = schedule(start, &suspension);
         lock_past_the_interval(&mut schedule, &suspension, start);
 
         // Unlock arms the settle, then the session locks again before it fires.
-        assert!(run_ticks(&mut schedule, &suspension, start, 301..=301, "doc").is_empty());
+        assert!(run_ticks(&mut schedule, start, 301..=301, "doc").is_empty());
         suspension.raise_locked();
-        let while_locked = run_ticks(&mut schedule, &suspension, start, 302..=400, "doc");
+        let while_locked = run_ticks(&mut schedule, start, 302..=400, "doc");
         assert!(while_locked.is_empty(), "captured while Locked: {while_locked:?}");
 
         suspension.clear_locked();
-        let triggers = run_ticks(&mut schedule, &suspension, start, 401..=410, "doc");
+        let triggers = run_ticks(&mut schedule, start, 401..=410, "doc");
         assert_eq!(triggers, vec!["suspension_end"]);
     }
 
     #[test]
     fn a_window_switch_during_the_settle_still_yields_one_suspension_end_capture() {
         let start = Instant::now();
-        let suspension = Suspension::new();
-        let mut schedule = CaptureSchedule::new(start);
+        let suspension = Arc::new(Suspension::new());
+        let mut schedule = schedule(start, &suspension);
         lock_past_the_interval(&mut schedule, &suspension, start);
 
-        let mut triggers = run_ticks(&mut schedule, &suspension, start, 301..=302, "doc");
-        triggers.extend(run_ticks(&mut schedule, &suspension, start, 303..=310, "mail"));
+        let mut triggers = run_ticks(&mut schedule, start, 301..=302, "doc");
+        triggers.extend(run_ticks(&mut schedule, start, 303..=310, "mail"));
         assert_eq!(triggers, vec!["suspension_end"]);
     }
 
     #[test]
     fn a_window_that_keeps_changing_does_not_postpone_the_settle() {
         let start = Instant::now();
-        let suspension = Suspension::new();
-        let mut schedule = CaptureSchedule::new(start);
+        let suspension = Arc::new(Suspension::new());
+        let mut schedule = schedule(start, &suspension);
         lock_past_the_interval(&mut schedule, &suspension, start);
 
         // A title that changes every tick, e.g. a ticking clock.
         let captures: Vec<(u64, &str)> = (301..=305)
             .filter_map(|s| {
                 schedule
-                    .tick(start + Duration::from_secs(s), 60, &suspension, || {}, || {
-                        window(&format!("clock {s}"))
-                    })
+                    .tick(start + Duration::from_secs(s), 60, || window(&format!("clock {s}")))
                     .map(|(trigger, _)| (s, trigger))
             })
             .collect();
@@ -718,79 +687,14 @@ mod tests {
     }
 
     #[test]
-    fn clearing_locked_while_another_reason_holds_is_not_a_suspension_end() {
+    fn a_lock_found_at_the_capture_point_captures_nothing() {
         let start = Instant::now();
-        let suspension = Suspension::new();
-        let mut schedule = CaptureSchedule::new(start);
-        run_ticks(&mut schedule, &suspension, start, 1..=60, "doc");
-        suspension.raise_locked();
-        suspension.raise_other_reason();
-        run_ticks(&mut schedule, &suspension, start, 61..=300, "doc");
-        suspension.clear_locked();
-
-        let triggers = run_ticks(&mut schedule, &suspension, start, 301..=400, "doc");
-        assert!(triggers.is_empty(), "captured while still suspended: {triggers:?}");
-    }
-
-    #[test]
-    fn a_wrongly_raised_locked_is_cleared_by_the_reconcile_and_capture_re_enters() {
-        let start = Instant::now();
-        let suspension = Suspension::new();
-        let mut schedule = CaptureSchedule::new(start);
-        lock_past_the_interval(&mut schedule, &suspension, start);
-        suspension.raise_locked(); // the unlock event was missed
-
-        // The query reports unlocked on the next tick.
-        let triggers = run_ticks_reconciling(
-            &mut schedule,
-            &suspension,
-            || suspension.clear_locked(),
-            start,
-            301..=310,
-            "doc",
-        );
-        assert_eq!(triggers, vec!["suspension_end"]);
-    }
-
-    #[test]
-    fn a_missed_lock_found_by_the_reconcile_captures_nothing() {
-        let start = Instant::now();
-        let suspension = Suspension::new();
-        let mut schedule = CaptureSchedule::new(start);
-        run_ticks(&mut schedule, &suspension, start, 1..=59, "doc");
-
-        // The lock event was missed; the query before the 60s capture finds it.
-        let while_locked = run_ticks_reconciling(
-            &mut schedule,
-            &suspension,
-            || suspension.raise_locked(),
-            start,
-            60..=300,
-            "LockApp",
-        );
-        assert!(while_locked.is_empty(), "captured while locked: {while_locked:?}");
-
-        suspension.clear_locked();
-        let triggers = run_ticks(&mut schedule, &suspension, start, 301..=310, "doc");
-        assert_eq!(triggers, vec!["suspension_end"]);
-    }
-
-    #[test]
-    fn the_reconcile_runs_before_each_capture_and_while_suspended() {
-        let start = Instant::now();
-        let suspension = Suspension::new();
-        let mut schedule = CaptureSchedule::new(start);
-        let reconciles = std::cell::Cell::new(0);
-        let count = || reconciles.set(reconciles.get() + 1);
-
-        let triggers =
-            run_ticks_reconciling(&mut schedule, &suspension, count, start, 1..=60, "doc");
-        assert_eq!(triggers.len(), reconciles.get(), "one query per capture, none otherwise");
-
-        suspension.raise_locked();
-        reconciles.set(0);
-        run_ticks_reconciling(&mut schedule, &suspension, count, start, 61..=70, "doc");
-        assert_eq!(reconciles.get(), 10, "a suspended tick must reconcile to recover");
+        let suspension = Arc::new(Suspension::new());
+        // The lock event was missed; the query before each capture finds it.
+        let mut schedule =
+            schedule_querying(start, &suspension, Arc::new(|s: &Suspension| s.raise_locked()));
+        let triggers = run_ticks(&mut schedule, start, 1..=300, "LockApp");
+        assert!(triggers.is_empty(), "captured while locked: {triggers:?}");
     }
 
     #[test]

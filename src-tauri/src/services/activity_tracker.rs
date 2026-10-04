@@ -12,7 +12,7 @@ use chrono::Utc;
 use ulid::Ulid;
 
 use crate::commands::AppState;
-use crate::services::suspension::{reconcile_locked, Suspension, TrackingLoop};
+use crate::services::suspension::{LoopSuspension, TickStart};
 
 fn new_id() -> String {
     Ulid::new().to_string()
@@ -26,42 +26,31 @@ type WindowKey = (String, String);
 struct ActivitySchedule {
     /// Last seen window. None = first tick / no window.
     last_window: Option<WindowKey>,
-    /// Whether the previous tick was suspended; its falling edge is re-entry.
-    suspended_last_tick: bool,
+    suspension: LoopSuspension,
 }
 
 impl ActivitySchedule {
-    fn new() -> Self {
-        Self { last_window: None, suspended_last_tick: false }
+    fn new(suspension: LoopSuspension) -> Self {
+        Self { last_window: None, suspension }
     }
 
     /// Returns the window to write a row for, or `None` to write nothing this tick.
-    /// `reconcile` reconciles `Locked` from the session-state query; `observe`
-    /// queries the foreground window; `read_deny_list` reads the process deny-list
-    /// and returns `None` when storage is unavailable, in which case the change is
-    /// retried next tick.
+    /// `observe` queries the foreground window; `read_deny_list` reads the process
+    /// deny-list and returns `None` when storage is unavailable, in which case the
+    /// change is retried next tick.
     fn tick(
         &mut self,
-        suspension: &Suspension,
-        mut reconcile: impl FnMut(),
         observe: impl FnOnce() -> Option<WindowKey>,
         read_deny_list: impl FnOnce() -> Option<Vec<String>>,
     ) -> Option<WindowKey> {
-        // A suspended tick skips everything, including the foreground query and
-        // change-detection updates (ADR-0004 decision 3). No marker row is written.
-        // It reconciles first, so a wrong `Locked` cannot hold the loop shut.
-        if suspension.is_suspended(TrackingLoop::WindowActivity) {
-            reconcile();
-            if self.still_suspended(suspension) {
-                return None;
-            }
-        }
-
-        // Re-entry when suspension ends (ADR-0004 decision 4): forget the last
-        // window so this tick writes one fresh row, even for the same window.
-        if self.suspended_last_tick {
-            self.suspended_last_tick = false;
-            self.last_window = None;
+        match self.suspension.begin_tick() {
+            // A suspended tick skips everything, including the foreground query and
+            // change-detection updates (ADR-0004 decision 3). No marker row is written.
+            TickStart::Suspended => return None,
+            // Re-entry when suspension ends (ADR-0004 decision 4): forget the last
+            // window so this tick writes one fresh row, even for the same window.
+            TickStart::SuspensionEnds => self.last_window = None,
+            TickStart::Observing => {}
         }
 
         let current = observe();
@@ -89,19 +78,7 @@ impl ActivitySchedule {
 
         // Reconcile `Locked` immediately before the write (ADR-0003 amending
         // ADR-0002 decision 5): a missed lock must not record the lock screen.
-        reconcile();
-        if self.still_suspended(suspension) {
-            return None;
-        }
-        Some(row)
-    }
-
-    /// Whether this loop is suspended once the reconcile has run. A suspended
-    /// tick is remembered, so the next unsuspended one is a re-entry.
-    fn still_suspended(&mut self, suspension: &Suspension) -> bool {
-        let suspended = suspension.is_suspended(TrackingLoop::WindowActivity);
-        self.suspended_last_tick |= suspended;
-        suspended
+        self.suspension.may_record().then_some(row)
     }
 }
 
@@ -143,10 +120,10 @@ fn write_activity_row(conn: &rusqlite::Connection, (process_name, title): &Windo
 /// Calls `state.platform.get_foreground_window_info()` every second.
 /// On window change: applies process deny-list, writes to `window_activity_records`.
 /// The first tick always counts as a window change (initial state is None).
-/// Call once from lib.rs `.setup()`.
-pub fn start_activity_loop(app: AppHandle) {
+/// Call once from lib.rs `.setup()`, with this loop's suspension handle.
+pub fn start_activity_loop(app: AppHandle, suspension: LoopSuspension) {
     tauri::async_runtime::spawn(async move {
-        let mut schedule = ActivitySchedule::new();
+        let mut schedule = ActivitySchedule::new(suspension);
 
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -159,8 +136,6 @@ pub fn start_activity_loop(app: AppHandle) {
                 // covers both the deny-list read and the row write.
                 let mut conn = None;
                 let row = schedule.tick(
-                    &state.suspension,
-                    || reconcile_locked(&state.suspension),
                     || {
                         state
                             .platform
@@ -185,38 +160,47 @@ pub fn start_activity_loop(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use crate::services::suspension::{SessionStateQuery, Suspension, TrackingLoop};
 
     fn window(title: &str) -> Option<WindowKey> {
         Some(("app.exe".to_string(), title.to_string()))
     }
 
+    /// A schedule whose session-state query finds nothing to change.
+    fn schedule(suspension: &Arc<Suspension>) -> ActivitySchedule {
+        schedule_querying(suspension, Arc::new(|_: &Suspension| {}))
+    }
+
+    fn schedule_querying(suspension: &Arc<Suspension>, query: SessionStateQuery) -> ActivitySchedule {
+        ActivitySchedule::new(LoopSuspension::new(
+            suspension.clone(),
+            TrackingLoop::WindowActivity,
+            query,
+        ))
+    }
+
     /// Ticks once with the given foreground window and an empty deny-list.
-    fn tick(
-        schedule: &mut ActivitySchedule,
-        suspension: &Suspension,
-        foreground: Option<WindowKey>,
-    ) -> Option<WindowKey> {
-        schedule.tick(suspension, || {}, || foreground, || Some(vec![]))
+    fn tick(schedule: &mut ActivitySchedule, foreground: Option<WindowKey>) -> Option<WindowKey> {
+        schedule.tick(|| foreground, || Some(vec![]))
     }
 
     #[test]
     fn writes_a_row_on_window_change_only() {
-        let suspension = Suspension::new();
-        let mut schedule = ActivitySchedule::new();
-        assert_eq!(tick(&mut schedule, &suspension, window("doc")), window("doc"));
-        assert_eq!(tick(&mut schedule, &suspension, window("doc")), None);
-        assert_eq!(tick(&mut schedule, &suspension, window("mail")), window("mail"));
+        let suspension = Arc::new(Suspension::new());
+        let mut schedule = schedule(&suspension);
+        assert_eq!(tick(&mut schedule, window("doc")), window("doc"));
+        assert_eq!(tick(&mut schedule, window("doc")), None);
+        assert_eq!(tick(&mut schedule, window("mail")), window("mail"));
     }
 
     #[test]
     fn no_row_and_no_foreground_query_while_locked() {
-        let suspension = Suspension::new();
+        let suspension = Arc::new(Suspension::new());
         suspension.raise_locked();
-        let mut schedule = ActivitySchedule::new();
+        let mut schedule = schedule(&suspension);
         let mut queried = false;
         let row = schedule.tick(
-            &suspension,
-            || {},
             || {
                 queried = true;
                 window("LockApp")
@@ -229,100 +213,36 @@ mod tests {
 
     #[test]
     fn one_fresh_row_after_suspension_ends_even_for_the_same_window() {
-        let suspension = Suspension::new();
-        let mut schedule = ActivitySchedule::new();
-        assert_eq!(tick(&mut schedule, &suspension, window("doc")), window("doc"));
+        let suspension = Arc::new(Suspension::new());
+        let mut schedule = schedule(&suspension);
+        assert_eq!(tick(&mut schedule, window("doc")), window("doc"));
         suspension.raise_locked();
-        assert_eq!(tick(&mut schedule, &suspension, window("doc")), None);
+        assert_eq!(tick(&mut schedule, window("doc")), None);
         suspension.clear_locked();
-        assert_eq!(tick(&mut schedule, &suspension, window("doc")), window("doc"));
-        assert_eq!(tick(&mut schedule, &suspension, window("doc")), None);
+        assert_eq!(tick(&mut schedule, window("doc")), window("doc"));
+        assert_eq!(tick(&mut schedule, window("doc")), None);
     }
 
     #[test]
     fn a_denied_window_produces_no_forced_row() {
-        let suspension = Suspension::new();
-        let mut schedule = ActivitySchedule::new();
+        let suspension = Arc::new(Suspension::new());
+        let mut schedule = schedule(&suspension);
         let deny = || Some(vec!["KeePass".to_string()]);
         let keepass = || Some(("KeePass.exe".to_string(), "vault".to_string()));
-        assert_eq!(schedule.tick(&suspension, || {}, keepass, deny), None);
+        assert_eq!(schedule.tick(keepass, deny), None);
         suspension.raise_locked();
-        assert_eq!(schedule.tick(&suspension, || {}, keepass, deny), None);
+        assert_eq!(schedule.tick(keepass, deny), None);
         suspension.clear_locked();
-        assert_eq!(schedule.tick(&suspension, || {}, keepass, deny), None);
-        assert_eq!(schedule.tick(&suspension, || {}, keepass, deny), None);
+        assert_eq!(schedule.tick(keepass, deny), None);
+        assert_eq!(schedule.tick(keepass, deny), None);
     }
 
     #[test]
-    fn clearing_locked_while_another_reason_holds_is_not_a_suspension_end() {
-        let suspension = Suspension::new();
-        let mut schedule = ActivitySchedule::new();
-        assert_eq!(tick(&mut schedule, &suspension, window("doc")), window("doc"));
-        suspension.raise_locked();
-        suspension.raise_other_reason();
-        assert_eq!(tick(&mut schedule, &suspension, window("doc")), None);
-        suspension.clear_locked();
-        let mut queried = false;
-        let row = schedule.tick(
-            &suspension,
-            || {},
-            || {
-                queried = true;
-                window("doc")
-            },
-            || Some(vec![]),
-        );
-        assert_eq!(row, None);
-        assert!(!queried, "re-entered while another reason still holds");
-        suspension.clear_other_reason();
-        assert_eq!(tick(&mut schedule, &suspension, window("doc")), window("doc"));
-    }
-
-    #[test]
-    fn a_wrongly_raised_locked_is_cleared_by_the_reconcile_and_a_row_written() {
-        let suspension = Suspension::new();
-        suspension.raise_locked(); // e.g. an UNKNOWN seed, or a missed unlock
-        let mut schedule = ActivitySchedule::new();
-        let row = schedule.tick(
-            &suspension,
-            || suspension.clear_locked(), // the query reports unlocked
-            || window("doc"),
-            || Some(vec![]),
-        );
-        assert_eq!(row, window("doc"));
-    }
-
-    #[test]
-    fn a_missed_lock_found_by_the_reconcile_writes_no_row() {
-        let suspension = Suspension::new();
-        let mut schedule = ActivitySchedule::new();
-        assert_eq!(tick(&mut schedule, &suspension, window("doc")), window("doc"));
-        let row = schedule.tick(
-            &suspension,
-            || suspension.raise_locked(), // the query reports locked
-            || window("LockApp"),
-            || Some(vec![]),
-        );
-        assert_eq!(row, None);
-        // The reconcile's unlock is a suspension end like any other.
-        suspension.clear_locked();
-        assert_eq!(tick(&mut schedule, &suspension, window("doc")), window("doc"));
-    }
-
-    #[test]
-    fn the_reconcile_runs_before_each_write_and_while_suspended() {
-        let suspension = Suspension::new();
-        let mut schedule = ActivitySchedule::new();
-        let reconciles = std::cell::Cell::new(0);
-        let count = || reconciles.set(reconciles.get() + 1);
-        let mut tick_counting =
-            |title: &str| schedule.tick(&suspension, count, || window(title), || Some(vec![]));
-        assert_eq!(tick_counting("doc"), window("doc"));
-        assert_eq!(reconciles.get(), 1);
-        assert_eq!(tick_counting("doc"), None);
-        assert_eq!(reconciles.get(), 1, "queried on a tick that writes nothing");
-        suspension.raise_locked();
-        assert_eq!(tick_counting("doc"), None);
-        assert_eq!(reconciles.get(), 2, "a suspended tick must reconcile to recover");
+    fn a_lock_found_at_the_write_point_writes_no_row() {
+        let suspension = Arc::new(Suspension::new());
+        // The lock event was missed; the query before the write finds it.
+        let mut schedule =
+            schedule_querying(&suspension, Arc::new(|s: &Suspension| s.raise_locked()));
+        assert_eq!(tick(&mut schedule, window("LockApp")), None);
     }
 }
