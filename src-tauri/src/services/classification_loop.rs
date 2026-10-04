@@ -301,3 +301,72 @@ fn fetch_names_by_ids(
     .map(|rows| rows.filter_map(|r| r.ok()).collect())
     .unwrap_or_default()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::classification::{ClassificationPrediction, ClassificationResult};
+
+    fn setup_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE time_entries (
+                id TEXT PRIMARY KEY, description TEXT NOT NULL DEFAULT '',
+                started_at TEXT NOT NULL, ended_at TEXT, project_id TEXT, task_id TEXT,
+                is_break INTEGER NOT NULL DEFAULT 0, device_id TEXT NOT NULL,
+                created_at TEXT NOT NULL, modified_at TEXT NOT NULL, source TEXT
+            );
+            CREATE TABLE classification_events (id TEXT PRIMARY KEY, outcome TEXT);",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn project_result() -> ClassificationResult {
+        ClassificationResult {
+            top: ClassificationPrediction {
+                client_id: None,
+                project_id: Some("p1".to_string()),
+                task_id: None,
+                confidence: 0.9,
+                source: ClassificationSource::Heuristic,
+            },
+            suggestions: vec![],
+        }
+    }
+
+    fn entries(conn: &rusqlite::Connection) -> Vec<(String, String)> {
+        let mut stmt = conn
+            .prepare("SELECT started_at, ended_at FROM time_entries ORDER BY started_at")
+            .unwrap();
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
+    }
+
+    /// The last row before a lock at 10:00:00, then the re-entry row after unlock.
+    fn lock_between_rows(unlock_at: &str) -> Vec<(String, String)> {
+        let conn = setup_db();
+        let result = project_result();
+        auto_create_or_extend_time_entry(&conn, "w1", "2026-10-04T10:00:00+00:00", "e1", &result, 120);
+        auto_create_or_extend_time_entry(&conn, "w2", unlock_at, "e2", &result, 120);
+        entries(&conn)
+    }
+
+    #[test]
+    fn a_short_lock_inside_an_auto_entry_merges_into_it() {
+        assert_eq!(
+            lock_between_rows("2026-10-04T10:01:30+00:00"),
+            vec![(
+                "2026-10-04T10:00:00+00:00".to_string(),
+                "2026-10-04T10:01:30+00:00".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn a_lock_longer_than_the_group_gap_starts_a_new_auto_entry() {
+        assert_eq!(lock_between_rows("2026-10-04T10:05:00+00:00").len(), 2);
+    }
+}
