@@ -277,6 +277,7 @@ mod tests {
         suspension.clear_other_reason();
         assert_eq!(tick(&mut schedule, &suspension, window("doc")), window("doc"));
     }
+
     #[test]
     fn a_wrongly_raised_locked_is_cleared_by_the_reconcile_and_a_row_written() {
         let suspension = Suspension::new();
@@ -313,9 +314,9 @@ mod tests {
         let suspension = Suspension::new();
         let mut schedule = ActivitySchedule::new();
         let reconciles = std::cell::Cell::new(0);
-        let mut tick_counting = |title: &str| {
-            schedule.tick(&suspension, || reconciles.set(reconciles.get() + 1), || window(title), || Some(vec![]))
-        };
+        let count = || reconciles.set(reconciles.get() + 1);
+        let mut tick_counting =
+            |title: &str| schedule.tick(&suspension, count, || window(title), || Some(vec![]));
         assert_eq!(tick_counting("doc"), window("doc"));
         assert_eq!(reconciles.get(), 1);
         assert_eq!(tick_counting("doc"), None);

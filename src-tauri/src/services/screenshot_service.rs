@@ -783,7 +783,8 @@ mod tests {
         let reconciles = std::cell::Cell::new(0);
         let count = || reconciles.set(reconciles.get() + 1);
 
-        let triggers = run_ticks_reconciling(&mut schedule, &suspension, count, start, 1..=60, "doc");
+        let triggers =
+            run_ticks_reconciling(&mut schedule, &suspension, count, start, 1..=60, "doc");
         assert_eq!(triggers.len(), reconciles.get(), "one query per capture, none otherwise");
 
         suspension.raise_locked();

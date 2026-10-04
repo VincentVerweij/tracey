@@ -128,7 +128,7 @@ impl Suspension {
 /// immediately before recording an observation, and on each suspended tick
 /// (ADR-0002 decision 5, amended by ADR-0003). The session watch owns the
 /// query and the reason; this is only the boundary the loops see. Under the
-/// `test` feature it is a stub that reports nothing, so tests drive `Locked`
+/// `test` feature it is a stub that never queries, so tests drive `Locked`
 /// directly and a real session state never overrides them.
 pub fn reconcile_locked(suspension: &Suspension) {
     #[cfg(not(feature = "test"))]
