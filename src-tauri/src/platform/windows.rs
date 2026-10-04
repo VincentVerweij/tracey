@@ -8,6 +8,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
 };
 
+pub mod session_watch;
+
 pub struct WindowsPlatformHooks;
 
 impl PlatformHooks for WindowsPlatformHooks {

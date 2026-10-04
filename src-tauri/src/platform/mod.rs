@@ -4,6 +4,8 @@
 /// Architecture decision (2026-03-15): This trait has exactly TWO methods.
 /// `trigger_screenshot_capture()` was removed — capture triggering lives in
 /// ActivityTracker/ScreenshotService, not in the platform abstraction layer.
+/// Session lock is not a missing third method: it is pushed by the session
+/// watch (`platform::windows::session_watch`), see ADR-0002 decision 3.
 pub trait PlatformHooks: Send + Sync {
     /// Returns info about the currently active (foreground) window.
     /// Returns None if no foreground window exists or the query fails.

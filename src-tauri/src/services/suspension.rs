@@ -79,13 +79,11 @@ impl Suspension {
     }
 
     /// Raise `Locked`. Owned by the session watch (ADR-0002).
-    #[allow(dead_code)] // called by the session watch (#80); tests drive it directly
     pub fn raise_locked(&self) {
         self.raise(Reason::Locked);
     }
 
     /// Clear `Locked`. Owned by the session watch (ADR-0002). Clears nothing else.
-    #[allow(dead_code)] // called by the session watch (#80); tests drive it directly
     pub fn clear_locked(&self) {
         self.clear(Reason::Locked);
     }
