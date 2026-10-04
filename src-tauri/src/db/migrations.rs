@@ -43,6 +43,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "010_theme_preference",
         include_str!("migrations/010_theme_preference.sql"),
     ),
+    (
+        "011_suspension_end_trigger",
+        include_str!("migrations/011_suspension_end_trigger.sql"),
+    ),
 ];
 
 const THEME_PREFERENCE_MIGRATION_VERSION: &str = "010_theme_preference";
@@ -112,4 +116,68 @@ pub fn run(conn: &Connection) -> SqlResult<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn insert_screenshot(conn: &Connection, trigger: &str) -> SqlResult<usize> {
+        conn.execute(
+            "INSERT INTO screenshots \
+             (id, file_path, captured_at, window_title, process_name, trigger, device_id) \
+             VALUES (?1, 'a.jpg', '2026-10-04T10:00:00Z', 'doc', 'app.exe', ?2, 'pc')",
+            rusqlite::params![format!("id-{trigger}"), trigger],
+        )
+    }
+
+    #[test]
+    fn screenshots_accept_the_suspension_end_trigger() {
+        let conn = Connection::open_in_memory().unwrap();
+        run(&conn).unwrap();
+        for trigger in ["interval", "window_change", "suspension_end"] {
+            insert_screenshot(&conn, trigger).unwrap();
+        }
+    }
+
+    #[test]
+    fn existing_screenshots_survive_the_suspension_end_migration() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_up_to(&conn, "010_theme_preference");
+        insert_screenshot(&conn, "interval").unwrap();
+        conn.execute("UPDATE screenshots SET ocr_text = 'hello'", []).unwrap();
+
+        run(&conn).unwrap();
+
+        let (trigger, ocr_text): (String, String) = conn
+            .query_row("SELECT trigger, ocr_text FROM screenshots", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!((trigger.as_str(), ocr_text.as_str()), ("interval", "hello"));
+    }
+
+    /// Applies migrations up to and including `last`, as an older install would have.
+    fn run_up_to(conn: &Connection, last: &str) {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_migrations \
+             (version TEXT PRIMARY KEY NOT NULL, applied_at TEXT NOT NULL);",
+        )
+        .unwrap();
+        for (version, sql) in MIGRATIONS {
+            conn.execute_batch(sql).unwrap();
+            mark_migration_applied(conn, version).unwrap();
+            if *version == last {
+                return;
+            }
+        }
+        panic!("no migration named {last}");
+    }
+
+    #[test]
+    fn screenshots_still_reject_unknown_triggers() {
+        let conn = Connection::open_in_memory().unwrap();
+        run(&conn).unwrap();
+        assert!(insert_screenshot(&conn, "bogus").is_err());
+    }
 }
