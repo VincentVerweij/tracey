@@ -166,7 +166,7 @@ impl LoopSuspension {
     /// suspended tick it reconciles first, so a wrong `Locked` cannot hold the
     /// loop shut.
     pub fn begin_tick(&mut self) -> TickStart {
-        if self.suspension.is_suspended(self.tracking_loop) && !self.may_record() {
+        if self.suspension.is_suspended(self.tracking_loop) && self.reconciled_suspended() {
             return TickStart::Suspended;
         }
         if std::mem::take(&mut self.suspended_last_tick) {
@@ -179,11 +179,24 @@ impl LoopSuspension {
     /// reports whether the loop may still record. A `false` is remembered, so
     /// a later unsuspended tick reports `SuspensionEnds`.
     pub fn may_record(&mut self) -> bool {
+        !self.reconciled_suspended()
+    }
+
+    /// Runs the session-state query, then reports whether this loop is still
+    /// suspended. A suspended answer is remembered as a suspended tick.
+    fn reconciled_suspended(&mut self) -> bool {
         (self.query)(&self.suspension);
         let suspended = self.suspension.is_suspended(self.tracking_loop);
         self.suspended_last_tick |= suspended;
-        !suspended
+        suspended
     }
+}
+
+/// A session-state query that never queries, for the `test` feature and unit
+/// tests, so a real session state never overrides a `Locked` they drive.
+#[cfg(any(test, feature = "test"))]
+pub fn no_session_state_query() -> SessionStateQuery {
+    Arc::new(|_: &Suspension| {})
 }
 
 #[cfg(test)]
@@ -236,56 +249,56 @@ mod tests {
         assert!(!suspension.is_suspended(TrackingLoop::ScreenshotCapture));
     }
 
-    /// A query that finds nothing to change.
-    fn no_change() -> SessionStateQuery {
-        Arc::new(|_: &Suspension| {})
-    }
-
-    fn handle(suspension: &Arc<Suspension>, query: SessionStateQuery) -> LoopSuspension {
+    /// Window activity tracking's view of `suspension`, reconciling through `query`.
+    fn window_activity(suspension: &Arc<Suspension>, query: SessionStateQuery) -> LoopSuspension {
         LoopSuspension::new(suspension.clone(), TrackingLoop::WindowActivity, query)
     }
 
     #[test]
     fn a_tick_observes_while_nothing_is_held() {
         let suspension = Arc::new(Suspension::new());
-        let mut lp = handle(&suspension, no_change());
-        assert_eq!(lp.begin_tick(), TickStart::Observing);
-        assert!(lp.may_record());
-        assert_eq!(lp.begin_tick(), TickStart::Observing);
+        let mut loop_suspension = window_activity(&suspension, no_session_state_query());
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Observing);
+        assert!(loop_suspension.may_record());
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Observing);
     }
 
     #[test]
     fn suspension_ends_once_on_the_first_tick_after_locked_clears() {
         let suspension = Arc::new(Suspension::new());
-        let mut lp = handle(&suspension, no_change());
+        let mut loop_suspension = window_activity(&suspension, no_session_state_query());
         suspension.raise_locked();
-        assert_eq!(lp.begin_tick(), TickStart::Suspended);
-        assert_eq!(lp.begin_tick(), TickStart::Suspended);
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Suspended);
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Suspended);
         suspension.clear_locked();
-        assert_eq!(lp.begin_tick(), TickStart::SuspensionEnds);
-        assert_eq!(lp.begin_tick(), TickStart::Observing);
+        assert_eq!(loop_suspension.begin_tick(), TickStart::SuspensionEnds);
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Observing);
     }
 
     #[test]
     fn a_reason_that_does_not_suspend_the_loop_is_not_a_suspension() {
         let suspension = Arc::new(Suspension::new());
-        let mut lp = LoopSuspension::new(suspension.clone(), TrackingLoop::IdleDetection, no_change());
+        let mut loop_suspension = LoopSuspension::new(
+            suspension.clone(),
+            TrackingLoop::IdleDetection,
+            no_session_state_query(),
+        );
         suspension.raise_locked();
-        assert_eq!(lp.begin_tick(), TickStart::Observing);
-        assert!(lp.may_record());
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Observing);
+        assert!(loop_suspension.may_record());
     }
 
     #[test]
     fn clearing_locked_while_another_reason_holds_is_not_a_suspension_end() {
         let suspension = Arc::new(Suspension::new());
-        let mut lp = handle(&suspension, no_change());
+        let mut loop_suspension = window_activity(&suspension, no_session_state_query());
         suspension.raise_locked();
         suspension.raise_other_reason();
-        assert_eq!(lp.begin_tick(), TickStart::Suspended);
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Suspended);
         suspension.clear_locked();
-        assert_eq!(lp.begin_tick(), TickStart::Suspended);
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Suspended);
         suspension.clear_other_reason();
-        assert_eq!(lp.begin_tick(), TickStart::SuspensionEnds);
+        assert_eq!(loop_suspension.begin_tick(), TickStart::SuspensionEnds);
     }
 
     /// A query scripted to report the session as locked while `locked` is set.
@@ -304,44 +317,44 @@ mod tests {
     fn a_wrongly_raised_locked_is_cleared_by_the_reconcile_and_suspension_ends() {
         let suspension = Arc::new(Suspension::new());
         let session_locked = Arc::new(AtomicBool::new(false));
-        let mut lp = handle(&suspension, scripted(&session_locked));
+        let mut loop_suspension = window_activity(&suspension, scripted(&session_locked));
         session_locked.store(true, Ordering::SeqCst);
         suspension.raise_locked();
-        assert_eq!(lp.begin_tick(), TickStart::Suspended);
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Suspended);
 
         session_locked.store(false, Ordering::SeqCst); // the unlock event was missed
-        assert_eq!(lp.begin_tick(), TickStart::SuspensionEnds);
-        assert!(lp.may_record());
-        assert_eq!(lp.begin_tick(), TickStart::Observing);
+        assert_eq!(loop_suspension.begin_tick(), TickStart::SuspensionEnds);
+        assert!(loop_suspension.may_record());
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Observing);
     }
 
     #[test]
     fn a_wrongly_raised_locked_at_startup_is_cleared_and_the_loop_observes() {
         let suspension = Arc::new(Suspension::new());
         let session_locked = Arc::new(AtomicBool::new(false));
-        let mut lp = handle(&suspension, scripted(&session_locked));
+        let mut loop_suspension = window_activity(&suspension, scripted(&session_locked));
         suspension.raise_locked(); // e.g. an UNKNOWN seed
         // No suspended tick came before, so there is no suspension end to report.
-        assert_eq!(lp.begin_tick(), TickStart::Observing);
-        assert!(lp.may_record());
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Observing);
+        assert!(loop_suspension.may_record());
     }
 
     #[test]
     fn a_missed_lock_found_by_the_reconcile_blocks_recording() {
         let suspension = Arc::new(Suspension::new());
         let session_locked = Arc::new(AtomicBool::new(false));
-        let mut lp = handle(&suspension, scripted(&session_locked));
-        assert_eq!(lp.begin_tick(), TickStart::Observing);
-        assert!(lp.may_record());
+        let mut loop_suspension = window_activity(&suspension, scripted(&session_locked));
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Observing);
+        assert!(loop_suspension.may_record());
 
         session_locked.store(true, Ordering::SeqCst); // the lock event was missed
-        assert_eq!(lp.begin_tick(), TickStart::Observing);
-        assert!(!lp.may_record());
-        assert_eq!(lp.begin_tick(), TickStart::Suspended);
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Observing);
+        assert!(!loop_suspension.may_record());
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Suspended);
 
         // The reconcile's unlock is a suspension end like any other.
         session_locked.store(false, Ordering::SeqCst);
-        assert_eq!(lp.begin_tick(), TickStart::SuspensionEnds);
+        assert_eq!(loop_suspension.begin_tick(), TickStart::SuspensionEnds);
     }
 
     #[test]
@@ -349,7 +362,7 @@ mod tests {
         let suspension = Arc::new(Suspension::new());
         let queries = Arc::new(AtomicU8::new(0));
         let counter = queries.clone();
-        let mut lp = handle(
+        let mut loop_suspension = window_activity(
             &suspension,
             Arc::new(move |_: &Suspension| {
                 counter.fetch_add(1, Ordering::SeqCst);
@@ -357,19 +370,19 @@ mod tests {
         );
         let count = || queries.load(Ordering::SeqCst);
 
-        assert_eq!(lp.begin_tick(), TickStart::Observing);
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Observing);
         assert_eq!(count(), 0, "queried on an unsuspended tick start");
-        assert!(lp.may_record());
+        assert!(loop_suspension.may_record());
         assert_eq!(count(), 1, "one query per record");
 
         suspension.raise_locked();
-        assert_eq!(lp.begin_tick(), TickStart::Suspended);
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Suspended);
         assert_eq!(count(), 2, "a suspended tick must reconcile to recover");
-        assert_eq!(lp.begin_tick(), TickStart::Suspended);
+        assert_eq!(loop_suspension.begin_tick(), TickStart::Suspended);
         assert_eq!(count(), 3);
 
         suspension.clear_locked();
-        assert_eq!(lp.begin_tick(), TickStart::SuspensionEnds);
+        assert_eq!(loop_suspension.begin_tick(), TickStart::SuspensionEnds);
         assert_eq!(count(), 3, "queried on the tick suspension ends, before any record");
     }
 }

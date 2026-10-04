@@ -161,7 +161,9 @@ pub fn start_activity_loop(app: AppHandle, suspension: LoopSuspension) {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use crate::services::suspension::{SessionStateQuery, Suspension, TrackingLoop};
+    use crate::services::suspension::{
+        no_session_state_query, SessionStateQuery, Suspension, TrackingLoop,
+    };
 
     fn window(title: &str) -> Option<WindowKey> {
         Some(("app.exe".to_string(), title.to_string()))
@@ -169,7 +171,7 @@ mod tests {
 
     /// A schedule whose session-state query finds nothing to change.
     fn schedule(suspension: &Arc<Suspension>) -> ActivitySchedule {
-        schedule_querying(suspension, Arc::new(|_: &Suspension| {}))
+        schedule_querying(suspension, no_session_state_query())
     }
 
     fn schedule_querying(suspension: &Arc<Suspension>, query: SessionStateQuery) -> ActivitySchedule {

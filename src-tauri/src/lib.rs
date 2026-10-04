@@ -122,7 +122,7 @@ pub fn run() {
             };
             #[cfg(feature = "test")]
             let session_state_query: SessionStateQuery =
-                Arc::new(|_: &services::suspension::Suspension| {});
+                services::suspension::no_session_state_query();
             let loop_suspension = |tracking_loop| {
                 LoopSuspension::new(suspension.clone(), tracking_loop, session_state_query.clone())
             };

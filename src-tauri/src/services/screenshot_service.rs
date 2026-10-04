@@ -341,6 +341,7 @@ impl CaptureSchedule {
         observe: impl FnOnce() -> Option<(String, String)>,
     ) -> Option<(&'static str, Option<(String, String)>)> {
         match self.suspension.begin_tick() {
+            // A suspended tick skips everything, observing nothing (ADR-0004 decision 3).
             TickStart::Suspended => return None,
             // Re-entry when suspension ends (ADR-0004 decision 5): forget the last
             // window and arm the settle. Re-suspending before it fires is safe: a
@@ -494,7 +495,9 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::time::{Duration, Instant};
-    use crate::services::suspension::{SessionStateQuery, Suspension, TrackingLoop};
+    use crate::services::suspension::{
+        no_session_state_query, SessionStateQuery, Suspension, TrackingLoop,
+    };
 
     #[test]
     fn downscale_jpeg_halves_dimensions() {
@@ -520,7 +523,7 @@ mod tests {
 
     /// A schedule whose session-state query finds nothing to change.
     fn schedule(start: Instant, suspension: &Arc<Suspension>) -> CaptureSchedule {
-        schedule_querying(start, suspension, Arc::new(|_: &Suspension| {}))
+        schedule_querying(start, suspension, no_session_state_query())
     }
 
     fn schedule_querying(
