@@ -304,19 +304,21 @@ async fn cleanup_expired(app: &AppHandle) {
 
 // ─── T046 — Capture schedule ──────────────────────────────────────────────────
 
-/// The window-change debounce, reused as the settle after suspension ends.
+/// Delay before a window-change capture, and the settle after suspension ends.
 const DEBOUNCE: tokio::time::Duration = tokio::time::Duration::from_secs(2);
 
-/// Per-tick capture decision: an elapsed interval, or a 2-second-debounced
-/// window change. Consults suspension before observing anything.
+/// Per-tick capture decision: an elapsed interval, a 2-second-debounced window
+/// change, or the settled `suspension_end` capture after suspension ends.
+/// Consults suspension before observing anything.
 struct CaptureSchedule {
     last_window_key: Option<String>,
     last_interval_capture: tokio::time::Instant,
     debounce_until: Option<tokio::time::Instant>,
     /// Whether the previous tick was suspended; its falling edge is re-entry.
     suspended_last_tick: bool,
-    /// Re-entry armed the settle and its `suspension_end` capture is still due.
-    settling: bool,
+    /// When the pending `suspension_end` capture is due. Fixed at re-entry, so
+    /// window changes during the settle cannot postpone it.
+    settle_until: Option<tokio::time::Instant>,
 }
 
 impl CaptureSchedule {
@@ -326,7 +328,7 @@ impl CaptureSchedule {
             last_interval_capture: now,
             debounce_until: None,
             suspended_last_tick: false,
-            settling: false,
+            settle_until: None,
         }
     }
 
@@ -351,8 +353,7 @@ impl CaptureSchedule {
         if self.suspended_last_tick {
             self.suspended_last_tick = false;
             self.last_window_key = None;
-            self.debounce_until = Some(now + DEBOUNCE);
-            self.settling = true;
+            self.settle_until = Some(now + DEBOUNCE);
         }
 
         let window_info = observe();
@@ -360,26 +361,17 @@ impl CaptureSchedule {
             .as_ref()
             .map(|(p, t)| format!("{}|{}", p, t));
 
-        // Window-change detection with 2-second debounce
+        // Window-change detection with debounce
         if current_key != self.last_window_key {
             self.last_window_key = current_key;
             self.debounce_until = Some(now + DEBOUNCE);
         }
 
-        let debounce_fired = self.debounce_until.map(|d| now >= d).unwrap_or(false);
-
-        // While settling, only the settled capture may fire. It absorbs any
-        // interval that came due during suspension and restarts the interval clock.
-        if self.settling {
-            if !debounce_fired {
-                return None;
-            }
-            self.settling = false;
-            self.debounce_until = None;
-            self.last_interval_capture = now;
-            return Some(("suspension_end", window_info));
+        if let Some(settle_until) = self.settle_until {
+            return self.settle(now, settle_until, window_info);
         }
 
+        let debounce_fired = self.debounce_until.map(|d| now >= d).unwrap_or(false);
         let interval_elapsed =
             now.duration_since(self.last_interval_capture).as_secs() >= interval_secs;
 
@@ -394,6 +386,24 @@ impl CaptureSchedule {
             self.last_interval_capture = now;
         }
         Some((trigger, window_info))
+    }
+
+    /// While settling, only the `suspension_end` capture may fire. It absorbs
+    /// any interval that came due during suspension and any window change seen
+    /// during the settle, and restarts the interval clock.
+    fn settle(
+        &mut self,
+        now: tokio::time::Instant,
+        settle_until: tokio::time::Instant,
+        window_info: Option<(String, String)>,
+    ) -> Option<(&'static str, Option<(String, String)>)> {
+        if now < settle_until {
+            return None;
+        }
+        self.settle_until = None;
+        self.debounce_until = None;
+        self.last_interval_capture = now;
+        Some(("suspension_end", window_info))
     }
 }
 
@@ -524,6 +534,15 @@ mod tests {
         .collect()
     }
 
+    /// Captures for a minute, holds `Locked` from 61s to 300s (well past the
+    /// 60s interval), then clears it so suspension ends at the 301s tick.
+    fn lock_past_the_interval(schedule: &mut CaptureSchedule, suspension: &Suspension, start: Instant) {
+        run_ticks(schedule, suspension, start, 1..=60, "doc");
+        suspension.raise_locked();
+        assert!(run_ticks(schedule, suspension, start, 61..=300, "doc").is_empty());
+        suspension.clear_locked();
+    }
+
     #[test]
     fn captures_on_interval_when_not_suspended() {
         let start = Instant::now();
@@ -591,10 +610,7 @@ mod tests {
         let start = Instant::now();
         let suspension = Suspension::new();
         let mut schedule = CaptureSchedule::new(start);
-        run_ticks(&mut schedule, &suspension, start, 1..=60, "doc");
-        suspension.raise_locked();
-        run_ticks(&mut schedule, &suspension, start, 61..=300, "doc");
-        suspension.clear_locked();
+        lock_past_the_interval(&mut schedule, &suspension, start);
 
         // Re-entry at 301 settles at 303, so the next interval capture is due at 363.
         let captures: Vec<(u64, &str)> = (301..=400)
@@ -612,10 +628,7 @@ mod tests {
         let start = Instant::now();
         let suspension = Suspension::new();
         let mut schedule = CaptureSchedule::new(start);
-        run_ticks(&mut schedule, &suspension, start, 1..=60, "doc");
-        suspension.raise_locked();
-        run_ticks(&mut schedule, &suspension, start, 61..=300, "doc");
-        suspension.clear_locked();
+        lock_past_the_interval(&mut schedule, &suspension, start);
 
         // Unlock arms the settle, then the session locks again before it fires.
         assert!(run_ticks(&mut schedule, &suspension, start, 301..=301, "doc").is_empty());
@@ -633,14 +646,31 @@ mod tests {
         let start = Instant::now();
         let suspension = Suspension::new();
         let mut schedule = CaptureSchedule::new(start);
-        run_ticks(&mut schedule, &suspension, start, 1..=60, "doc");
-        suspension.raise_locked();
-        run_ticks(&mut schedule, &suspension, start, 61..=300, "doc");
-        suspension.clear_locked();
+        lock_past_the_interval(&mut schedule, &suspension, start);
 
         let mut triggers = run_ticks(&mut schedule, &suspension, start, 301..=302, "doc");
         triggers.extend(run_ticks(&mut schedule, &suspension, start, 303..=310, "mail"));
         assert_eq!(triggers, vec!["suspension_end"]);
+    }
+
+    #[test]
+    fn a_window_that_keeps_changing_does_not_postpone_the_settle() {
+        let start = Instant::now();
+        let suspension = Suspension::new();
+        let mut schedule = CaptureSchedule::new(start);
+        lock_past_the_interval(&mut schedule, &suspension, start);
+
+        // A title that changes every tick, e.g. a ticking clock.
+        let captures: Vec<(u64, &str)> = (301..=305)
+            .filter_map(|s| {
+                schedule
+                    .tick(start + Duration::from_secs(s), 60, &suspension, || {
+                        window(&format!("clock {s}"))
+                    })
+                    .map(|(trigger, _)| (s, trigger))
+            })
+            .collect();
+        assert_eq!(captures.first(), Some(&(303, "suspension_end")));
     }
 
     #[test]
