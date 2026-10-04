@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 /// A loop that observes the user and records what it finds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // WindowActivity, IdleDetection, Classification opt in with #78 and #62
+#[allow(dead_code)] // IdleDetection, Classification opt in with #62
 pub enum TrackingLoop {
     ScreenshotCapture,
     WindowActivity,
@@ -33,12 +33,18 @@ impl TrackingLoop {
 #[derive(Debug, Clone, Copy)]
 enum Reason {
     Locked,
+    /// Test-only stand-in for a second reason (`Paused`, #62) that suspends
+    /// every loop, so tests can hold suspension while `Locked` clears.
+    #[cfg(test)]
+    Other,
 }
 
 impl Reason {
     fn bit(self) -> u8 {
         match self {
             Reason::Locked => 1 << 0,
+            #[cfg(test)]
+            Reason::Other => 1 << 7,
         }
     }
 
@@ -49,11 +55,16 @@ impl Reason {
                 tracking_loop,
                 TrackingLoop::ScreenshotCapture | TrackingLoop::WindowActivity
             ),
+            #[cfg(test)]
+            Reason::Other => true,
         }
     }
 }
 
+#[cfg(not(test))]
 const ALL_REASONS: [Reason; 1] = [Reason::Locked];
+#[cfg(test)]
+const ALL_REASONS: [Reason; 2] = [Reason::Locked, Reason::Other];
 
 /// The set of suspension reasons currently held. Lives in `AppState`.
 /// In-memory only: never persisted, so `Locked` is re-seeded on each start.
@@ -77,6 +88,18 @@ impl Suspension {
     #[allow(dead_code)] // called by the session watch (#80); tests drive it directly
     pub fn clear_locked(&self) {
         self.clear(Reason::Locked);
+    }
+
+    /// Raise the test-only stand-in for a second reason.
+    #[cfg(test)]
+    pub fn raise_other_reason(&self) {
+        self.raise(Reason::Other);
+    }
+
+    /// Clear the test-only stand-in for a second reason.
+    #[cfg(test)]
+    pub fn clear_other_reason(&self) {
+        self.clear(Reason::Other);
     }
 
     /// Whether `tracking_loop` is suspended: the OR of the held reasons that
