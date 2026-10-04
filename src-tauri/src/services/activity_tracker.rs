@@ -12,7 +12,7 @@ use chrono::Utc;
 use ulid::Ulid;
 
 use crate::commands::AppState;
-use crate::services::suspension::{Suspension, TrackingLoop};
+use crate::services::suspension::{reconcile_locked, Suspension, TrackingLoop};
 
 fn new_id() -> String {
     Ulid::new().to_string()
@@ -36,20 +36,25 @@ impl ActivitySchedule {
     }
 
     /// Returns the window to write a row for, or `None` to write nothing this tick.
-    /// `observe` queries the foreground window; `read_deny_list` reads the process
-    /// deny-list and returns `None` when storage is unavailable, in which case the
-    /// change is retried next tick.
+    /// `reconcile` reconciles `Locked` from the session-state query; `observe`
+    /// queries the foreground window; `read_deny_list` reads the process deny-list
+    /// and returns `None` when storage is unavailable, in which case the change is
+    /// retried next tick.
     fn tick(
         &mut self,
         suspension: &Suspension,
+        mut reconcile: impl FnMut(),
         observe: impl FnOnce() -> Option<WindowKey>,
         read_deny_list: impl FnOnce() -> Option<Vec<String>>,
     ) -> Option<WindowKey> {
         // A suspended tick skips everything, including the foreground query and
         // change-detection updates (ADR-0004 decision 3). No marker row is written.
+        // It reconciles first, so a wrong `Locked` cannot hold the loop shut.
         if suspension.is_suspended(TrackingLoop::WindowActivity) {
-            self.suspended_last_tick = true;
-            return None;
+            reconcile();
+            if self.still_suspended(suspension) {
+                return None;
+            }
         }
 
         // Re-entry when suspension ends (ADR-0004 decision 4): forget the last
@@ -80,7 +85,23 @@ impl ActivitySchedule {
         self.last_window = current.clone();
 
         // Apply process deny-list BEFORE any storage write (decisions.md)
-        current.filter(|(process_name, _)| !is_denied(process_name, &deny_list))
+        let row = current.filter(|(process_name, _)| !is_denied(process_name, &deny_list))?;
+
+        // Reconcile `Locked` immediately before the write (ADR-0003 amending
+        // ADR-0002 decision 5): a missed lock must not record the lock screen.
+        reconcile();
+        if self.still_suspended(suspension) {
+            return None;
+        }
+        Some(row)
+    }
+
+    /// Whether this loop is suspended once the reconcile has run. A suspended
+    /// tick is remembered, so the next unsuspended one is a re-entry.
+    fn still_suspended(&mut self, suspension: &Suspension) -> bool {
+        let suspended = suspension.is_suspended(TrackingLoop::WindowActivity);
+        self.suspended_last_tick |= suspended;
+        suspended
     }
 }
 
@@ -139,6 +160,7 @@ pub fn start_activity_loop(app: AppHandle) {
                 let mut conn = None;
                 let row = schedule.tick(
                     &state.suspension,
+                    || reconcile_locked(&state.suspension),
                     || {
                         state
                             .platform
@@ -174,7 +196,7 @@ mod tests {
         suspension: &Suspension,
         foreground: Option<WindowKey>,
     ) -> Option<WindowKey> {
-        schedule.tick(suspension, || foreground, || Some(vec![]))
+        schedule.tick(suspension, || {}, || foreground, || Some(vec![]))
     }
 
     #[test]
@@ -194,6 +216,7 @@ mod tests {
         let mut queried = false;
         let row = schedule.tick(
             &suspension,
+            || {},
             || {
                 queried = true;
                 window("LockApp")
@@ -222,12 +245,12 @@ mod tests {
         let mut schedule = ActivitySchedule::new();
         let deny = || Some(vec!["KeePass".to_string()]);
         let keepass = || Some(("KeePass.exe".to_string(), "vault".to_string()));
-        assert_eq!(schedule.tick(&suspension, keepass, deny), None);
+        assert_eq!(schedule.tick(&suspension, || {}, keepass, deny), None);
         suspension.raise_locked();
-        assert_eq!(schedule.tick(&suspension, keepass, deny), None);
+        assert_eq!(schedule.tick(&suspension, || {}, keepass, deny), None);
         suspension.clear_locked();
-        assert_eq!(schedule.tick(&suspension, keepass, deny), None);
-        assert_eq!(schedule.tick(&suspension, keepass, deny), None);
+        assert_eq!(schedule.tick(&suspension, || {}, keepass, deny), None);
+        assert_eq!(schedule.tick(&suspension, || {}, keepass, deny), None);
     }
 
     #[test]
@@ -242,6 +265,7 @@ mod tests {
         let mut queried = false;
         let row = schedule.tick(
             &suspension,
+            || {},
             || {
                 queried = true;
                 window("doc")
@@ -252,5 +276,52 @@ mod tests {
         assert!(!queried, "re-entered while another reason still holds");
         suspension.clear_other_reason();
         assert_eq!(tick(&mut schedule, &suspension, window("doc")), window("doc"));
+    }
+    #[test]
+    fn a_wrongly_raised_locked_is_cleared_by_the_reconcile_and_a_row_written() {
+        let suspension = Suspension::new();
+        suspension.raise_locked(); // e.g. an UNKNOWN seed, or a missed unlock
+        let mut schedule = ActivitySchedule::new();
+        let row = schedule.tick(
+            &suspension,
+            || suspension.clear_locked(), // the query reports unlocked
+            || window("doc"),
+            || Some(vec![]),
+        );
+        assert_eq!(row, window("doc"));
+    }
+
+    #[test]
+    fn a_missed_lock_found_by_the_reconcile_writes_no_row() {
+        let suspension = Suspension::new();
+        let mut schedule = ActivitySchedule::new();
+        assert_eq!(tick(&mut schedule, &suspension, window("doc")), window("doc"));
+        let row = schedule.tick(
+            &suspension,
+            || suspension.raise_locked(), // the query reports locked
+            || window("LockApp"),
+            || Some(vec![]),
+        );
+        assert_eq!(row, None);
+        // The reconcile's unlock is a suspension end like any other.
+        suspension.clear_locked();
+        assert_eq!(tick(&mut schedule, &suspension, window("doc")), window("doc"));
+    }
+
+    #[test]
+    fn the_reconcile_runs_before_each_write_and_while_suspended() {
+        let suspension = Suspension::new();
+        let mut schedule = ActivitySchedule::new();
+        let reconciles = std::cell::Cell::new(0);
+        let mut tick_counting = |title: &str| {
+            schedule.tick(&suspension, || reconciles.set(reconciles.get() + 1), || window(title), || Some(vec![]))
+        };
+        assert_eq!(tick_counting("doc"), window("doc"));
+        assert_eq!(reconciles.get(), 1);
+        assert_eq!(tick_counting("doc"), None);
+        assert_eq!(reconciles.get(), 1, "queried on a tick that writes nothing");
+        suspension.raise_locked();
+        assert_eq!(tick_counting("doc"), None);
+        assert_eq!(reconciles.get(), 2, "a suspended tick must reconcile to recover");
     }
 }

@@ -100,6 +100,12 @@ impl Suspension {
         self.clear(Reason::Other);
     }
 
+    /// Whether the `Locked` reason is held, whatever else holds. For the
+    /// session watch, which reconciles the reason against the session state.
+    pub fn is_locked(&self) -> bool {
+        self.reasons.load(Ordering::SeqCst) & Reason::Locked.bit() != 0
+    }
+
     /// Whether `tracking_loop` is suspended: the OR of the held reasons that
     /// suspend that loop. A loop consults this once per tick, before observing.
     pub fn is_suspended(&self, tracking_loop: TrackingLoop) -> bool {
@@ -116,6 +122,19 @@ impl Suspension {
     fn clear(&self, reason: Reason) {
         self.reasons.fetch_and(!reason.bit(), Ordering::SeqCst);
     }
+}
+
+/// Reconcile `Locked` from the session-state query. The loops call this
+/// immediately before recording an observation, and on each suspended tick
+/// (ADR-0002 decision 5, amended by ADR-0003). The session watch owns the
+/// query and the reason; this is only the boundary the loops see. Under the
+/// `test` feature it is a stub that reports nothing, so tests drive `Locked`
+/// directly and a real session state never overrides them.
+pub fn reconcile_locked(suspension: &Suspension) {
+    #[cfg(not(feature = "test"))]
+    crate::platform::windows::session_watch::reconcile(suspension);
+    #[cfg(feature = "test")]
+    let _ = suspension;
 }
 
 #[cfg(test)]

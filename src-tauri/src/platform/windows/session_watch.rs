@@ -6,10 +6,12 @@
 //! startup the reason is seeded from the session-state query, failing closed.
 //! Not started under the `test` feature: tests drive `Suspension` directly.
 //!
-//! Still to come: the pre-observation reconcile from the same query (ADR-0002
-//! decision 5, #81) and the registration retry on `TermSrvReadyEvent`
-//! (decision 7, #82). Until then a failed registration is logged and the
-//! watch keeps only its seed.
+//! Before a loop records an observation, `reconcile` re-runs the same query
+//! and a definite answer wins over the events (ADR-0002 decision 5).
+//!
+//! Still to come: the registration retry on `TermSrvReadyEvent` (decision 7,
+//! #82). Until then a failed registration is logged and `Locked` is kept
+//! correct by the seed and the reconcile alone.
 
 #![cfg_attr(feature = "test", allow(dead_code))]
 
@@ -229,6 +231,53 @@ fn seed(suspension: &Suspension, session_flags: windows::core::Result<u32>) {
     }
 }
 
+/// Reconcile `Locked` from the session-state query (ADR-0002 decision 5).
+/// Called by the loops, through `suspension::reconcile_locked`, immediately
+/// before they record an observation. Runs on the caller's thread.
+pub fn reconcile(suspension: &Suspension) {
+    reconcile_from(suspension, query_session_flags());
+}
+
+/// The event `Locked` was out of step by, found by the reconcile.
+#[derive(Debug, PartialEq, Eq)]
+enum MissedEvent {
+    Lock,
+    Unlock,
+}
+
+impl std::fmt::Display for MissedEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MissedEvent::Lock => f.write_str("missed lock event"),
+            MissedEvent::Unlock => f.write_str("missed unlock event"),
+        }
+    }
+}
+
+/// Apply one `SessionFlags` answer to `Locked`. A definite answer that
+/// disagrees wins and names the missed event; one that agrees, `UNKNOWN` or a
+/// failed query changes nothing.
+fn reconcile_from(
+    suspension: &Suspension,
+    session_flags: windows::core::Result<u32>,
+) -> Option<MissedEvent> {
+    let held = suspension.is_locked();
+    let missed = match session_flags {
+        Ok(WTS_SESSIONSTATE_LOCK) if !held => {
+            suspension.raise_locked();
+            MissedEvent::Lock
+        }
+        Ok(WTS_SESSIONSTATE_UNLOCK) if held => {
+            suspension.clear_locked();
+            MissedEvent::Unlock
+        }
+        _ => return None,
+    };
+    let change = if held { "cleared" } else { "raised" };
+    log::warn!("Locked {change} (source: query): {missed}");
+    Some(missed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,6 +318,59 @@ mod tests {
             on_session_change(&suspension, code);
             assert!(is_locked(&suspension), "code {code:#x} cleared Locked");
         }
+    }
+
+    #[test]
+    fn a_definite_lock_answer_raises_a_wrongly_clear_locked() {
+        let suspension = Suspension::new();
+        let missed = reconcile_from(&suspension, Ok(WTS_SESSIONSTATE_LOCK));
+        assert!(is_locked(&suspension));
+        assert_eq!(missed.map(|m| m.to_string()).as_deref(), Some("missed lock event"));
+    }
+
+    #[test]
+    fn a_definite_unlock_answer_clears_a_wrongly_raised_locked() {
+        let suspension = Suspension::new();
+        suspension.raise_locked();
+        let missed = reconcile_from(&suspension, Ok(WTS_SESSIONSTATE_UNLOCK));
+        assert!(!is_locked(&suspension));
+        assert_eq!(missed.map(|m| m.to_string()).as_deref(), Some("missed unlock event"));
+    }
+
+    #[test]
+    fn an_agreeing_answer_changes_nothing() {
+        let suspension = Suspension::new();
+        assert_eq!(reconcile_from(&suspension, Ok(WTS_SESSIONSTATE_UNLOCK)), None);
+        assert!(!is_locked(&suspension));
+
+        suspension.raise_locked();
+        assert_eq!(reconcile_from(&suspension, Ok(WTS_SESSIONSTATE_LOCK)), None);
+        assert!(is_locked(&suspension));
+    }
+
+    #[test]
+    fn an_unknown_or_failed_query_leaves_locked_alone() {
+        for held in [false, true] {
+            let suspension = Suspension::new();
+            if held {
+                suspension.raise_locked();
+            }
+            assert_eq!(reconcile_from(&suspension, Ok(WTS_SESSIONSTATE_UNKNOWN)), None);
+            assert_eq!(is_locked(&suspension), held);
+            let failed = Err(windows::core::Error::from(E_FAIL));
+            assert_eq!(reconcile_from(&suspension, failed), None);
+            assert_eq!(is_locked(&suspension), held);
+        }
+    }
+
+    #[test]
+    fn the_session_state_wins_over_a_contradicting_stale_event() {
+        // After sleep/wake the queued LOCK is delivered once the user is
+        // already back (#73); the next query reports the present.
+        let suspension = Suspension::new();
+        on_session_change(&suspension, WTS_SESSION_LOCK);
+        reconcile_from(&suspension, Ok(WTS_SESSIONSTATE_UNLOCK));
+        assert!(!is_locked(&suspension));
     }
 
     #[test]

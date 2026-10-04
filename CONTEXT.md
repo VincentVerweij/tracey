@@ -45,7 +45,7 @@ prompt is for. Settled by
 
 **Session watch** — the sole owner of `Locked`. It raises and clears the
 reason from WTS session notifications, seeds it at startup, and reconciles it
-before each capture from a session-state query. Settled by
+from a session-state query before each capture and each activity write. Settled by
 [ADR-0002](docs/adr/0002-wts-session-notifications-detect-lock.md). The
 foreground process (`LockApp.exe`) is *not* a lock signal, and the reactive
 `BitBlt` skip only drops a frame; it never raises or clears `Locked`.
