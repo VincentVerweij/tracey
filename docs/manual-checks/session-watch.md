@@ -10,7 +10,7 @@ Run this checklist whenever the session watch, the seed or the reconcile changes
 
 1. Build and start Tracey once with `cargo tauri dev` from `src-tauri`.
 2. In Settings, turn logging on and set the level to **trace**. Trace also writes debug lines, which include the codes the watch ignores. The setting is persisted and applies from the next start too.
-3. The log is `tracey.log` next to the executable, which is `src-tauri\target\x86_64-pc-windows-msvc\debug\` for a dev build. Each line is JSON with a UTC `ts`. The database `tracey.db` sits beside it. To follow the session watch only:
+3. The log is `tracey.log` beside the database, which is next to the executable unless that folder isn't writable (then `%APPDATA%\tracey\`). For a dev build that is `src-tauri\target\x86_64-pc-windows-msvc\debug\`. Each line is JSON with a UTC `ts`. The database `tracey.db` sits beside it. To follow the session watch only:
 
    ```powershell
    Get-Content src-tauri\target\x86_64-pc-windows-msvc\debug\tracey.log -Wait |
@@ -68,19 +68,20 @@ Optionally repeat with `rundll32.exe user32.dll,LockWorkStation` from a terminal
 
 ### D. Sleep and wake
 
-This assumes "sign in on wake" is enabled. Sleep and resume handling is out of scope (#76). This scenario only checks that a sleep doesn't leave `Locked` stuck.
+This assumes "sign in on wake" is enabled. Sleep/wake handling is out of scope (#76). This scenario only checks that a sleep doesn't leave `Locked` stuck.
 
 1. Start → Power → **Sleep**.
 2. Wake the machine after about 30 s and unlock.
 
 - [ ] Nothing is logged from entering sleep until after the unlock. In #73 the process was frozen throughout.
-- [ ] On thaw, `Locked raised (source: event)` and `Locked cleared (source: event)` arrive milliseconds apart. If a loop's reconcile runs between the two events, a `Locked cleared (source: query): missed unlock event` warning may appear between them. That is the query winning over a stale event, as intended.
+- [ ] After wake, `Locked raised (source: event)` and `Locked cleared (source: event)` arrive milliseconds apart. If a loop ticks between the two events, a `Locked cleared (source: query): missed unlock event` warning appears between them. That is the query winning over a stale event, as intended.
 - [ ] `Locked` ends clear: screenshots and activity rows carry on after the unlock.
-- [ ] No lock-screen screenshot and no `LockApp.exe` activity row. A single `suspension_end` screenshot and fresh activity row appear only if a loop ticked while `Locked` held. When both events land between ticks, there is no re-entry, and that is fine.
+- [ ] No lock-screen screenshot and no `LockApp.exe` activity row. The first screenshot after wake may show the post-unlock animation (#73 F saw one); that is not a lock screen.
+- [ ] Expect no `suspension_end` screenshot and no forced activity row. By the time a loop sees `Locked`, the query already reads `UNLOCK`, so the loop's reconcile clears `Locked` before a re-entry can happen. If a `suspension_end` does appear, note it in the results.
 
 ## Database checks
 
-Replace the timestamp with the scenario's start time in UTC, in the same form as the log's `ts`.
+Replace the timestamp with the scenario's start time in UTC. Stored values are RFC 3339 with a `+00:00` offset, like the log's `ts`, so a plain string comparison works.
 
 ```sql
 SELECT captured_at, trigger, process_name, window_title
@@ -96,7 +97,7 @@ ORDER BY recorded_at;
 
 ## Log lines
 
-These are the lines the session watch writes (component `tracey_lib::platform::windows::session_watch`). The source in brackets is what each check looks for.
+These are the lines the checks look for (component `tracey_lib::platform::windows::session_watch`). Any other `session watch:` ERROR or WARN line, such as `message pump ended; lock events no longer arrive`, means the watch has failed, and so has the run.
 
 | Level | Message | When |
 |---|---|---|
