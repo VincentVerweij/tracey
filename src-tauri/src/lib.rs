@@ -106,6 +106,15 @@ pub fn run() {
             // Set up system tray icon with context menu
             tray::setup_tray(app)?;
 
+            // Seed and maintain `Locked` before any tracking loop starts (ADR-0002).
+            // Not started under the `test` feature: tests drive `Suspension` directly.
+            #[cfg(not(feature = "test"))]
+            {
+                use tauri::Manager;
+                let suspension = app.state::<AppState>().suspension.clone();
+                platform::windows::session_watch::start(suspension);
+            }
+
             services::timer_tick::start_tick_loop(app.handle().clone());
             services::idle_service::start_idle_loop(app.handle().clone());
             services::screenshot_service::start_screenshot_loop(app.handle().clone());
