@@ -36,14 +36,14 @@ impl ActivitySchedule {
     }
 
     /// Returns the window to write a row for, or `None` to write nothing this tick.
-    /// `observe` queries the foreground window; `load_deny_list` reads the process
+    /// `observe` queries the foreground window; `read_deny_list` reads the process
     /// deny-list and returns `None` when storage is unavailable, in which case the
     /// change is retried next tick.
     fn tick(
         &mut self,
         suspension: &Suspension,
         observe: impl FnOnce() -> Option<WindowKey>,
-        load_deny_list: impl FnOnce() -> Option<Vec<String>>,
+        read_deny_list: impl FnOnce() -> Option<Vec<String>>,
     ) -> Option<WindowKey> {
         // A suspended tick skips everything, including the foreground query and
         // change-detection updates (ADR-0004 decision 3). No marker row is written.
@@ -73,7 +73,7 @@ impl ActivitySchedule {
         }
 
         // DB unavailable: retry next tick; last_window unchanged
-        let deny_list = load_deny_list()?;
+        let deny_list = read_deny_list()?;
 
         // Always advance last_window, even when denied.
         // (Denied processes still mark a "real" window change in OS terms.)
@@ -134,6 +134,9 @@ pub fn start_activity_loop(app: AppHandle) {
             // MutexGuard is dropped at the closing brace of this block, before the next .await.
             {
                 let state = app.state::<AppState>();
+                // The DB guard is taken only on a window change, and the same guard
+                // covers both the deny-list read and the row write.
+                let mut conn = None;
                 let row = schedule.tick(
                     &state.suspension,
                     || {
@@ -142,13 +145,16 @@ pub fn start_activity_loop(app: AppHandle) {
                             .get_foreground_window_info()
                             .map(|w| (w.process_name, w.title))
                     },
-                    || state.db.lock().ok().map(|conn| load_deny_list(&conn)),
+                    || {
+                        let guard = state.db.lock().ok()?;
+                        let deny_list = load_deny_list(&guard);
+                        conn = Some(guard);
+                        Some(deny_list)
+                    },
                 );
-                if let Some(window) = row {
-                    if let Ok(conn) = state.db.lock() {
-                        write_activity_row(&conn, &window);
-                    }
-                }
+                if let (Some(window), Some(conn)) = (row, conn) {
+                    write_activity_row(&conn, &window);
+                };
             } // MutexGuard dropped here — NEVER held across an .await point
         }
     });
