@@ -5,6 +5,11 @@
 //! `WTS_SESSION_LOCK` raises `Locked` and `WTS_SESSION_UNLOCK` clears it. At
 //! startup the reason is seeded from the session-state query, failing closed.
 //! Not started under the `test` feature: tests drive `Suspension` directly.
+//!
+//! Still to come: the pre-observation reconcile from the same query (ADR-0002
+//! decision 5, #81) and the registration retry on `TermSrvReadyEvent`
+//! (decision 7, #82). Until then a failed registration is logged and the
+//! watch keeps only its seed.
 
 #![cfg_attr(feature = "test", allow(dead_code))]
 
@@ -12,7 +17,9 @@ use std::cell::OnceCell;
 use std::sync::{mpsc, Arc};
 
 use windows::core::{w, PWSTR};
-use windows::Win32::Foundation::{ERROR_CLASS_ALREADY_EXISTS, HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{
+    ERROR_CLASS_ALREADY_EXISTS, E_UNEXPECTED, HWND, LPARAM, LRESULT, WPARAM,
+};
 use windows::Win32::System::RemoteDesktop::{
     WTSFreeMemory, WTSQuerySessionInformationW, WTSRegisterSessionNotification,
     WTSSessionInfoEx, WTSUnRegisterSessionNotification, NOTIFY_FOR_THIS_SESSION, WTSINFOEXW,
@@ -91,7 +98,8 @@ fn run(suspension: Arc<Suspension>, seeded: mpsc::Sender<()>) {
     }
 
     if let Some(hwnd) = hwnd {
-        // Learn: unregister before the window is destroyed.
+        // Learn: unregister before the window is destroyed. Only reached if the
+        // pump ends; at process exit the OS tears both down.
         if registered {
             if let Err(e) = unsafe { WTSUnRegisterSessionNotification(hwnd) } {
                 log::warn!("session watch: WTSUnRegisterSessionNotification failed: {e}");
@@ -141,7 +149,8 @@ unsafe extern "system" fn window_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     if msg == WM_WTSSESSION_CHANGE {
-        SUSPENSION.with(|cell| {
+        // try_with: a panic cannot unwind out of an extern "system" fn.
+        let _ = SUSPENSION.try_with(|cell| {
             if let Some(suspension) = cell.get() {
                 on_session_change(suspension, wparam.0 as u32);
             }
@@ -163,11 +172,18 @@ fn query_session_flags() -> windows::core::Result<u32> {
             &mut buffer,
             &mut bytes,
         )?;
-        // Level 1 is the only level WTSINFOEXW defines.
-        let info = &*(buffer.0 as *const WTSINFOEXW);
-        let flags = info.Data.WTSInfoExLevel1.SessionFlags as u32;
+        // Level 1 is the only level WTSINFOEXW defines; anything else is a
+        // failed query, so the caller fails closed.
+        let flags = if bytes as usize >= std::mem::size_of::<WTSINFOEXW>()
+            && (*(buffer.0 as *const WTSINFOEXW)).Level == 1
+        {
+            let info = &*(buffer.0 as *const WTSINFOEXW);
+            Ok(info.Data.WTSInfoExLevel1.SessionFlags as u32)
+        } else {
+            Err(windows::core::Error::from(E_UNEXPECTED))
+        };
         WTSFreeMemory(buffer.0.cast());
-        Ok(flags)
+        flags
     }
 }
 
