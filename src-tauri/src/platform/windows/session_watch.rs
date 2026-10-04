@@ -23,7 +23,7 @@ use std::time::Duration;
 use windows::core::{w, PWSTR};
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_CLASS_ALREADY_EXISTS, E_UNEXPECTED, HWND, LPARAM, LRESULT, WAIT_OBJECT_0,
-    WPARAM,
+    WAIT_TIMEOUT, WPARAM,
 };
 use windows::Win32::System::RemoteDesktop::{
     WTSFreeMemory, WTSQuerySessionInformationW, WTSRegisterSessionNotification,
@@ -31,7 +31,9 @@ use windows::Win32::System::RemoteDesktop::{
     WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTS_SESSIONSTATE_LOCK,
     WTS_SESSIONSTATE_UNLOCK,
 };
-use windows::Win32::System::Threading::{OpenEventW, WaitForSingleObject, SYNCHRONIZATION_SYNCHRONIZE};
+use windows::Win32::System::Threading::{
+    OpenEventW, WaitForSingleObject, SYNCHRONIZATION_SYNCHRONIZE,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
     RegisterClassW, HWND_MESSAGE, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_WTSSESSION_CHANGE,
@@ -78,19 +80,19 @@ fn run(suspension: Arc<Suspension>, seeded: mpsc::Sender<()>) {
             None
         }
     };
-    let first_attempt = hwnd.map(register);
+    let first_attempt = hwnd.map(|hwnd| (hwnd, register(hwnd)));
 
     seed(&suspension, query_session_flags());
     let _ = seeded.send(()); // start() may have stopped waiting; nothing to do then
 
     // Retry after seeding, so a slow Remote Desktop Services never delays the
     // tracking loops; they stay guarded by the reconcile in the meantime.
-    let registered = match (hwnd, first_attempt) {
-        (Some(hwnd), Some(first_attempt)) => {
+    let registered = match first_attempt {
+        Some((hwnd, first_attempt)) => {
             let failures = retry_registration(
                 first_attempt,
                 || register(hwnd),
-                wait_for_termsrv_ready,
+                wait_for_rds_ready,
                 std::thread::sleep,
             );
             if failures > 0 {
@@ -100,7 +102,7 @@ fn run(suspension: Arc<Suspension>, seeded: mpsc::Sender<()>) {
             }
             true
         }
-        _ => false,
+        None => false,
     };
 
     if registered {
@@ -135,30 +137,46 @@ fn register(hwnd: HWND) -> windows::core::Result<()> {
 const FIRST_RETRY_DELAY: Duration = Duration::from_secs(1);
 const MAX_RETRY_DELAY: Duration = Duration::from_secs(60);
 
+/// The outcome of one wait on Remote Desktop Services' ready event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RdsWait {
+    /// The event is signalled.
+    Ready,
+    /// The full timeout passed without the event being signalled.
+    TimedOut,
+    /// The event could not be waited on, so no time passed.
+    Unavailable,
+}
+
 /// Retry a failed registration until it succeeds (ADR-0002 decision 7),
-/// logging each failure. Until Terminal Services has signalled ready, each
-/// wait is on its ready event, bounded by the backoff delay, so a retry
-/// follows the event at once; after that the backoff is a plain sleep.
+/// logging each failure. Until Remote Desktop Services has signalled ready,
+/// each wait is on its ready event, bounded by the backoff delay, so a retry
+/// follows the event at once; after that, or when the event cannot be waited
+/// on, the backoff is a plain sleep.
 /// Returns the number of failed attempts, the first one included.
 fn retry_registration(
     first_attempt: windows::core::Result<()>,
     mut register: impl FnMut() -> windows::core::Result<()>,
-    mut wait_for_termsrv: impl FnMut(Duration) -> bool,
+    mut wait_for_rds: impl FnMut(Duration) -> RdsWait,
     mut sleep: impl FnMut(Duration),
 ) -> u32 {
     let mut attempt = first_attempt;
     let mut failures = 0;
     let mut delay = FIRST_RETRY_DELAY;
-    let mut termsrv_ready = false;
+    let mut rds_ready = false;
     while let Err(e) = attempt {
         failures += 1;
         log::warn!(
             "session watch: WTSRegisterSessionNotification failed (attempt {failures}): {e}"
         );
-        if termsrv_ready {
+        if rds_ready {
             sleep(delay);
         } else {
-            termsrv_ready = wait_for_termsrv(delay);
+            match wait_for_rds(delay) {
+                RdsWait::Ready => rds_ready = true,
+                RdsWait::TimedOut => {}
+                RdsWait::Unavailable => sleep(delay),
+            }
         }
         delay = (delay * 2).min(MAX_RETRY_DELAY);
         attempt = register();
@@ -166,27 +184,27 @@ fn retry_registration(
     failures
 }
 
-/// Wait up to `timeout` for `Global\TermSrvReadyEvent`. Returns whether it is
-/// signalled. The event is opened on each call: it may not exist yet this
-/// early in logon, and then the wait is a plain sleep.
-fn wait_for_termsrv_ready(timeout: Duration) -> bool {
+/// Wait up to `timeout` for `Global\TermSrvReadyEvent`, Remote Desktop
+/// Services' ready event. It is opened on each call: it may not exist yet
+/// this early in logon.
+fn wait_for_rds_ready(timeout: Duration) -> RdsWait {
     let millis = u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX);
-    match unsafe {
-        OpenEventW(
-            SYNCHRONIZATION_SYNCHRONIZE,
-            false,
-            w!("Global\\TermSrvReadyEvent"),
-        )
-    } {
-        Ok(event) => unsafe {
-            let ready = WaitForSingleObject(event, millis) == WAIT_OBJECT_0;
-            let _ = CloseHandle(event); // a handle we just opened; nothing to do if it fails
-            ready
-        },
+    let name = w!("Global\\TermSrvReadyEvent");
+    let event = match unsafe { OpenEventW(SYNCHRONIZATION_SYNCHRONIZE, false, name) } {
+        Ok(event) => event,
         Err(e) => {
-            log::debug!("session watch: TermSrvReadyEvent not available ({e}); sleeping instead");
-            std::thread::sleep(timeout);
-            false
+            log::debug!("session watch: TermSrvReadyEvent not available ({e})");
+            return RdsWait::Unavailable;
+        }
+    };
+    let waited = unsafe { WaitForSingleObject(event, millis) };
+    let _ = unsafe { CloseHandle(event) }; // a handle we just opened; nothing to do if it fails
+    match waited {
+        WAIT_OBJECT_0 => RdsWait::Ready,
+        WAIT_TIMEOUT => RdsWait::TimedOut,
+        other => {
+            log::debug!("session watch: waiting on TermSrvReadyEvent failed ({other:?})");
+            RdsWait::Unavailable
         }
     }
 }
@@ -384,7 +402,8 @@ mod tests {
     #[test]
     fn other_session_codes_change_nothing() {
         // 1–6 and 9–11 are documented, 0 and 0xC–0xE are not (#67).
-        let other_codes = (0..=0xE).filter(|c| *c != WTS_SESSION_LOCK && *c != WTS_SESSION_UNLOCK);
+        let other_codes =
+            (0..=0xE).filter(|c| *c != WTS_SESSION_LOCK && *c != WTS_SESSION_UNLOCK);
         for code in other_codes {
             let suspension = Suspension::new();
             on_session_change(&suspension, code);
@@ -418,17 +437,11 @@ mod tests {
     #[test]
     fn an_agreeing_answer_changes_nothing() {
         let suspension = Suspension::new();
-        assert_eq!(
-            reconcile_from(&suspension, || Ok(WTS_SESSIONSTATE_UNLOCK)),
-            None
-        );
+        assert_eq!(reconcile_from(&suspension, || Ok(WTS_SESSIONSTATE_UNLOCK)), None);
         assert!(!suspension.is_locked());
 
         suspension.raise_locked();
-        assert_eq!(
-            reconcile_from(&suspension, || Ok(WTS_SESSIONSTATE_LOCK)),
-            None
-        );
+        assert_eq!(reconcile_from(&suspension, || Ok(WTS_SESSIONSTATE_LOCK)), None);
         assert!(suspension.is_locked());
     }
 
@@ -439,10 +452,7 @@ mod tests {
             if held {
                 suspension.raise_locked();
             }
-            assert_eq!(
-                reconcile_from(&suspension, || Ok(WTS_SESSIONSTATE_UNKNOWN)),
-                None
-            );
+            assert_eq!(reconcile_from(&suspension, || Ok(WTS_SESSIONSTATE_UNKNOWN)), None);
             assert_eq!(suspension.is_locked(), held);
             let failed = || Err(windows::core::Error::from(E_FAIL));
             assert_eq!(reconcile_from(&suspension, failed), None);
@@ -496,7 +506,7 @@ mod tests {
                 attempts += 1;
                 Ok(())
             },
-            |_| panic!("waited for Terminal Services"),
+            |_| panic!("waited for Remote Desktop Services"),
             |_| panic!("slept"),
         );
         assert_eq!(failures, 0);
@@ -513,7 +523,7 @@ mod tests {
                 attempts += 1;
                 register()
             },
-            |_| false,
+            |_| RdsWait::TimedOut,
             |_| {},
         );
         assert_eq!(
@@ -524,22 +534,22 @@ mod tests {
     }
 
     #[test]
-    fn retries_wait_on_terminal_services_with_bounded_backoff() {
+    fn retries_wait_on_remote_desktop_services_with_bounded_backoff() {
         let mut waits = Vec::new();
         retry_registration(
             registration_failed(),
             failing(9),
             |timeout| {
                 waits.push(timeout.as_secs());
-                false
+                RdsWait::TimedOut
             },
-            |_| panic!("slept before Terminal Services was ready"),
+            |_| panic!("slept after a full wait"),
         );
         assert_eq!(waits, [1, 2, 4, 8, 16, 32, 60, 60, 60, 60]);
     }
 
     #[test]
-    fn once_terminal_services_is_ready_retries_back_off_by_sleeping() {
+    fn once_remote_desktop_services_is_ready_retries_back_off_by_sleeping() {
         let mut waits = Vec::new();
         let mut sleeps = Vec::new();
         retry_registration(
@@ -547,12 +557,35 @@ mod tests {
             failing(4),
             |timeout| {
                 waits.push(timeout.as_secs());
-                waits.len() == 2 // the ready event fires during the second wait
+                if waits.len() == 2 {
+                    RdsWait::Ready // the ready event fires during the second wait
+                } else {
+                    RdsWait::TimedOut
+                }
             },
             |delay| sleeps.push(delay.as_secs()),
         );
         assert_eq!(waits, [1, 2], "a signalled event is not waited on again");
         assert_eq!(sleeps, [4, 8, 16]);
+    }
+
+    #[test]
+    fn an_unavailable_ready_event_still_backs_off() {
+        // The event may not exist yet, or the wait may fail at once: no time
+        // passed, so the backoff sleeps instead, and the event is tried again.
+        let mut waits = Vec::new();
+        let mut sleeps = Vec::new();
+        retry_registration(
+            registration_failed(),
+            failing(2),
+            |timeout| {
+                waits.push(timeout.as_secs());
+                RdsWait::Unavailable
+            },
+            |delay| sleeps.push(delay.as_secs()),
+        );
+        assert_eq!(waits, [1, 2, 4]);
+        assert_eq!(sleeps, [1, 2, 4]);
     }
 
     #[test]
