@@ -1,4 +1,4 @@
-# CONTEXT
+# Glossary
 
 Domain vocabulary for Tracey.
 
