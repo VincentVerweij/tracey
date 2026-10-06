@@ -1,5 +1,5 @@
 //! Suspension: application-level state saying which tracking loops must not
-//! observe right now. See `CONTEXT.md` § Suspension and ADR-0001.
+//! observe right now. See `GLOSSARY.md` § Suspension and ADR-0001.
 //!
 //! Tracking is suspended while at least one suspension reason holds. Each reason
 //! has intent-named operations and no generic "clear", so a reason can only be
@@ -142,7 +142,7 @@ pub enum TickStart {
 }
 
 /// One loop's view of suspension, owned by that loop's schedule. See
-/// `CONTEXT.md` § Suspension. It holds the loop's *suspended last tick* bit
+/// `GLOSSARY.md` § Suspension. It holds the loop's *suspended last tick* bit
 /// (ADR-0004 decision 1) and reconciles `Locked` from the session-state query
 /// on suspended ticks and immediately before each record (ADR-0002 decision 5,
 /// ADR-0003 decision 3), and nowhere else.

@@ -5,7 +5,7 @@
 - **Deciders:** Vincent Verweij
 - **Resolves:** [#71](https://github.com/VincentVerweij/tracey/issues/71), under map [#65](https://github.com/VincentVerweij/tracey/issues/65)
 - **Builds on:** [ADR-0001](0001-suspension-is-one-concept-with-reasons.md), [ADR-0002](0002-wts-session-notifications-detect-lock.md), [ADR-0003](0003-locked-is-lock-only-and-suspends-window-activity.md)
-- **Vocabulary:** [`CONTEXT.md` § Suspension](../../CONTEXT.md#suspension)
+- **Vocabulary:** [`GLOSSARY.md` § Suspension](../../GLOSSARY.md#suspension)
 
 ## Context
 
@@ -18,7 +18,7 @@ Left to itself, that behaviour falls out of whatever state the loop held when it
 
 Activity rows are point events with only `recorded_at`. `auto_create_or_extend_time_entry` extends an auto entry when a new row arrives within `auto_classification_group_gap_seconds` (120 by default) of its `ended_at`. Without a row after unlock, the time spent back in the same window is not counted until the next window change.
 
-`CONTEXT.md` reserves **Resume** for clearing `Paused`, and states that unlocking is not a resume. Unlocking also does not end suspension while `Paused` still holds. So the edge this ADR needs is neither "resume" nor "unlock".
+`GLOSSARY.md` reserves **Resume** for clearing `Paused`, and states that unlocking is not a resume. Unlocking also does not end suspension while `Paused` still holds. So the edge this ADR needs is neither "resume" nor "unlock".
 
 ## Decision
 

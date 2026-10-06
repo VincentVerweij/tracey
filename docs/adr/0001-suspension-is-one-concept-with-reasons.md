@@ -6,7 +6,7 @@
 - **Amended by:** [ADR-0003](0003-locked-is-lock-only-and-suspends-window-activity.md) (decision 5: `Locked` also suspends window activity tracking)
 - **Resolves:** [#68](https://github.com/VincentVerweij/tracey/issues/68), under map [#65](https://github.com/VincentVerweij/tracey/issues/65)
 - **Constrains:** [#62](https://github.com/VincentVerweij/tracey/issues/62) (Pause tracking ability)
-- **Vocabulary:** [`CONTEXT.md` § Suspension](../../CONTEXT.md#suspension)
+- **Vocabulary:** [`GLOSSARY.md` § Suspension](../../GLOSSARY.md#suspension)
 
 ## Context
 
@@ -22,7 +22,7 @@ Relevant prior findings: [#66](https://github.com/VincentVerweij/tracey/issues/6
 
 ### 1. One concept, carrying reasons
 
-Suspension is a single domain concept. Tracking is suspended while at least one **suspension reason** holds. There are two reasons today, `Paused` and `Locked`, defined in `CONTEXT.md`.
+Suspension is a single domain concept. Tracking is suspended while at least one **suspension reason** holds. There are two reasons today, `Paused` and `Locked`, defined in `GLOSSARY.md`.
 
 The effect is an OR, so "the device locks during a manual pause" needs no rule: suspension is already in force, and the additional reason changes nothing.
 
@@ -91,7 +91,7 @@ Both are deliberate, and both were settled with Vincent during the #68 grilling.
 - The capture loop's suspension check becomes a call to a shared predicate rather than a local condition, and three further loops gain the same call.
 - `Paused` requires persistence on the `user_preferences` singleton, via `ALTER TABLE ADD COLUMN` as migrations `008`–`010` do. Note those four columns are all `NOT NULL` with a default, so a nullable deadline would be a departure from that precedent rather than a continuation of it — #62 owns the choice. Two things must be representable: a deadline, and "until manually resumed".
 - The deadline must be **absolute wall-clock**, not a `tokio::time::Instant`. An `Instant` does not advance across system sleep, so "For 1 hour" on a laptop that is closed would not expire correctly. This one is not #62's to choose.
-- Widening later is cheap: a new loop opts in by consulting the same predicate. Whether it must is decided by the test in [`CONTEXT.md` § The test for a new loop](../../CONTEXT.md#the-test-for-a-new-loop), which is the normative statement — not restated here, so the two cannot drift.
+- Widening later is cheap: a new loop opts in by consulting the same predicate. Whether it must is decided by the test in [`GLOSSARY.md` § The test for a new loop](../../GLOSSARY.md#the-test-for-a-new-loop), which is the normative statement — not restated here, so the two cannot drift.
 - A third reason (sleep/resume, an enterprise policy) can be added without renaming anything or revisiting the overlap semantics.
 - This ADR does not choose the lock-detection mechanism, which remains #69's decision. It assumes only that *some* signal raises and clears `Locked`.
 

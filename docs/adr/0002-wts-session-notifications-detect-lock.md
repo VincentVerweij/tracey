@@ -6,7 +6,7 @@
 - **Amended by:** [ADR-0003](0003-locked-is-lock-only-and-suspends-window-activity.md) (decision 1: only lock/unlock count; decision 5: the reconcile also runs before each activity write)
 - **Resolves:** [#69](https://github.com/VincentVerweij/tracey/issues/69), under map [#65](https://github.com/VincentVerweij/tracey/issues/65)
 - **Builds on:** [ADR-0001](0001-suspension-is-one-concept-with-reasons.md), which defines the `Locked` reason and its owner-only operations
-- **Vocabulary:** [`CONTEXT.md` § Suspension](../../CONTEXT.md#suspension)
+- **Vocabulary:** [`GLOSSARY.md` § Suspension](../../GLOSSARY.md#suspension)
 
 ## Context
 

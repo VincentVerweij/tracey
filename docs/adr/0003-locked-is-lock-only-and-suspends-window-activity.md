@@ -5,7 +5,7 @@
 - **Deciders:** Vincent Verweij
 - **Resolves:** [#70](https://github.com/VincentVerweij/tracey/issues/70), under map [#65](https://github.com/VincentVerweij/tracey/issues/65)
 - **Amends:** [ADR-0001](0001-suspension-is-one-concept-with-reasons.md) decision 5 (one sentence), [ADR-0002](0002-wts-session-notifications-detect-lock.md) decisions 1 and 5
-- **Vocabulary:** [`CONTEXT.md` § Suspension](../../CONTEXT.md#suspension)
+- **Vocabulary:** [`GLOSSARY.md` § Suspension](../../GLOSSARY.md#suspension)
 
 ## Context
 
