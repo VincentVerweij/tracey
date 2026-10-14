@@ -143,6 +143,13 @@ pub struct PreferencesUpdateRequest {
     pub theme: Option<String>,
 }
 
+/// Overwrites `field` when the request carries a value for it.
+fn set_if_some<T>(field: &mut T, value: Option<T>) {
+    if let Some(v) = value {
+        *field = v;
+    }
+}
+
 #[tauri::command]
 pub fn preferences_update(
     state: State<'_, AppState>,
@@ -189,23 +196,23 @@ pub fn preferences_update(
     .map_err(|e| format!("preferences_update read failed: {}", e))?;
 
     // Apply deltas — only fields present in the request are changed
-    if let Some(v) = update.local_timezone { current.local_timezone = v; }
-    if let Some(v) = update.inactivity_timeout_seconds { current.inactivity_timeout_seconds = v; }
-    if let Some(v) = update.screenshot_interval_seconds { current.screenshot_interval_seconds = v; }
-    if let Some(v) = update.screenshot_retention_days { current.screenshot_retention_days = v; }
-    if update.screenshot_storage_path.is_some() { current.screenshot_storage_path = update.screenshot_storage_path; }
-    if let Some(v) = update.timer_notification_threshold_hours { current.timer_notification_threshold_hours = v; }
-    if let Some(v) = update.page_size { current.page_size = v; }
-    if let Some(v) = update.external_db_enabled { current.external_db_enabled = v; }
-    if let Some(v) = update.notification_channels_json { current.notification_channels_json = Some(v); }
-    if let Some(v) = update.process_deny_list_json { current.process_deny_list_json = v; }
-    if let Some(v) = update.auto_classification_enabled { current.auto_classification_enabled = v; }
-    if let Some(v) = update.auto_classification_confidence_threshold { current.auto_classification_confidence_threshold = v; }
-    if let Some(v) = update.auto_classification_group_gap_seconds { current.auto_classification_group_gap_seconds = v; }
-    if let Some(v) = update.logging_enabled { current.logging_enabled = v; }
-    if let Some(v) = update.log_level { current.log_level = v; }
-    if let Some(v) = update.minimize_to_tray { current.minimize_to_tray = v; }
-    if let Some(v) = update.theme { current.theme = v; }
+    set_if_some(&mut current.local_timezone, update.local_timezone);
+    set_if_some(&mut current.inactivity_timeout_seconds, update.inactivity_timeout_seconds);
+    set_if_some(&mut current.screenshot_interval_seconds, update.screenshot_interval_seconds);
+    set_if_some(&mut current.screenshot_retention_days, update.screenshot_retention_days);
+    set_if_some(&mut current.screenshot_storage_path, update.screenshot_storage_path.map(Some));
+    set_if_some(&mut current.timer_notification_threshold_hours, update.timer_notification_threshold_hours);
+    set_if_some(&mut current.page_size, update.page_size);
+    set_if_some(&mut current.external_db_enabled, update.external_db_enabled);
+    set_if_some(&mut current.notification_channels_json, update.notification_channels_json.map(Some));
+    set_if_some(&mut current.process_deny_list_json, update.process_deny_list_json);
+    set_if_some(&mut current.auto_classification_enabled, update.auto_classification_enabled);
+    set_if_some(&mut current.auto_classification_confidence_threshold, update.auto_classification_confidence_threshold);
+    set_if_some(&mut current.auto_classification_group_gap_seconds, update.auto_classification_group_gap_seconds);
+    set_if_some(&mut current.logging_enabled, update.logging_enabled);
+    set_if_some(&mut current.log_level, update.log_level);
+    set_if_some(&mut current.minimize_to_tray, update.minimize_to_tray);
+    set_if_some(&mut current.theme, update.theme);
     // external_db_uri_stored is NOT updated here — managed exclusively by sync_configure command
 
     conn.execute(

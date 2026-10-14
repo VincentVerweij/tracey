@@ -85,46 +85,51 @@ fn run(suspension: Arc<Suspension>, seeded: mpsc::Sender<()>) {
     seed(&suspension, query_session_flags());
     let _ = seeded.send(()); // start() may have stopped waiting; nothing to do then
 
+    let Some((hwnd, first_attempt)) = first_attempt else { return };
+
     // Retry after seeding, so a slow Remote Desktop Services never delays the
     // tracking loops; they stay guarded by the reconcile in the meantime.
-    let registered = match first_attempt {
-        Some((hwnd, first_attempt)) => {
-            let failures = retry_registration(
-                first_attempt,
-                || register(hwnd),
-                wait_for_rds_ready,
-                std::thread::sleep,
-            );
-            if failures > 0 {
-                log::info!("session watch: registered after {failures} failed attempts");
-                // No events arrived while unregistered: catch up on any missed.
-                reconcile(&suspension);
-            }
-            true
-        }
-        None => false,
-    };
+    finish_registration(&suspension, hwnd, first_attempt);
+    pump_messages();
 
-    if registered {
-        let mut msg = MSG::default();
-        // GetMessageW returns 0 on WM_QUIT and -1 on error; both end the pump.
-        while unsafe { GetMessageW(&mut msg, None, 0, 0) }.0 > 0 {
-            unsafe { DispatchMessageW(&msg) };
-        }
-        log::warn!("session watch: message pump ended; lock events no longer arrive");
+    // Learn: unregister before the window is destroyed. Only reached if the
+    // pump ends; at process exit the OS tears both down.
+    tear_down(hwnd);
+}
+
+fn finish_registration(
+    suspension: &Suspension,
+    hwnd: HWND,
+    first_attempt: windows::core::Result<()>,
+) {
+    let failures = retry_registration(
+        first_attempt,
+        || register(hwnd),
+        wait_for_rds_ready,
+        std::thread::sleep,
+    );
+    if failures > 0 {
+        log::info!("session watch: registered after {failures} failed attempts");
+        // No events arrived while unregistered: catch up on any missed.
+        reconcile(suspension);
     }
+}
 
-    if let Some(hwnd) = hwnd {
-        // Learn: unregister before the window is destroyed. Only reached if the
-        // pump ends; at process exit the OS tears both down.
-        if registered {
-            if let Err(e) = unsafe { WTSUnRegisterSessionNotification(hwnd) } {
-                log::warn!("session watch: WTSUnRegisterSessionNotification failed: {e}");
-            }
-        }
-        if let Err(e) = unsafe { DestroyWindow(hwnd) } {
-            log::warn!("session watch: DestroyWindow failed: {e}");
-        }
+fn pump_messages() {
+    let mut msg = MSG::default();
+    // GetMessageW returns 0 on WM_QUIT and -1 on error; both end the pump.
+    while unsafe { GetMessageW(&mut msg, None, 0, 0) }.0 > 0 {
+        unsafe { DispatchMessageW(&msg) };
+    }
+    log::warn!("session watch: message pump ended; lock events no longer arrive");
+}
+
+fn tear_down(hwnd: HWND) {
+    if let Err(e) = unsafe { WTSUnRegisterSessionNotification(hwnd) } {
+        log::warn!("session watch: WTSUnRegisterSessionNotification failed: {e}");
+    }
+    if let Err(e) = unsafe { DestroyWindow(hwnd) } {
+        log::warn!("session watch: DestroyWindow failed: {e}");
     }
 }
 
