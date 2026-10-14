@@ -145,7 +145,8 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         run_up_to(&conn, "010_theme_preference");
         insert_screenshot(&conn, "interval").unwrap();
-        conn.execute("UPDATE screenshots SET ocr_text = 'hello'", []).unwrap();
+        conn.execute("UPDATE screenshots SET ocr_text = 'hello'", [])
+            .unwrap();
 
         run(&conn).unwrap();
 

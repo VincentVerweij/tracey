@@ -7,15 +7,15 @@ pub mod screenshot;
 pub mod sync;
 pub mod timer;
 
-use tauri::State;
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use crate::models::UserPreferences;
 use crate::platform::PlatformHooks;
-use crate::services::classification::tfidf::TfIdfModel;
-use crate::services::classification::heuristic::HeuristicRule;
 use crate::services::active_learning_queue::ActiveLearningQueue;
+use crate::services::classification::heuristic::HeuristicRule;
+use crate::services::classification::tfidf::TfIdfModel;
 use crate::services::suspension::Suspension;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tauri::State;
 
 /// Shared classification state: loaded model + rule cache + sample counter.
 #[derive(Default)]
@@ -82,8 +82,9 @@ pub fn enqueue_delete(
 pub fn preferences_get(state: State<'_, AppState>) -> Result<UserPreferences, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
-    let prefs = conn.query_row(
-        "SELECT id, local_timezone, inactivity_timeout_seconds,
+    let prefs = conn
+        .query_row(
+            "SELECT id, local_timezone, inactivity_timeout_seconds,
                 screenshot_interval_seconds, screenshot_retention_days,
                 screenshot_storage_path, timer_notification_threshold_hours,
                 page_size, external_db_uri_stored, external_db_enabled,
@@ -92,32 +93,32 @@ pub fn preferences_get(state: State<'_, AppState>) -> Result<UserPreferences, St
                 auto_classification_group_gap_seconds,
                 logging_enabled, log_level, minimize_to_tray, theme
          FROM user_preferences LIMIT 1",
-        [],
-        |row| {
-            Ok(UserPreferences {
-                id: row.get(0)?,
-                local_timezone: row.get(1)?,
-                inactivity_timeout_seconds: row.get(2)?,
-                screenshot_interval_seconds: row.get(3)?,
-                screenshot_retention_days: row.get(4)?,
-                screenshot_storage_path: row.get(5)?,
-                timer_notification_threshold_hours: row.get(6)?,
-                page_size: row.get(7)?,
-                external_db_uri_stored: row.get(8)?,
-                external_db_enabled: row.get(9)?,
-                notification_channels_json: row.get(10)?,
-                process_deny_list_json: row.get(11)?,
-                auto_classification_enabled: row.get(12)?,
-                auto_classification_confidence_threshold: row.get(13)?,
-                auto_classification_group_gap_seconds: row.get(14)?,
-                logging_enabled: row.get(15)?,
-                log_level: row.get(16)?,
-                minimize_to_tray: row.get(17)?,
-                theme: row.get(18)?,
-            })
-        },
-    )
-    .map_err(|e| format!("preferences_get failed: {}", e))?;
+            [],
+            |row| {
+                Ok(UserPreferences {
+                    id: row.get(0)?,
+                    local_timezone: row.get(1)?,
+                    inactivity_timeout_seconds: row.get(2)?,
+                    screenshot_interval_seconds: row.get(3)?,
+                    screenshot_retention_days: row.get(4)?,
+                    screenshot_storage_path: row.get(5)?,
+                    timer_notification_threshold_hours: row.get(6)?,
+                    page_size: row.get(7)?,
+                    external_db_uri_stored: row.get(8)?,
+                    external_db_enabled: row.get(9)?,
+                    notification_channels_json: row.get(10)?,
+                    process_deny_list_json: row.get(11)?,
+                    auto_classification_enabled: row.get(12)?,
+                    auto_classification_confidence_threshold: row.get(13)?,
+                    auto_classification_group_gap_seconds: row.get(14)?,
+                    logging_enabled: row.get(15)?,
+                    log_level: row.get(16)?,
+                    minimize_to_tray: row.get(17)?,
+                    theme: row.get(18)?,
+                })
+            },
+        )
+        .map_err(|e| format!("preferences_get failed: {}", e))?;
 
     Ok(prefs)
 }
@@ -158,8 +159,9 @@ pub fn preferences_update(
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
     // Read current, apply deltas, write all (partial-update via read-modify-write)
-    let mut current = conn.query_row(
-        "SELECT id, local_timezone, inactivity_timeout_seconds,
+    let mut current = conn
+        .query_row(
+            "SELECT id, local_timezone, inactivity_timeout_seconds,
                 screenshot_interval_seconds, screenshot_retention_days,
                 screenshot_storage_path, timer_notification_threshold_hours,
                 page_size, external_db_uri_stored, external_db_enabled,
@@ -168,47 +170,77 @@ pub fn preferences_update(
                 auto_classification_group_gap_seconds,
                 logging_enabled, log_level, minimize_to_tray, theme
          FROM user_preferences LIMIT 1",
-        [],
-        |row| {
-            Ok(UserPreferences {
-                id: row.get(0)?,
-                local_timezone: row.get(1)?,
-                inactivity_timeout_seconds: row.get(2)?,
-                screenshot_interval_seconds: row.get(3)?,
-                screenshot_retention_days: row.get(4)?,
-                screenshot_storage_path: row.get(5)?,
-                timer_notification_threshold_hours: row.get(6)?,
-                page_size: row.get(7)?,
-                external_db_uri_stored: row.get(8)?,
-                external_db_enabled: row.get(9)?,
-                notification_channels_json: row.get(10)?,
-                process_deny_list_json: row.get(11)?,
-                auto_classification_enabled: row.get(12)?,
-                auto_classification_confidence_threshold: row.get(13)?,
-                auto_classification_group_gap_seconds: row.get(14)?,
-                logging_enabled: row.get(15)?,
-                log_level: row.get(16)?,
-                minimize_to_tray: row.get(17)?,
-                theme: row.get(18)?,
-            })
-        },
-    )
-    .map_err(|e| format!("preferences_update read failed: {}", e))?;
+            [],
+            |row| {
+                Ok(UserPreferences {
+                    id: row.get(0)?,
+                    local_timezone: row.get(1)?,
+                    inactivity_timeout_seconds: row.get(2)?,
+                    screenshot_interval_seconds: row.get(3)?,
+                    screenshot_retention_days: row.get(4)?,
+                    screenshot_storage_path: row.get(5)?,
+                    timer_notification_threshold_hours: row.get(6)?,
+                    page_size: row.get(7)?,
+                    external_db_uri_stored: row.get(8)?,
+                    external_db_enabled: row.get(9)?,
+                    notification_channels_json: row.get(10)?,
+                    process_deny_list_json: row.get(11)?,
+                    auto_classification_enabled: row.get(12)?,
+                    auto_classification_confidence_threshold: row.get(13)?,
+                    auto_classification_group_gap_seconds: row.get(14)?,
+                    logging_enabled: row.get(15)?,
+                    log_level: row.get(16)?,
+                    minimize_to_tray: row.get(17)?,
+                    theme: row.get(18)?,
+                })
+            },
+        )
+        .map_err(|e| format!("preferences_update read failed: {}", e))?;
 
     // Apply deltas — only fields present in the request are changed
     set_if_some(&mut current.local_timezone, update.local_timezone);
-    set_if_some(&mut current.inactivity_timeout_seconds, update.inactivity_timeout_seconds);
-    set_if_some(&mut current.screenshot_interval_seconds, update.screenshot_interval_seconds);
-    set_if_some(&mut current.screenshot_retention_days, update.screenshot_retention_days);
-    set_if_some(&mut current.screenshot_storage_path, update.screenshot_storage_path.map(Some));
-    set_if_some(&mut current.timer_notification_threshold_hours, update.timer_notification_threshold_hours);
+    set_if_some(
+        &mut current.inactivity_timeout_seconds,
+        update.inactivity_timeout_seconds,
+    );
+    set_if_some(
+        &mut current.screenshot_interval_seconds,
+        update.screenshot_interval_seconds,
+    );
+    set_if_some(
+        &mut current.screenshot_retention_days,
+        update.screenshot_retention_days,
+    );
+    set_if_some(
+        &mut current.screenshot_storage_path,
+        update.screenshot_storage_path.map(Some),
+    );
+    set_if_some(
+        &mut current.timer_notification_threshold_hours,
+        update.timer_notification_threshold_hours,
+    );
     set_if_some(&mut current.page_size, update.page_size);
     set_if_some(&mut current.external_db_enabled, update.external_db_enabled);
-    set_if_some(&mut current.notification_channels_json, update.notification_channels_json.map(Some));
-    set_if_some(&mut current.process_deny_list_json, update.process_deny_list_json);
-    set_if_some(&mut current.auto_classification_enabled, update.auto_classification_enabled);
-    set_if_some(&mut current.auto_classification_confidence_threshold, update.auto_classification_confidence_threshold);
-    set_if_some(&mut current.auto_classification_group_gap_seconds, update.auto_classification_group_gap_seconds);
+    set_if_some(
+        &mut current.notification_channels_json,
+        update.notification_channels_json.map(Some),
+    );
+    set_if_some(
+        &mut current.process_deny_list_json,
+        update.process_deny_list_json,
+    );
+    set_if_some(
+        &mut current.auto_classification_enabled,
+        update.auto_classification_enabled,
+    );
+    set_if_some(
+        &mut current.auto_classification_confidence_threshold,
+        update.auto_classification_confidence_threshold,
+    );
+    set_if_some(
+        &mut current.auto_classification_group_gap_seconds,
+        update.auto_classification_group_gap_seconds,
+    );
     set_if_some(&mut current.logging_enabled, update.logging_enabled);
     set_if_some(&mut current.log_level, update.log_level);
     set_if_some(&mut current.minimize_to_tray, update.minimize_to_tray);
@@ -271,9 +303,9 @@ pub fn preferences_update(
 #[derive(Serialize)]
 pub struct HealthResponse {
     pub running: bool,
-    pub last_write_at: Option<String>,  // populated by ActivityTracker in later tasks
-    pub events_per_sec: f64,            // populated by ActivityTracker in later tasks
-    pub memory_mb: f64,                 // populated by metrics service in later tasks
+    pub last_write_at: Option<String>, // populated by ActivityTracker in later tasks
+    pub events_per_sec: f64,           // populated by ActivityTracker in later tasks
+    pub memory_mb: f64,                // populated by metrics service in later tasks
     pub active_errors: Vec<String>,
     pub pending_sync_count: i64,
 }

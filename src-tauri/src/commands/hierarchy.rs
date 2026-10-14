@@ -1,8 +1,8 @@
-use tauri::State;
-use serde::{Deserialize, Serialize};
-use rusqlite::params;
 use crate::commands::AppState;
 use chrono::Utc;
+use rusqlite::params;
+use serde::{Deserialize, Serialize};
+use tauri::State;
 use ulid::Ulid;
 
 fn new_id() -> String {
@@ -11,9 +11,7 @@ fn new_id() -> String {
 
 /// Validates a CSS hex colour string: must be exactly `#RRGGBB`.
 fn validate_color(color: &str) -> bool {
-    color.len() == 7
-        && color.starts_with('#')
-        && color[1..].chars().all(|c| c.is_ascii_hexdigit())
+    color.len() == 7 && color.starts_with('#') && color[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -39,10 +37,12 @@ pub fn client_list(
     let include_archived = include_archived.unwrap_or(false);
 
     // ?1 = 1 means "include archived" — when false, the OR short-circuits to is_archived = 0
-    let mut stmt = conn.prepare(
-        "SELECT id, name, color, logo_path, is_archived FROM clients \
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, name, color, logo_path, is_archived FROM clients \
          WHERE (?1 = 1 OR is_archived = 0) ORDER BY name",
-    ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
 
     let clients: Vec<ClientEntry> = stmt
         .query_map(params![include_archived as i64], |row| {
@@ -168,10 +168,7 @@ pub fn client_update(
 
 /// `client_archive` — mark client as archived.
 #[tauri::command]
-pub fn client_archive(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<serde_json::Value, String> {
+pub fn client_archive(state: State<'_, AppState>, id: String) -> Result<serde_json::Value, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let now = Utc::now().to_rfc3339();
     conn.execute(
@@ -202,10 +199,7 @@ pub fn client_unarchive(
 /// Time entries that referenced the deleted entities are retained; their project_id/task_id
 /// are set to NULL (orphan retention per spec US3 acceptance scenario 6).
 #[tauri::command]
-pub fn client_delete(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<serde_json::Value, String> {
+pub fn client_delete(state: State<'_, AppState>, id: String) -> Result<serde_json::Value, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
     // Count projects belonging to this client
@@ -291,21 +285,26 @@ pub fn project_list(
 
     // (?1 IS NULL OR client_id = ?1) — passes None as SQL NULL to skip client filter
     // (?2 = 1 OR is_archived = 0)    — when include_archived=false, only active rows
-    let mut stmt = conn.prepare(
-        "SELECT id, client_id, name, is_archived FROM projects \
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, client_id, name, is_archived FROM projects \
          WHERE (?1 IS NULL OR client_id = ?1) AND (?2 = 1 OR is_archived = 0) \
          ORDER BY name",
-    ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
 
     let projects: Vec<ProjectEntry> = stmt
-        .query_map(params![client_id.as_deref(), include_archived as i64], |row| {
-            Ok(ProjectEntry {
-                id: row.get(0)?,
-                client_id: row.get(1)?,
-                name: row.get(2)?,
-                is_archived: row.get(3)?,
-            })
-        })
+        .query_map(
+            params![client_id.as_deref(), include_archived as i64],
+            |row| {
+                Ok(ProjectEntry {
+                    id: row.get(0)?,
+                    client_id: row.get(1)?,
+                    name: row.get(2)?,
+                    is_archived: row.get(3)?,
+                })
+            },
+        )
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -447,10 +446,7 @@ pub fn project_unarchive(
 
 /// `project_delete` — delete project; cascade deletes tasks; orphans time entries.
 #[tauri::command]
-pub fn project_delete(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<serde_json::Value, String> {
+pub fn project_delete(state: State<'_, AppState>, id: String) -> Result<serde_json::Value, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
     // Count tasks that will be deleted
@@ -514,9 +510,9 @@ pub fn task_list(
 ) -> Result<serde_json::Value, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
-    let mut stmt = conn.prepare(
-        "SELECT id, project_id, name FROM tasks WHERE project_id = ?1 ORDER BY name",
-    ).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT id, project_id, name FROM tasks WHERE project_id = ?1 ORDER BY name")
+        .map_err(|e| e.to_string())?;
 
     let tasks: Vec<TaskEntry> = stmt
         .query_map(params![project_id], |row| {
@@ -635,10 +631,7 @@ pub fn task_update(
 
 /// `task_delete` — delete a task; orphans time entries that referenced it.
 #[tauri::command]
-pub fn task_delete(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<serde_json::Value, String> {
+pub fn task_delete(state: State<'_, AppState>, id: String) -> Result<serde_json::Value, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
     // NULL out task_id on entries referencing this task
@@ -702,9 +695,8 @@ pub fn fuzzy_match_projects(
         })
         .map_err(|e| e.to_string())?;
 
-    let matches: Vec<FuzzyProjectMatch> = rows
-        .collect::<Result<_, _>>()
-        .map_err(|e| e.to_string())?;
+    let matches: Vec<FuzzyProjectMatch> =
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
 
     Ok(serde_json::json!({ "matches": matches }))
 }

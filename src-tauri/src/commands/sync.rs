@@ -1,11 +1,11 @@
 //! T070 — sync_configure: validate URI, store in OS keychain, run migrations, enable sync
 //! T074 — sync_get_status, sync_trigger: status query and immediate sync trigger
 
-use tauri::State;
-use serde::{Deserialize, Serialize};
-use chrono::Utc;
 use crate::commands::AppState;
 use crate::services::sync_service;
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use tauri::State;
 
 // ─────────────────────────────────────────────────────────────
 // T070 — sync_configure
@@ -73,7 +73,10 @@ pub async fn sync_configure(
         Ok(()) => {
             // Store URI securely in OS keychain (best-effort; cache is the live source of truth)
             if let Err(e) = store_keychain_uri(&uri) {
-                log::warn!("[sync_configure] Keychain store failed (will use in-memory cache only): {}", e);
+                log::warn!(
+                    "[sync_configure] Keychain store failed (will use in-memory cache only): {}",
+                    e
+                );
             }
 
             // Update local preferences
@@ -122,12 +125,13 @@ pub struct SyncStatusResponse {
 pub fn sync_get_status(state: State<'_, AppState>) -> Result<SyncStatusResponse, String> {
     let enabled = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        let enabled: bool = conn.query_row(
-            "SELECT external_db_enabled FROM user_preferences LIMIT 1",
-            [],
-            |row| row.get::<_, bool>(0),
-        )
-        .unwrap_or(false);
+        let enabled: bool = conn
+            .query_row(
+                "SELECT external_db_enabled FROM user_preferences LIMIT 1",
+                [],
+                |row| row.get::<_, bool>(0),
+            )
+            .unwrap_or(false);
         enabled
     };
 
@@ -162,7 +166,10 @@ pub struct SyncTriggerResponse {
 }
 
 #[tauri::command]
-pub async fn sync_trigger(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<SyncTriggerResponse, String> {
+pub async fn sync_trigger(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<SyncTriggerResponse, String> {
     // Read URI from in-memory cache first; fall back to keychain for app-restart persistence
     let uri = {
         let ss = state.sync_state.lock().map_err(|e| e.to_string())?;

@@ -1,8 +1,8 @@
-use tauri::State;
-use serde::{Deserialize, Serialize};
-use rusqlite::params;
 use crate::commands::AppState;
 use chrono::Utc;
+use rusqlite::params;
+use serde::{Deserialize, Serialize};
+use tauri::State;
 use ulid::Ulid;
 
 fn new_id() -> String {
@@ -231,8 +231,17 @@ pub fn timer_get_active(state: State<'_, AppState>) -> Result<ActiveTimerRespons
     );
 
     match result {
-        Ok((id, description, started_at, project_id, task_id,
-            project_name, client_id, client_name, task_name)) => {
+        Ok((
+            id,
+            description,
+            started_at,
+            project_id,
+            task_id,
+            project_name,
+            client_id,
+            client_name,
+            task_name,
+        )) => {
             let mut stmt = conn
                 .prepare("SELECT tag_id FROM time_entry_tags WHERE time_entry_id = ?1")
                 .map_err(|e| e.to_string())?;
@@ -359,8 +368,19 @@ pub fn time_entry_list(
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .map(
-            |(id, description, started_at, ended_at, project_id, project_name,
-              client_name, task_id, task_name, is_break, source)| TimeEntryListItem {
+            |(
+                id,
+                description,
+                started_at,
+                ended_at,
+                project_id,
+                project_name,
+                client_name,
+                task_id,
+                task_name,
+                is_break,
+                source,
+            )| TimeEntryListItem {
                 id,
                 description,
                 started_at,
@@ -460,7 +480,13 @@ pub struct AutocompleteResponse {
 }
 
 /// (description, project_id, project_name, task_id, task_name)
-type EntryHistoryRow = (String, Option<String>, Option<String>, Option<String>, Option<String>);
+type EntryHistoryRow = (
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
 
 #[tauri::command]
 pub fn time_entry_autocomplete(
@@ -486,8 +512,8 @@ pub fn time_entry_autocomplete(
         )
         .map_err(|e| e.to_string())?;
 
-    let rows: Vec<EntryHistoryRow> =
-        stmt.query_map(params![search_pattern, limit], |r| {
+    let rows: Vec<EntryHistoryRow> = stmt
+        .query_map(params![search_pattern, limit], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, Option<String>>(1)?,
@@ -601,14 +627,16 @@ pub fn time_entry_create_manual(
     let device_id = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".to_string());
 
     if !request.force.unwrap_or(false) {
-        let overlap_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM time_entries
+        let overlap_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM time_entries
              WHERE ended_at IS NOT NULL
              AND started_at < ?2
              AND ended_at > ?1",
-            params![request.started_at, request.ended_at],
-            |r| r.get(0),
-        ).map_err(|e| e.to_string())?;
+                params![request.started_at, request.ended_at],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
 
         if overlap_count > 0 {
             return Err("overlap_detected".to_string());
@@ -637,7 +665,8 @@ pub fn time_entry_create_manual(
         conn.execute(
             "INSERT INTO time_entry_tags (time_entry_id, tag_id) VALUES (?1, ?2)",
             params![id, tag_id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     }
 
     Ok(TimeEntryCreateManualResponse { id })
@@ -660,20 +689,24 @@ pub fn time_entry_continue(
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let now = Utc::now().to_rfc3339();
 
-    let (description, project_id, task_id) = conn.query_row(
-        "SELECT description, project_id, task_id FROM time_entries WHERE id = ?1",
-        params![request.source_entry_id],
-        |r| Ok((
-            r.get::<_, String>(0)?,
-            r.get::<_, Option<String>>(1)?,
-            r.get::<_, Option<String>>(2)?,
-        )),
-    ).map_err(|_| "source_entry_not_found".to_string())?;
+    let (description, project_id, task_id) = conn
+        .query_row(
+            "SELECT description, project_id, task_id FROM time_entries WHERE id = ?1",
+            params![request.source_entry_id],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                ))
+            },
+        )
+        .map_err(|_| "source_entry_not_found".to_string())?;
 
     let tag_ids: Vec<String> = {
-        let mut tag_stmt = conn.prepare(
-            "SELECT tag_id FROM time_entry_tags WHERE time_entry_id = ?1"
-        ).map_err(|e| e.to_string())?;
+        let mut tag_stmt = conn
+            .prepare("SELECT tag_id FROM time_entry_tags WHERE time_entry_id = ?1")
+            .map_err(|e| e.to_string())?;
         // Bind to local so MappedRows (borrowing tag_stmt) is fully consumed
         // before tag_stmt is dropped at block end — avoids E0597.
         let x: Vec<String> = tag_stmt
@@ -685,11 +718,14 @@ pub fn time_entry_continue(
     };
 
     let stopped_entry = stop_running_timer(&conn, &now)?;
-    let (id, started_at) = insert_new_timer(
-        &conn, &description, project_id, task_id, &tag_ids, &now,
-    )?;
+    let (id, started_at) =
+        insert_new_timer(&conn, &description, project_id, task_id, &tag_ids, &now)?;
 
-    Ok(TimerStartResponse { id, started_at, stopped_entry })
+    Ok(TimerStartResponse {
+        id,
+        started_at,
+        stopped_entry,
+    })
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -734,18 +770,22 @@ pub fn time_entry_update(
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let now = Utc::now().to_rfc3339();
 
-    let (curr_desc, curr_pid, curr_tid, curr_start, curr_end) = conn.query_row(
-        "SELECT description, project_id, task_id, started_at, ended_at
+    let (curr_desc, curr_pid, curr_tid, curr_start, curr_end) = conn
+        .query_row(
+            "SELECT description, project_id, task_id, started_at, ended_at
          FROM time_entries WHERE id = ?1",
-        params![request.id],
-        |r| Ok((
-            r.get::<_, String>(0)?,
-            r.get::<_, Option<String>>(1)?,
-            r.get::<_, Option<String>>(2)?,
-            r.get::<_, String>(3)?,
-            r.get::<_, Option<String>>(4)?,
-        )),
-    ).map_err(|_| "entry_not_found".to_string())?;
+            params![request.id],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, Option<String>>(4)?,
+                ))
+            },
+        )
+        .map_err(|_| "entry_not_found".to_string())?;
 
     let new_desc = request.description.unwrap_or(curr_desc);
     let new_pid = request.project_id.unwrap_or(curr_pid);
@@ -759,13 +799,15 @@ pub fn time_entry_update(
         }
 
         if !request.force.unwrap_or(false) {
-            let overlap_count: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM time_entries
+            let overlap_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM time_entries
                  WHERE id != ?1 AND ended_at IS NOT NULL
                  AND started_at < ?3 AND ended_at > ?2",
-                params![request.id, new_start, end],
-                |r| r.get(0),
-            ).map_err(|e| e.to_string())?;
+                    params![request.id, new_start, end],
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
             if overlap_count > 0 {
                 return Err("overlap_detected".to_string());
             }
@@ -777,22 +819,28 @@ pub fn time_entry_update(
                 started_at = ?4, ended_at = ?5, modified_at = ?6
          WHERE id = ?7",
         params![new_desc, new_pid, new_tid, new_start, new_end, now, request.id],
-    ).map_err(|e| format!("update failed: {}", e))?;
+    )
+    .map_err(|e| format!("update failed: {}", e))?;
 
     if let Some(tag_ids) = request.tag_ids {
         conn.execute(
             "DELETE FROM time_entry_tags WHERE time_entry_id = ?1",
             params![request.id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         for tag_id in &tag_ids {
             conn.execute(
                 "INSERT INTO time_entry_tags (time_entry_id, tag_id) VALUES (?1, ?2)",
                 params![request.id, tag_id],
-            ).map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
         }
     }
 
-    Ok(TimeEntryUpdateResponse { id: request.id, modified_at: now })
+    Ok(TimeEntryUpdateResponse {
+        id: request.id,
+        modified_at: now,
+    })
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -800,10 +848,7 @@ pub fn time_entry_update(
 // ─────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn time_entry_delete(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+pub fn time_entry_delete(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
     // Refuse to delete a running entry
@@ -825,11 +870,8 @@ pub fn time_entry_delete(
     )
     .map_err(|e| e.to_string())?;
 
-    conn.execute(
-        "DELETE FROM time_entries WHERE id = ?1",
-        params![id],
-    )
-    .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM time_entries WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }

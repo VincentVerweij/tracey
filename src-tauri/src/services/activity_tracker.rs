@@ -7,8 +7,8 @@
 //! `sync_service.rs` (queries `synced_at IS NULL` rows every 30 seconds).
 //! No separate flush loop is needed here.
 
-use tauri::{AppHandle, Manager};
 use chrono::Utc;
+use tauri::{AppHandle, Manager};
 use ulid::Ulid;
 
 use crate::commands::AppState;
@@ -31,7 +31,10 @@ struct ActivitySchedule {
 
 impl ActivitySchedule {
     fn new(suspension: LoopSuspension) -> Self {
-        Self { last_window: None, suspension }
+        Self {
+            last_window: None,
+            suspension,
+        }
     }
 
     /// Returns the window to write a row for, or `None` to write nothing this tick.
@@ -160,10 +163,10 @@ pub fn start_activity_loop(app: AppHandle, suspension: LoopSuspension) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use crate::services::suspension::{
         no_session_state_query, SessionStateQuery, Suspension, TrackingLoop,
     };
+    use std::sync::Arc;
 
     fn window(title: &str) -> Option<WindowKey> {
         Some(("app.exe".to_string(), title.to_string()))
@@ -174,7 +177,10 @@ mod tests {
         schedule_querying(suspension, no_session_state_query())
     }
 
-    fn schedule_querying(suspension: &Arc<Suspension>, query: SessionStateQuery) -> ActivitySchedule {
+    fn schedule_querying(
+        suspension: &Arc<Suspension>,
+        query: SessionStateQuery,
+    ) -> ActivitySchedule {
         ActivitySchedule::new(LoopSuspension::new(
             suspension.clone(),
             TrackingLoop::WindowActivity,

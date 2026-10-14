@@ -46,7 +46,7 @@ pub struct TimeEntry {
     pub id: String,
     pub description: String,
     pub started_at: String,
-    pub ended_at: Option<String>,  // NULL = timer currently running
+    pub ended_at: Option<String>,   // NULL = timer currently running
     pub project_id: Option<String>, // SET NULL on project delete
     pub task_id: Option<String>,    // SET NULL on task delete
     pub is_break: bool,
@@ -118,5 +118,5 @@ pub struct SyncQueueEntry {
     pub record_id: String,
     pub operation: String, // "upsert" | "delete"
     pub queued_at: String,
-    pub attempts: i64,     // retry counter; incremented on each failed sync attempt
+    pub attempts: i64, // retry counter; incremented on each failed sync attempt
 }

@@ -69,8 +69,8 @@ impl log::Log for MultiLogger {
 fn log_level_to_u8(level: log::Level) -> u8 {
     match level {
         log::Level::Error => 1,
-        log::Level::Warn  => 2,
-        log::Level::Info  => 3,
+        log::Level::Warn => 2,
+        log::Level::Info => 3,
         log::Level::Debug => 4,
         log::Level::Trace => 4,
     }
@@ -109,10 +109,7 @@ pub fn init_file_logger(enabled: bool, level: &str, log_path: &std::path::Path) 
             let _ = LOG_FILE.set(Mutex::new(BufWriter::new(file)));
         }
         Err(e) => {
-            log::error!(
-                "[logger] Could not open log file {:?}: {}",
-                log_path, e
-            );
+            log::error!("[logger] Could not open log file {:?}: {}", log_path, e);
         }
     }
 }
@@ -129,10 +126,10 @@ pub fn update_logging_settings(enabled: bool, level: &str) {
 fn level_str_to_u8(level: &str) -> u8 {
     // Accepts the user-facing level names stored in user_preferences.log_level
     match level.to_lowercase().as_str() {
-        "error"            => 1,
+        "error" => 1,
         "warning" | "warn" => 2,
-        "info"             => 3,
-        "trace"            => 4,
-        _                  => 3,
+        "info" => 3,
+        "trace" => 4,
+        _ => 3,
     }
 }

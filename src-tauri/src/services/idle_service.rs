@@ -1,7 +1,7 @@
-use tauri::{AppHandle, Emitter, Manager};
-use chrono::Utc;
-use crate::platform::PlatformHooks;
 use crate::commands::AppState;
+use crate::platform::PlatformHooks;
+use chrono::Utc;
+use tauri::{AppHandle, Emitter, Manager};
 
 /// Tracks idle state across loop iterations.
 struct IdleState {
@@ -40,17 +40,21 @@ pub fn start_idle_loop(app: AppHandle) {
                     }
                 };
 
-                let threshold: i64 = conn.query_row(
-                    "SELECT inactivity_timeout_seconds FROM user_preferences LIMIT 1",
-                    [],
-                    |r| r.get(0),
-                ).unwrap_or(300);
+                let threshold: i64 = conn
+                    .query_row(
+                        "SELECT inactivity_timeout_seconds FROM user_preferences LIMIT 1",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .unwrap_or(300);
 
-                let running: bool = conn.query_row(
-                    "SELECT COUNT(*) > 0 FROM time_entries WHERE ended_at IS NULL",
-                    [],
-                    |r| r.get(0),
-                ).unwrap_or(false);
+                let running: bool = conn
+                    .query_row(
+                        "SELECT COUNT(*) > 0 FROM time_entries WHERE ended_at IS NULL",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .unwrap_or(false);
 
                 (threshold, idle_secs, running)
             };
@@ -73,20 +77,27 @@ pub fn start_idle_loop(app: AppHandle) {
                     threshold={threshold_secs}s had_active_timer={has_running_timer}"
                 );
                 state.is_idle = true;
-                state.idle_started_at = Some(Utc::now() - chrono::Duration::seconds(idle_secs as i64));
+                state.idle_started_at =
+                    Some(Utc::now() - chrono::Duration::seconds(idle_secs as i64));
                 state.had_active_timer = has_running_timer;
 
                 // Only emit if a timer was running
                 if state.had_active_timer {
-                    let idle_since = state.idle_started_at
+                    let idle_since = state
+                        .idle_started_at
                         .map(|t| t.to_rfc3339())
                         .unwrap_or_else(|| Utc::now().to_rfc3339());
 
-                    eprintln!("[idle_service] EMITTING tracey://idle-detected idle_since={idle_since}");
-                    let emit_result = app.emit("tracey://idle-detected", serde_json::json!({
-                        "idle_since": idle_since,
-                        "had_active_timer": true
-                    }));
+                    eprintln!(
+                        "[idle_service] EMITTING tracey://idle-detected idle_since={idle_since}"
+                    );
+                    let emit_result = app.emit(
+                        "tracey://idle-detected",
+                        serde_json::json!({
+                            "idle_since": idle_since,
+                            "had_active_timer": true
+                        }),
+                    );
                     eprintln!("[idle_service] Emit result: {:?}", emit_result);
                 } else {
                     eprintln!("[idle_service] SUPPRESSING emit — no active timer was running at idle start");
@@ -106,7 +117,10 @@ pub fn start_idle_loop(app: AppHandle) {
 
 /// Query idle status directly from platform hooks.
 /// Used by the idle_get_status command — the loop's internal state is not shared.
-pub fn get_current_idle_status(platform: &dyn PlatformHooks, threshold_secs: i64) -> (bool, u64, Option<String>) {
+pub fn get_current_idle_status(
+    platform: &dyn PlatformHooks,
+    threshold_secs: i64,
+) -> (bool, u64, Option<String>) {
     let idle_secs = platform.get_idle_seconds();
     let is_idle = idle_secs >= threshold_secs as u64;
     let idle_since = if is_idle {

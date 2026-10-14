@@ -6,8 +6,8 @@ use chrono::Utc;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio_postgres::NoTls;
 
-use crate::commands::AppState;
 use crate::commands::sync::read_keychain_uri;
+use crate::commands::AppState;
 
 // ─────────────────────────────────────────────────────────────
 // T071 — External Postgres schema migration
@@ -211,7 +211,10 @@ async fn apply_migrations(client: &tokio_postgres::Client) -> Result<(), String>
         .await
         .map_err(|e| format!("schema_migrations insert failed: {e}"))?;
 
-    log::info!("[sync_service] External schema migrations applied (version {})", EXTERNAL_SCHEMA_VERSION);
+    log::info!(
+        "[sync_service] External schema migrations applied (version {})",
+        EXTERNAL_SCHEMA_VERSION
+    );
     Ok(())
 }
 
@@ -283,11 +286,21 @@ pub async fn run_sync_cycle_inline(
             )
             .await;
         match r {
-            Ok(_) => { synced += 1; c_ok += 1; }
-            Err(e) => { record_first_error(&format!("clients/{}", row.id), &e); log::error!("[sync] clients/{}: {}", row.id, e); errors += 1; c_err += 1; }
+            Ok(_) => {
+                synced += 1;
+                c_ok += 1;
+            }
+            Err(e) => {
+                record_first_error(&format!("clients/{}", row.id), &e);
+                log::error!("[sync] clients/{}: {}", row.id, e);
+                errors += 1;
+                c_err += 1;
+            }
         }
     }
-    if c_err > 0 { log::error!("[sync] clients: {c_ok} ok, {c_err} failed"); }
+    if c_err > 0 {
+        log::error!("[sync] clients: {c_ok} ok, {c_err} failed");
+    }
 
     // ── Upsert projects ────────────────────────────────────────────────────
     let projects = read_projects(db, &cursor_ts)?;
@@ -309,11 +322,21 @@ pub async fn run_sync_cycle_inline(
             )
             .await;
         match r {
-            Ok(_) => { synced += 1; p_ok += 1; }
-            Err(e) => { record_first_error(&format!("projects/{}", row.id), &e); log::error!("[sync] projects/{}: {}", row.id, e); errors += 1; p_err += 1; }
+            Ok(_) => {
+                synced += 1;
+                p_ok += 1;
+            }
+            Err(e) => {
+                record_first_error(&format!("projects/{}", row.id), &e);
+                log::error!("[sync] projects/{}: {}", row.id, e);
+                errors += 1;
+                p_err += 1;
+            }
         }
     }
-    if p_err > 0 { log::error!("[sync] projects: {p_ok} ok, {p_err} failed"); }
+    if p_err > 0 {
+        log::error!("[sync] projects: {p_ok} ok, {p_err} failed");
+    }
 
     // ── Upsert tasks ───────────────────────────────────────────────────────
     let tasks = read_tasks(db, &cursor_ts)?;
@@ -329,16 +352,32 @@ pub async fn run_sync_cycle_inline(
                    device_id   = EXCLUDED.device_id,
                    modified_at = GREATEST(tasks.modified_at, EXCLUDED.modified_at)
                  WHERE EXCLUDED.modified_at >= tasks.modified_at",
-                &[&row.id, &row.project_id, &row.name, &row.device_id,
-                  &row.created_at, &row.modified_at],
+                &[
+                    &row.id,
+                    &row.project_id,
+                    &row.name,
+                    &row.device_id,
+                    &row.created_at,
+                    &row.modified_at,
+                ],
             )
             .await;
         match r {
-            Ok(_) => { synced += 1; t_ok += 1; }
-            Err(e) => { record_first_error(&format!("tasks/{}", row.id), &e); log::error!("[sync] tasks/{}: {}", row.id, e); errors += 1; t_err += 1; }
+            Ok(_) => {
+                synced += 1;
+                t_ok += 1;
+            }
+            Err(e) => {
+                record_first_error(&format!("tasks/{}", row.id), &e);
+                log::error!("[sync] tasks/{}: {}", row.id, e);
+                errors += 1;
+                t_err += 1;
+            }
         }
     }
-    if t_err > 0 { log::error!("[sync] tasks: {t_ok} ok, {t_err} failed"); }
+    if t_err > 0 {
+        log::error!("[sync] tasks: {t_ok} ok, {t_err} failed");
+    }
 
     // ── Upsert tags ────────────────────────────────────────────────────────
     let tags = read_tags(db, &cursor_ts)?;
@@ -353,15 +392,31 @@ pub async fn run_sync_cycle_inline(
                    device_id   = EXCLUDED.device_id,
                    modified_at = GREATEST(tags.modified_at, EXCLUDED.modified_at)
                  WHERE EXCLUDED.modified_at >= tags.modified_at",
-                &[&row.id, &row.name, &row.device_id, &row.created_at, &row.modified_at],
+                &[
+                    &row.id,
+                    &row.name,
+                    &row.device_id,
+                    &row.created_at,
+                    &row.modified_at,
+                ],
             )
             .await;
         match r {
-            Ok(_) => { synced += 1; g_ok += 1; }
-            Err(e) => { record_first_error(&format!("tags/{}", row.id), &e); log::error!("[sync] tags/{}: {}", row.id, e); errors += 1; g_err += 1; }
+            Ok(_) => {
+                synced += 1;
+                g_ok += 1;
+            }
+            Err(e) => {
+                record_first_error(&format!("tags/{}", row.id), &e);
+                log::error!("[sync] tags/{}: {}", row.id, e);
+                errors += 1;
+                g_err += 1;
+            }
         }
     }
-    if g_err > 0 { log::error!("[sync] tags: {g_ok} ok, {g_err} failed"); }
+    if g_err > 0 {
+        log::error!("[sync] tags: {g_ok} ok, {g_err} failed");
+    }
 
     // ── Upsert time_entries (batched, up to 50 per cycle) ─────────────────
     let entries = read_time_entries(db, &cursor_ts, 50)?;
@@ -396,10 +451,17 @@ pub async fn run_sync_cycle_inline(
                 synced += 1;
                 e_ok += 1;
             }
-            Err(e) => { record_first_error(&format!("time_entries/{}", row.id), &e); log::error!("[sync] time_entries/{}: {}", row.id, e); errors += 1; e_err += 1; }
+            Err(e) => {
+                record_first_error(&format!("time_entries/{}", row.id), &e);
+                log::error!("[sync] time_entries/{}: {}", row.id, e);
+                errors += 1;
+                e_err += 1;
+            }
         }
     }
-    if e_err > 0 { log::error!("[sync] time_entries: {e_ok} ok, {e_err} failed"); }
+    if e_err > 0 {
+        log::error!("[sync] time_entries: {e_ok} ok, {e_err} failed");
+    }
 
     // ── Sync window_activity_records (up to 500 per cycle) ────────────────
     let war_rows = read_window_activity(db, 500)?;
@@ -411,11 +473,23 @@ pub async fn run_sync_cycle_inline(
                    (id, process_name, window_title, window_handle, recorded_at, device_id)
                  VALUES ($1,$2,$3,$4,$5::text::timestamptz,$6)
                  ON CONFLICT (id) DO NOTHING",
-                &[&row.id, &row.process_name, &row.window_title,
-                  &row.window_handle, &row.recorded_at, &row.device_id],
+                &[
+                    &row.id,
+                    &row.process_name,
+                    &row.window_title,
+                    &row.window_handle,
+                    &row.recorded_at,
+                    &row.device_id,
+                ],
             )
             .await;
-        match r { Ok(_) => synced += 1, Err(e) => { log::error!("[sync] window_activity/{}: {}", row.id, e); errors += 1; } }
+        match r {
+            Ok(_) => synced += 1,
+            Err(e) => {
+                log::error!("[sync] window_activity/{}: {}", row.id, e);
+                errors += 1;
+            }
+        }
     }
     // Mark synced window activity records
     if !war_ids.is_empty() {
@@ -469,7 +543,14 @@ pub async fn run_sync_cycle_inline(
                 ],
             )
             .await;
-        match r { Ok(_) => synced += 1, Err(e) => { record_first_error("user_preferences", &e); log::error!("[sync] user_preferences: {}", e); errors += 1; } }
+        match r {
+            Ok(_) => synced += 1,
+            Err(e) => {
+                record_first_error("user_preferences", &e);
+                log::error!("[sync] user_preferences: {}", e);
+                errors += 1;
+            }
+        }
     }
 
     // ── Process sync_queue DELETE operations ──────────────────────────────
@@ -516,7 +597,12 @@ pub async fn run_sync_cycle_inline(
                     "UPDATE sync_queue SET attempts = attempts + 1 WHERE id = ?1",
                     rusqlite::params![entry.id],
                 );
-                log::error!("[sync] delete queue {}/{}: {}", entry.table_name, entry.record_id, e);
+                log::error!(
+                    "[sync] delete queue {}/{}: {}",
+                    entry.table_name,
+                    entry.record_id,
+                    e
+                );
             }
         }
     }
@@ -525,7 +611,10 @@ pub async fn run_sync_cycle_inline(
     if !processed_delete_ids.is_empty() {
         let conn = db.lock().map_err(|e| e.to_string())?;
         for id in &processed_delete_ids {
-            let _ = conn.execute("DELETE FROM sync_queue WHERE id = ?1", rusqlite::params![id]);
+            let _ = conn.execute(
+                "DELETE FROM sync_queue WHERE id = ?1",
+                rusqlite::params![id],
+            );
         }
     }
 
@@ -533,12 +622,23 @@ pub async fn run_sync_cycle_inline(
     let unsynced_samples = read_unsynced_labeled_samples(db, 200);
     let mut samples_synced_ids: Vec<String> = Vec::new();
 
-    for (id, feature_text, process_name, window_title,
-         client_id, project_id, task_id, source, device_id, created_at, modified_at)
-    in &unsynced_samples
+    for (
+        id,
+        feature_text,
+        process_name,
+        window_title,
+        client_id,
+        project_id,
+        task_id,
+        source,
+        device_id,
+        created_at,
+        modified_at,
+    ) in &unsynced_samples
     {
-        let result = pg_client.execute(
-            "INSERT INTO labeled_samples \
+        let result = pg_client
+            .execute(
+                "INSERT INTO labeled_samples \
              (id, feature_text, process_name, window_title, client_id, project_id, \
               task_id, source, device_id, created_at, modified_at) \
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::TIMESTAMPTZ,$11::TIMESTAMPTZ) \
@@ -550,11 +650,26 @@ pub async fn run_sync_cycle_inline(
                  source = EXCLUDED.source, \
                  modified_at = EXCLUDED.modified_at \
              WHERE EXCLUDED.modified_at > labeled_samples.modified_at",
-            &[id, feature_text, process_name, window_title,
-              client_id, project_id, task_id, source, device_id, created_at, modified_at],
-        ).await;
+                &[
+                    id,
+                    feature_text,
+                    process_name,
+                    window_title,
+                    client_id,
+                    project_id,
+                    task_id,
+                    source,
+                    device_id,
+                    created_at,
+                    modified_at,
+                ],
+            )
+            .await;
         match result {
-            Ok(_) => { synced += 1; samples_synced_ids.push(id.clone()); }
+            Ok(_) => {
+                synced += 1;
+                samples_synced_ids.push(id.clone());
+            }
             Err(e) => {
                 errors += 1;
                 record_first_error("labeled_samples upsert", &e);
@@ -565,20 +680,28 @@ pub async fn run_sync_cycle_inline(
     if !samples_synced_ids.is_empty() {
         let now_str = Utc::now().to_rfc3339();
         if let Ok(conn) = db.lock() {
-            let placeholders: String = samples_synced_ids.iter().enumerate()
+            let placeholders: String = samples_synced_ids
+                .iter()
+                .enumerate()
                 .map(|(i, _)| format!("?{}", i + 1))
-                .collect::<Vec<_>>().join(",");
+                .collect::<Vec<_>>()
+                .join(",");
             let sql = format!(
                 "UPDATE labeled_samples SET synced_at = '{}' WHERE id IN ({})",
                 now_str, placeholders,
             );
-            let params: Vec<&dyn rusqlite::ToSql> = samples_synced_ids.iter()
-                .map(|s| s as &dyn rusqlite::ToSql).collect();
+            let params: Vec<&dyn rusqlite::ToSql> = samples_synced_ids
+                .iter()
+                .map(|s| s as &dyn rusqlite::ToSql)
+                .collect();
             let _ = conn.execute(&sql, params.as_slice());
         }
     }
 
-    log::info!("[sync] labeled_samples push: {} ok", samples_synced_ids.len());
+    log::info!(
+        "[sync] labeled_samples push: {} ok",
+        samples_synced_ids.len()
+    );
 
     // ── labeled_samples pull from Postgres (other devices) ───────────────────
     let local_count_before: i64 = {
@@ -588,12 +711,15 @@ pub async fn run_sync_cycle_inline(
     };
 
     let device_id_str = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".to_string());
-    let remote_samples = match pg_client.query(
-        "SELECT id, feature_text, process_name, window_title, client_id, project_id, \
+    let remote_samples = match pg_client
+        .query(
+            "SELECT id, feature_text, process_name, window_title, client_id, project_id, \
                 task_id, source, device_id, created_at, modified_at \
          FROM labeled_samples WHERE device_id <> $1",
-        &[&device_id_str],
-    ).await {
+            &[&device_id_str],
+        )
+        .await
+    {
         Ok(rows) => rows,
         Err(e) => {
             log::warn!("[sync] labeled_samples pull from Postgres failed: {e}");
@@ -654,21 +780,28 @@ pub async fn run_sync_cycle_inline(
     };
 
     let new_samples_received = local_count_after - local_count_before;
-    log::info!("[sync] labeled_samples pull: {} new from other devices", new_samples_received);
+    log::info!(
+        "[sync] labeled_samples pull: {} new from other devices",
+        new_samples_received
+    );
 
     // Trigger retrain if new samples received from other devices
     if new_samples_received > 0 {
         let new_model = {
             let app_state = app.state::<AppState>();
             let conn = app_state.db.lock().ok();
-            conn.as_ref().and_then(|c| crate::services::classification::trainer::retrain(c))
+            conn.as_ref()
+                .and_then(|c| crate::services::classification::trainer::retrain(c))
         };
         if let Some(model) = new_model {
             let app_state = app.state::<AppState>();
             {
                 if let Ok(mut cs) = app_state.classification_state.lock() {
                     cs.model = Some(model);
-                    log::info!("[sync] Classification model retrained from {} new samples", new_samples_received);
+                    log::info!(
+                        "[sync] Classification model retrained from {} new samples",
+                        new_samples_received
+                    );
                 };
             }
         }
@@ -702,7 +835,11 @@ pub fn start_sync_loop(app: AppHandle) {
             let sync_enabled = {
                 match app_state.db.lock() {
                     Ok(conn) => conn
-                        .query_row("SELECT external_db_enabled FROM user_preferences LIMIT 1", [], |r| r.get::<_, bool>(0))
+                        .query_row(
+                            "SELECT external_db_enabled FROM user_preferences LIMIT 1",
+                            [],
+                            |r| r.get::<_, bool>(0),
+                        )
                         .unwrap_or(false),
                     Err(_) => false,
                 }
@@ -710,7 +847,10 @@ pub fn start_sync_loop(app: AppHandle) {
             if sync_enabled {
                 match read_keychain_uri() {
                     Ok(uri) => {
-                        let mut ss = app_state.sync_state.lock().unwrap_or_else(|e| e.into_inner());
+                        let mut ss = app_state
+                            .sync_state
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
                         ss.cached_uri = Some(uri);
                         log::info!("[sync_service] URI restored from keychain into cache");
                     }
@@ -736,10 +876,17 @@ pub fn start_sync_loop(app: AppHandle) {
             let enabled = {
                 let conn = match app_state.db.lock() {
                     Ok(c) => c,
-                    Err(e) => { log::error!("[sync_service] DB lock failed: {e}"); continue; }
+                    Err(e) => {
+                        log::error!("[sync_service] DB lock failed: {e}");
+                        continue;
+                    }
                 };
-                conn.query_row("SELECT external_db_enabled FROM user_preferences LIMIT 1", [], |r| r.get::<_, bool>(0))
-                    .unwrap_or(false)
+                conn.query_row(
+                    "SELECT external_db_enabled FROM user_preferences LIMIT 1",
+                    [],
+                    |r| r.get::<_, bool>(0),
+                )
+                .unwrap_or(false)
             };
 
             if !enabled {
@@ -748,7 +895,10 @@ pub fn start_sync_loop(app: AppHandle) {
 
             // Read URI from in-memory cache (populated by sync_configure or startup restore)
             let uri = {
-                let ss = app_state.sync_state.lock().unwrap_or_else(|e| e.into_inner());
+                let ss = app_state
+                    .sync_state
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 ss.cached_uri.clone()
             };
 
@@ -762,7 +912,10 @@ pub fn start_sync_loop(app: AppHandle) {
 
             // Get current cursor (don't hold lock across await)
             let cursor = {
-                let ss = app_state.sync_state.lock().unwrap_or_else(|e| e.into_inner());
+                let ss = app_state
+                    .sync_state
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 ss.last_sync_cursor.clone()
             };
 
@@ -770,30 +923,42 @@ pub fn start_sync_loop(app: AppHandle) {
                 Ok((synced, errors, new_cursor)) => {
                     let now = Utc::now().to_rfc3339();
                     {
-                        let mut ss = app_state.sync_state.lock().unwrap_or_else(|e| e.into_inner());
+                        let mut ss = app_state
+                            .sync_state
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
                         ss.connected = true;
                         ss.last_sync_at = Some(now.clone());
                         ss.last_sync_cursor = Some(new_cursor);
                         ss.last_error = None;
                     }
-                    let _ = app.emit("tracey://sync-status-changed", serde_json::json!({
-                        "connected": true,
-                        "last_sync_at": now,
-                        "synced_records": synced,
-                        "errors": errors
-                    }));
+                    let _ = app.emit(
+                        "tracey://sync-status-changed",
+                        serde_json::json!({
+                            "connected": true,
+                            "last_sync_at": now,
+                            "synced_records": synced,
+                            "errors": errors
+                        }),
+                    );
                 }
                 Err(e) => {
                     log::error!("[sync_service] Sync cycle failed: {}", e);
                     {
-                        let mut ss = app_state.sync_state.lock().unwrap_or_else(|e2| e2.into_inner());
+                        let mut ss = app_state
+                            .sync_state
+                            .lock()
+                            .unwrap_or_else(|e2| e2.into_inner());
                         ss.connected = false;
                         ss.last_error = Some(e.clone());
                     }
-                    let _ = app.emit("tracey://sync-status-changed", serde_json::json!({
-                        "connected": false,
-                        "last_error": e
-                    }));
+                    let _ = app.emit(
+                        "tracey://sync-status-changed",
+                        serde_json::json!({
+                            "connected": false,
+                            "last_error": e
+                        }),
+                    );
                 }
             }
         }
@@ -804,86 +969,194 @@ pub fn start_sync_loop(app: AppHandle) {
 // SQLite read helpers (used by sync cycle)
 // ─────────────────────────────────────────────────────────────
 
-struct ClientRow { id: String, name: String, color: String, logo_path: Option<String>, is_archived: bool, device_id: String, created_at: String, modified_at: String }
-struct ProjectRow { id: String, client_id: String, name: String, is_archived: bool, device_id: String, created_at: String, modified_at: String }
-struct TaskRow { id: String, project_id: String, name: String, device_id: String, created_at: String, modified_at: String }
-struct TagRow { id: String, name: String, device_id: String, created_at: String, modified_at: String }
+struct ClientRow {
+    id: String,
+    name: String,
+    color: String,
+    logo_path: Option<String>,
+    is_archived: bool,
+    device_id: String,
+    created_at: String,
+    modified_at: String,
+}
+struct ProjectRow {
+    id: String,
+    client_id: String,
+    name: String,
+    is_archived: bool,
+    device_id: String,
+    created_at: String,
+    modified_at: String,
+}
+struct TaskRow {
+    id: String,
+    project_id: String,
+    name: String,
+    device_id: String,
+    created_at: String,
+    modified_at: String,
+}
+struct TagRow {
+    id: String,
+    name: String,
+    device_id: String,
+    created_at: String,
+    modified_at: String,
+}
 struct TimeEntryRow {
-    id: String, description: String, started_at: String, ended_at: Option<String>,
-    project_id: Option<String>, task_id: Option<String>, is_break: bool,
-    device_id: String, created_at: String, modified_at: String,
+    id: String,
+    description: String,
+    started_at: String,
+    ended_at: Option<String>,
+    project_id: Option<String>,
+    task_id: Option<String>,
+    is_break: bool,
+    device_id: String,
+    created_at: String,
+    modified_at: String,
 }
-struct WarRow { id: String, process_name: String, window_title: String, window_handle: String, recorded_at: String, device_id: String }
-struct DeleteQueueEntry { id: i64, table_name: String, record_id: String }
-
-fn read_clients(db: &std::sync::Mutex<rusqlite::Connection>, cursor: &str) -> Result<Vec<ClientRow>, String> {
-    let conn = db.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, name, color, logo_path, is_archived, device_id, created_at, modified_at
-         FROM clients WHERE modified_at >= ?1 ORDER BY modified_at"
-    ).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(rusqlite::params![cursor], |r| {
-        let raw_did: String = r.get(5)?;
-        Ok(ClientRow {
-            id: r.get(0)?, name: r.get(1)?, color: r.get(2)?, logo_path: r.get(3)?,
-            is_archived: r.get::<_,i64>(4)? != 0,
-            device_id: if raw_did.is_empty() { device_id() } else { raw_did },
-            created_at: r.get(6)?, modified_at: r.get(7)?,
-        })
-    }).map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+struct WarRow {
+    id: String,
+    process_name: String,
+    window_title: String,
+    window_handle: String,
+    recorded_at: String,
+    device_id: String,
 }
-
-fn read_projects(db: &std::sync::Mutex<rusqlite::Connection>, cursor: &str) -> Result<Vec<ProjectRow>, String> {
-    let conn = db.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, client_id, name, is_archived, device_id, created_at, modified_at
-         FROM projects WHERE modified_at >= ?1 ORDER BY modified_at"
-    ).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(rusqlite::params![cursor], |r| {
-        let raw_did: String = r.get(4)?;
-        Ok(ProjectRow {
-            id: r.get(0)?, client_id: r.get(1)?, name: r.get(2)?,
-            is_archived: r.get::<_,i64>(3)? != 0,
-            device_id: if raw_did.is_empty() { device_id() } else { raw_did },
-            created_at: r.get(5)?, modified_at: r.get(6)?,
-        })
-    }).map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+struct DeleteQueueEntry {
+    id: i64,
+    table_name: String,
+    record_id: String,
 }
 
-fn read_tasks(db: &std::sync::Mutex<rusqlite::Connection>, cursor: &str) -> Result<Vec<TaskRow>, String> {
+fn read_clients(
+    db: &std::sync::Mutex<rusqlite::Connection>,
+    cursor: &str,
+) -> Result<Vec<ClientRow>, String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, project_id, name, device_id, created_at, modified_at
-         FROM tasks WHERE modified_at >= ?1 ORDER BY modified_at"
-    ).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(rusqlite::params![cursor], |r| {
-        let raw_did: String = r.get(3)?;
-        Ok(TaskRow {
-            id: r.get(0)?, project_id: r.get(1)?, name: r.get(2)?,
-            device_id: if raw_did.is_empty() { device_id() } else { raw_did },
-            created_at: r.get(4)?, modified_at: r.get(5)?,
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, name, color, logo_path, is_archived, device_id, created_at, modified_at
+         FROM clients WHERE modified_at >= ?1 ORDER BY modified_at",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![cursor], |r| {
+            let raw_did: String = r.get(5)?;
+            Ok(ClientRow {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                color: r.get(2)?,
+                logo_path: r.get(3)?,
+                is_archived: r.get::<_, i64>(4)? != 0,
+                device_id: if raw_did.is_empty() {
+                    device_id()
+                } else {
+                    raw_did
+                },
+                created_at: r.get(6)?,
+                modified_at: r.get(7)?,
+            })
         })
-    }).map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
-fn read_tags(db: &std::sync::Mutex<rusqlite::Connection>, cursor: &str) -> Result<Vec<TagRow>, String> {
+fn read_projects(
+    db: &std::sync::Mutex<rusqlite::Connection>,
+    cursor: &str,
+) -> Result<Vec<ProjectRow>, String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, name, device_id, created_at, modified_at
-         FROM tags WHERE modified_at >= ?1 ORDER BY modified_at"
-    ).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(rusqlite::params![cursor], |r| {
-        let raw_did: String = r.get(2)?;
-        Ok(TagRow {
-            id: r.get(0)?, name: r.get(1)?,
-            device_id: if raw_did.is_empty() { device_id() } else { raw_did },
-            created_at: r.get(3)?, modified_at: r.get(4)?,
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, client_id, name, is_archived, device_id, created_at, modified_at
+         FROM projects WHERE modified_at >= ?1 ORDER BY modified_at",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![cursor], |r| {
+            let raw_did: String = r.get(4)?;
+            Ok(ProjectRow {
+                id: r.get(0)?,
+                client_id: r.get(1)?,
+                name: r.get(2)?,
+                is_archived: r.get::<_, i64>(3)? != 0,
+                device_id: if raw_did.is_empty() {
+                    device_id()
+                } else {
+                    raw_did
+                },
+                created_at: r.get(5)?,
+                modified_at: r.get(6)?,
+            })
         })
-    }).map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+fn read_tasks(
+    db: &std::sync::Mutex<rusqlite::Connection>,
+    cursor: &str,
+) -> Result<Vec<TaskRow>, String> {
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, project_id, name, device_id, created_at, modified_at
+         FROM tasks WHERE modified_at >= ?1 ORDER BY modified_at",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![cursor], |r| {
+            let raw_did: String = r.get(3)?;
+            Ok(TaskRow {
+                id: r.get(0)?,
+                project_id: r.get(1)?,
+                name: r.get(2)?,
+                device_id: if raw_did.is_empty() {
+                    device_id()
+                } else {
+                    raw_did
+                },
+                created_at: r.get(4)?,
+                modified_at: r.get(5)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+fn read_tags(
+    db: &std::sync::Mutex<rusqlite::Connection>,
+    cursor: &str,
+) -> Result<Vec<TagRow>, String> {
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, name, device_id, created_at, modified_at
+         FROM tags WHERE modified_at >= ?1 ORDER BY modified_at",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![cursor], |r| {
+            let raw_did: String = r.get(2)?;
+            Ok(TagRow {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                device_id: if raw_did.is_empty() {
+                    device_id()
+                } else {
+                    raw_did
+                },
+                created_at: r.get(3)?,
+                modified_at: r.get(4)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 fn read_time_entries(
@@ -896,13 +1169,24 @@ fn read_time_entries(
         "SELECT id, description, started_at, ended_at, project_id, task_id, is_break, device_id, created_at, modified_at
          FROM time_entries WHERE modified_at >= ?1 ORDER BY modified_at LIMIT ?2"
     ).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(rusqlite::params![cursor, limit], |r| Ok(TimeEntryRow {
-        id: r.get(0)?, description: r.get(1)?, started_at: r.get(2)?,
-        ended_at: r.get(3)?, project_id: r.get(4)?, task_id: r.get(5)?,
-        is_break: r.get::<_,i64>(6)? != 0, device_id: r.get(7)?,
-        created_at: r.get(8)?, modified_at: r.get(9)?,
-    })).map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    let rows = stmt
+        .query_map(rusqlite::params![cursor, limit], |r| {
+            Ok(TimeEntryRow {
+                id: r.get(0)?,
+                description: r.get(1)?,
+                started_at: r.get(2)?,
+                ended_at: r.get(3)?,
+                project_id: r.get(4)?,
+                task_id: r.get(5)?,
+                is_break: r.get::<_, i64>(6)? != 0,
+                device_id: r.get(7)?,
+                created_at: r.get(8)?,
+                modified_at: r.get(9)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 fn read_window_activity(
@@ -910,45 +1194,80 @@ fn read_window_activity(
     limit: i64,
 ) -> Result<Vec<WarRow>, String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, process_name, window_title, window_handle, recorded_at, device_id
-         FROM window_activity_records WHERE synced_at IS NULL ORDER BY recorded_at LIMIT ?1"
-    ).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(rusqlite::params![limit], |r| Ok(WarRow {
-        id: r.get(0)?, process_name: r.get(1)?, window_title: r.get(2)?,
-        window_handle: r.get(3)?, recorded_at: r.get(4)?, device_id: r.get(5)?,
-    })).map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, process_name, window_title, window_handle, recorded_at, device_id
+         FROM window_activity_records WHERE synced_at IS NULL ORDER BY recorded_at LIMIT ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![limit], |r| {
+            Ok(WarRow {
+                id: r.get(0)?,
+                process_name: r.get(1)?,
+                window_title: r.get(2)?,
+                window_handle: r.get(3)?,
+                recorded_at: r.get(4)?,
+                device_id: r.get(5)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 type LabeledSampleRow = (
-    String, String, String, String,
-    Option<String>, Option<String>, Option<String>,
-    String, String, String, String,
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    String,
+    String,
+    String,
+    String,
 );
 
 fn read_unsynced_labeled_samples(
     db: &std::sync::Mutex<rusqlite::Connection>,
     limit: usize,
 ) -> Vec<LabeledSampleRow> {
-    let Ok(conn) = db.lock() else { return vec![]; };
+    let Ok(conn) = db.lock() else {
+        return vec![];
+    };
     let Ok(mut stmt) = conn.prepare(
         "SELECT id, feature_text, process_name, window_title, \
                 client_id, project_id, task_id, source, device_id, created_at, modified_at \
          FROM labeled_samples WHERE synced_at IS NULL \
-         ORDER BY modified_at LIMIT ?1"
-    ) else { return vec![]; };
-    let Ok(rows) = stmt.query_map(rusqlite::params![limit as i64], |r| Ok((
-        r.get::<_, String>(0)?, r.get::<_, String>(1)?,
-        r.get::<_, String>(2)?, r.get::<_, String>(3)?,
-        r.get::<_, Option<String>>(4)?, r.get::<_, Option<String>>(5)?,
-        r.get::<_, Option<String>>(6)?, r.get::<_, String>(7)?,
-        r.get::<_, String>(8)?, r.get::<_, String>(9)?, r.get::<_, String>(10)?,
-    ))) else { return vec![]; };
+         ORDER BY modified_at LIMIT ?1",
+    ) else {
+        return vec![];
+    };
+    let Ok(rows) = stmt.query_map(rusqlite::params![limit as i64], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, String>(3)?,
+            r.get::<_, Option<String>>(4)?,
+            r.get::<_, Option<String>>(5)?,
+            r.get::<_, Option<String>>(6)?,
+            r.get::<_, String>(7)?,
+            r.get::<_, String>(8)?,
+            r.get::<_, String>(9)?,
+            r.get::<_, String>(10)?,
+        ))
+    }) else {
+        return vec![];
+    };
     rows.filter_map(|r| r.ok()).collect()
 }
 
-fn read_user_preferences(db: &std::sync::Mutex<rusqlite::Connection>) -> Result<crate::models::UserPreferences, String> {
+fn read_user_preferences(
+    db: &std::sync::Mutex<rusqlite::Connection>,
+) -> Result<crate::models::UserPreferences, String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
     conn.query_row(
         "SELECT id, local_timezone, inactivity_timeout_seconds,
@@ -961,37 +1280,55 @@ fn read_user_preferences(db: &std::sync::Mutex<rusqlite::Connection>) -> Result<
                 logging_enabled, log_level, minimize_to_tray, theme
          FROM user_preferences LIMIT 1",
         [],
-        |row| Ok(crate::models::UserPreferences {
-            id: row.get(0)?, local_timezone: row.get(1)?,
-            inactivity_timeout_seconds: row.get(2)?,
-            screenshot_interval_seconds: row.get(3)?, screenshot_retention_days: row.get(4)?,
-            screenshot_storage_path: row.get(5)?, timer_notification_threshold_hours: row.get(6)?,
-            page_size: row.get(7)?, external_db_uri_stored: row.get(8)?,
-            external_db_enabled: row.get(9)?, notification_channels_json: row.get(10)?,
-            process_deny_list_json: row.get(11)?,
-            auto_classification_enabled: row.get(12).unwrap_or(true),
-            auto_classification_confidence_threshold: row.get(13).unwrap_or(0.7),
-            auto_classification_group_gap_seconds: row.get(14).unwrap_or(120),
-            logging_enabled: row.get(15).unwrap_or(false),
-            log_level: row.get(16).unwrap_or_else(|_| "info".to_string()),
-            minimize_to_tray: row.get(17).unwrap_or(false),
-            theme: row.get(18).unwrap_or_else(|_| "system".to_string()),
-        }),
+        |row| {
+            Ok(crate::models::UserPreferences {
+                id: row.get(0)?,
+                local_timezone: row.get(1)?,
+                inactivity_timeout_seconds: row.get(2)?,
+                screenshot_interval_seconds: row.get(3)?,
+                screenshot_retention_days: row.get(4)?,
+                screenshot_storage_path: row.get(5)?,
+                timer_notification_threshold_hours: row.get(6)?,
+                page_size: row.get(7)?,
+                external_db_uri_stored: row.get(8)?,
+                external_db_enabled: row.get(9)?,
+                notification_channels_json: row.get(10)?,
+                process_deny_list_json: row.get(11)?,
+                auto_classification_enabled: row.get(12).unwrap_or(true),
+                auto_classification_confidence_threshold: row.get(13).unwrap_or(0.7),
+                auto_classification_group_gap_seconds: row.get(14).unwrap_or(120),
+                logging_enabled: row.get(15).unwrap_or(false),
+                log_level: row.get(16).unwrap_or_else(|_| "info".to_string()),
+                minimize_to_tray: row.get(17).unwrap_or(false),
+                theme: row.get(18).unwrap_or_else(|_| "system".to_string()),
+            })
+        },
     )
     .map_err(|e| e.to_string())
 }
 
-fn read_pending_deletes(db: &std::sync::Mutex<rusqlite::Connection>) -> Result<Vec<DeleteQueueEntry>, String> {
+fn read_pending_deletes(
+    db: &std::sync::Mutex<rusqlite::Connection>,
+) -> Result<Vec<DeleteQueueEntry>, String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        "SELECT id, table_name, record_id FROM sync_queue
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, table_name, record_id FROM sync_queue
          WHERE operation = 'delete' AND attempts < 5
          ORDER BY queued_at LIMIT 100",
-    ).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([], |r| Ok(DeleteQueueEntry {
-        id: r.get(0)?, table_name: r.get(1)?, record_id: r.get(2)?,
-    })).map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(DeleteQueueEntry {
+                id: r.get(0)?,
+                table_name: r.get(1)?,
+                record_id: r.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 /// Sync time_entry_tags junction table for a single entry.
@@ -1003,9 +1340,15 @@ async fn sync_entry_tags(
 ) {
     // Read current tags from SQLite — collect into Vec so conn/stmt are dropped before await
     let tag_ids: Vec<String> = {
-        let conn = match db.lock() { Ok(c) => c, Err(_) => return };
-        let mut stmt = match conn.prepare(
-            "SELECT tag_id FROM time_entry_tags WHERE time_entry_id = ?1") { Ok(s) => s, Err(_) => return };
+        let conn = match db.lock() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let mut stmt =
+            match conn.prepare("SELECT tag_id FROM time_entry_tags WHERE time_entry_id = ?1") {
+                Ok(s) => s,
+                Err(_) => return,
+            };
         let collected: Vec<String> = stmt
             .query_map(rusqlite::params![entry_id], |r| r.get::<_, String>(0))
             .map(|rows| rows.filter_map(|r| r.ok()).collect())
@@ -1014,7 +1357,12 @@ async fn sync_entry_tags(
     }; // conn and stmt dropped here — safe to await below
 
     // Delete existing associations in Postgres
-    let _ = pg.execute("DELETE FROM time_entry_tags WHERE time_entry_id = $1", &[&entry_id]).await;
+    let _ = pg
+        .execute(
+            "DELETE FROM time_entry_tags WHERE time_entry_id = $1",
+            &[&entry_id],
+        )
+        .await;
 
     // Re-insert current associations
     for tag_id in &tag_ids {

@@ -1,6 +1,6 @@
 use commands::AppState;
-use commands::SyncState;
 use commands::ClassificationState;
+use commands::SyncState;
 use services::active_learning_queue::ActiveLearningQueue;
 
 mod commands;
@@ -23,10 +23,16 @@ pub fn run() {
     // Initialise file logger from persisted preferences (non-fatal if the query fails)
     {
         let logging_enabled: bool = conn
-            .query_row("SELECT logging_enabled FROM user_preferences LIMIT 1", [], |r| r.get(0))
+            .query_row(
+                "SELECT logging_enabled FROM user_preferences LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
             .unwrap_or(false);
         let log_level: String = conn
-            .query_row("SELECT log_level FROM user_preferences LIMIT 1", [], |r| r.get(0))
+            .query_row("SELECT log_level FROM user_preferences LIMIT 1", [], |r| {
+                r.get(0)
+            })
             .unwrap_or_else(|_| "info".to_string());
         let log_path = db::resolve_db_path_for(None)
             .parent()
@@ -35,7 +41,9 @@ pub fn run() {
                 // Extremely unlikely — only if the DB path itself has no parent directory.
                 // Fall back to the same APPDATA location used by the DB.
                 let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-                std::path::PathBuf::from(appdata).join("tracey").join("tracey.log")
+                std::path::PathBuf::from(appdata)
+                    .join("tracey")
+                    .join("tracey.log")
             });
         services::logger::init_file_logger(logging_enabled, &log_level, &log_path);
     }
@@ -52,7 +60,11 @@ pub fn run() {
         use services::classification::trainer;
         let model = trainer::load_model(&conn);
         let rules_json: Option<String> = conn
-            .query_row("SELECT classification_rules_json FROM user_preferences LIMIT 1", [], |r| r.get(0))
+            .query_row(
+                "SELECT classification_rules_json FROM user_preferences LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
             .ok()
             .flatten();
         let rules: Vec<services::classification::heuristic::HeuristicRule> = rules_json
@@ -90,12 +102,21 @@ pub fn run() {
                     conn_result.ok().and_then(|conn| {
                         conn.query_row(
                             "SELECT classification_snooze_json FROM user_preferences LIMIT 1",
-                            [], |r| r.get(0),
-                        ).ok().flatten()
+                            [],
+                            |r| r.get(0),
+                        )
+                        .ok()
+                        .flatten()
                     })
                 }; // conn lock dropped
                 if let Some(j) = json {
-                    if let Ok(entries) = serde_json::from_str::<std::collections::HashMap<String, services::active_learning_queue::SnoozeEntry>>(&j) {
+                    if let Ok(entries) = serde_json::from_str::<
+                        std::collections::HashMap<
+                            String,
+                            services::active_learning_queue::SnoozeEntry,
+                        >,
+                    >(&j)
+                    {
                         if let Ok(mut alq) = state.active_learning_queue.lock() {
                             alq.load_snooze_state(entries);
                         };
@@ -124,7 +145,11 @@ pub fn run() {
             let session_state_query: SessionStateQuery =
                 services::suspension::no_session_state_query();
             let loop_suspension = |tracking_loop| {
-                LoopSuspension::new(suspension.clone(), tracking_loop, session_state_query.clone())
+                LoopSuspension::new(
+                    suspension.clone(),
+                    tracking_loop,
+                    session_state_query.clone(),
+                )
             };
 
             services::timer_tick::start_tick_loop(app.handle().clone());
@@ -146,15 +171,18 @@ pub fn run() {
                 // Check if minimize-to-tray is enabled
                 use tauri::Manager;
                 let app = window.app_handle();
-                let minimize = app.state::<AppState>()
-                    .db.lock()
+                let minimize = app
+                    .state::<AppState>()
+                    .db
+                    .lock()
                     .ok()
                     .and_then(|conn| {
                         conn.query_row(
                             "SELECT minimize_to_tray FROM user_preferences LIMIT 1",
                             [],
                             |row| row.get::<_, bool>(0),
-                        ).ok()
+                        )
+                        .ok()
                     })
                     .unwrap_or(false);
 

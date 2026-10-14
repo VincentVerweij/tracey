@@ -1,9 +1,9 @@
 //! In-memory queue for low-confidence classification records pending user input.
 //! Enforces snooze logic: a pattern dismissed ≥ 3 times is silently suppressed.
 
-use std::collections::HashMap;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// A pattern key is "{process_name}|{title_prefix}" (title truncated at 50 chars).
 pub fn make_pattern_key(process_name: &str, window_title: &str) -> String {
@@ -44,7 +44,9 @@ const SNOOZE_MINUTES: i64 = 10;
 const SNOOZE_CAP: u32 = 3;
 
 impl ActiveLearningQueue {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Returns `true` if the prompt should be shown for this pattern.
     /// Returns `false` if snoozed (within 10 min) or permanently suppressed (≥ 3 dismissals).
@@ -52,7 +54,9 @@ impl ActiveLearningQueue {
         match self.snooze.get(pattern_key) {
             None => true,
             Some(s) => {
-                if s.dismissed_count >= SNOOZE_CAP { return false; }
+                if s.dismissed_count >= SNOOZE_CAP {
+                    return false;
+                }
                 let elapsed = Utc::now() - s.last_snoozed_at;
                 elapsed > Duration::minutes(SNOOZE_MINUTES)
             }
@@ -63,7 +67,9 @@ impl ActiveLearningQueue {
     /// accepted (not snoozed/suppressed) and the frontend should be notified.
     pub fn enqueue(&mut self, record: PendingRecord) -> bool {
         let key = make_pattern_key(&record.process_name, &record.window_title);
-        if !self.should_prompt(&key) { return false; }
+        if !self.should_prompt(&key) {
+            return false;
+        }
         self.pending.insert(record.war_id.clone(), record);
         true
     }
@@ -75,32 +81,48 @@ impl ActiveLearningQueue {
 
     /// Record a dismissal (user closed toast without answering).
     pub fn record_dismissal(&mut self, pattern_key: &str) {
-        let entry = self.snooze.entry(pattern_key.to_string()).or_insert(SnoozeState {
-            dismissed_count: 0,
-            last_snoozed_at: Utc::now(),
-        });
+        let entry = self
+            .snooze
+            .entry(pattern_key.to_string())
+            .or_insert(SnoozeState {
+                dismissed_count: 0,
+                last_snoozed_at: Utc::now(),
+            });
         entry.dismissed_count += 1;
         entry.last_snoozed_at = Utc::now();
     }
 
     #[allow(dead_code)]
-    pub fn pending_count(&self) -> usize { self.pending.len() }
+    pub fn pending_count(&self) -> usize {
+        self.pending.len()
+    }
 
     /// Returns the snooze map serializable for DB persistence.
     pub fn snooze_state(&self) -> HashMap<String, SnoozeEntry> {
-        self.snooze.iter().map(|(k, v)| (k.clone(), SnoozeEntry {
-            dismissed_count: v.dismissed_count,
-            last_snoozed_at: v.last_snoozed_at,
-        })).collect()
+        self.snooze
+            .iter()
+            .map(|(k, v)| {
+                (
+                    k.clone(),
+                    SnoozeEntry {
+                        dismissed_count: v.dismissed_count,
+                        last_snoozed_at: v.last_snoozed_at,
+                    },
+                )
+            })
+            .collect()
     }
 
     /// Load persisted snooze state back into the queue on startup.
     pub fn load_snooze_state(&mut self, entries: HashMap<String, SnoozeEntry>) {
         for (key, entry) in entries {
-            self.snooze.insert(key, SnoozeState {
-                dismissed_count: entry.dismissed_count,
-                last_snoozed_at: entry.last_snoozed_at,
-            });
+            self.snooze.insert(
+                key,
+                SnoozeState {
+                    dismissed_count: entry.dismissed_count,
+                    last_snoozed_at: entry.last_snoozed_at,
+                },
+            );
         }
     }
 }
@@ -161,7 +183,12 @@ mod tests {
     #[test]
     fn dequeue_removes_record() {
         let mut q = ActiveLearningQueue::new();
-        q.enqueue(PendingRecord { war_id: "id1".into(), process_name: "X".into(), window_title: "Y".into(), ocr_text: None });
+        q.enqueue(PendingRecord {
+            war_id: "id1".into(),
+            process_name: "X".into(),
+            window_title: "Y".into(),
+            ocr_text: None,
+        });
         q.dequeue("id1");
         assert_eq!(q.pending_count(), 0);
     }

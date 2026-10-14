@@ -1,18 +1,18 @@
 //! Loads labeled samples from SQLite, trains a TfIdfModel, and persists it.
 
+use super::tfidf::{TfIdfModel, TrainingSample};
+use chrono::Utc;
 use rusqlite::Connection;
 use ulid::Ulid;
-use chrono::Utc;
-use super::tfidf::{TfIdfModel, TrainingSample};
 
 /// Minimum total sample count to activate Phase 2.
 pub const PHASE2_MIN_SAMPLES: i64 = 20;
 
 /// Load all labeled samples from the database.
 pub fn load_samples(conn: &Connection) -> Vec<TrainingSample> {
-    let mut stmt = match conn.prepare(
-        "SELECT feature_text, client_id, project_id, task_id FROM labeled_samples",
-    ) {
+    let mut stmt = match conn
+        .prepare("SELECT feature_text, client_id, project_id, task_id FROM labeled_samples")
+    {
         Ok(s) => s,
         Err(_) => return vec![],
     };
@@ -38,7 +38,9 @@ pub fn count_samples(conn: &Connection) -> i64 {
 /// Returns `None` if there are fewer than `PHASE2_MIN_SAMPLES` total samples.
 pub fn retrain(conn: &Connection) -> Option<TfIdfModel> {
     let count = count_samples(conn);
-    if count < PHASE2_MIN_SAMPLES { return None; }
+    if count < PHASE2_MIN_SAMPLES {
+        return None;
+    }
 
     let samples = load_samples(conn);
     let model = TfIdfModel::train(&samples)?;
@@ -63,11 +65,11 @@ pub fn retrain(conn: &Connection) -> Option<TfIdfModel> {
 
 /// Load the latest persisted model from the database (called at startup).
 pub fn load_model(conn: &Connection) -> Option<TfIdfModel> {
-    let model_json: String = conn.query_row(
-        "SELECT model_json FROM classifier_model LIMIT 1",
-        [],
-        |r| r.get(0),
-    ).ok()?;
+    let model_json: String = conn
+        .query_row("SELECT model_json FROM classifier_model LIMIT 1", [], |r| {
+            r.get(0)
+        })
+        .ok()?;
     serde_json::from_str(&model_json).ok()
 }
 
@@ -78,7 +80,8 @@ mod tests {
 
     fn open_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE labeled_samples (
                 id TEXT PRIMARY KEY, feature_text TEXT NOT NULL,
                 process_name TEXT NOT NULL, window_title TEXT NOT NULL,
@@ -91,7 +94,9 @@ mod tests {
                 id TEXT PRIMARY KEY, model_json TEXT NOT NULL,
                 trained_at TEXT NOT NULL, sample_count INTEGER NOT NULL, device_id TEXT NOT NULL
             );
-        ").unwrap();
+        ",
+        )
+        .unwrap();
         conn
     }
 

@@ -61,13 +61,17 @@ pub fn classify(
                         confidence: *confidence,
                         source: ClassificationSource::TfIdf,
                     };
-                    let suggestions = candidates.iter().skip(1).map(|(l, c)| ClassificationPrediction {
-                        client_id: l.client_id.clone(),
-                        project_id: l.project_id.clone(),
-                        task_id: l.task_id.clone(),
-                        confidence: *c,
-                        source: ClassificationSource::TfIdf,
-                    }).collect();
+                    let suggestions = candidates
+                        .iter()
+                        .skip(1)
+                        .map(|(l, c)| ClassificationPrediction {
+                            client_id: l.client_id.clone(),
+                            project_id: l.project_id.clone(),
+                            task_id: l.task_id.clone(),
+                            confidence: *c,
+                            source: ClassificationSource::TfIdf,
+                        })
+                        .collect();
                     return ClassificationResult { top, suggestions };
                 }
             }
@@ -76,7 +80,10 @@ pub fn classify(
 
     // Phase 1: heuristic rules
     if let Some(hit) = heuristic::apply_heuristics(rules, features) {
-        return ClassificationResult { top: hit, suggestions: vec![] };
+        return ClassificationResult {
+            top: hit,
+            suggestions: vec![],
+        };
     }
 
     // Low-confidence TF-IDF suggestions for active learning toast
@@ -90,13 +97,17 @@ pub fn classify(
                     confidence: *confidence,
                     source: ClassificationSource::TfIdf,
                 };
-                let suggestions = candidates.iter().skip(1).map(|(l, c)| ClassificationPrediction {
-                    client_id: l.client_id.clone(),
-                    project_id: l.project_id.clone(),
-                    task_id: l.task_id.clone(),
-                    confidence: *c,
-                    source: ClassificationSource::TfIdf,
-                }).collect();
+                let suggestions = candidates
+                    .iter()
+                    .skip(1)
+                    .map(|(l, c)| ClassificationPrediction {
+                        client_id: l.client_id.clone(),
+                        project_id: l.project_id.clone(),
+                        task_id: l.task_id.clone(),
+                        confidence: *c,
+                        source: ClassificationSource::TfIdf,
+                    })
+                    .collect();
                 return ClassificationResult { top, suggestions };
             }
         }

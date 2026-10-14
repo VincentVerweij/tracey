@@ -159,7 +159,12 @@ impl LoopSuspension {
         tracking_loop: TrackingLoop,
         query: SessionStateQuery,
     ) -> Self {
-        Self { suspension, tracking_loop, query, suspended_last_tick: false }
+        Self {
+            suspension,
+            tracking_loop,
+            query,
+            suspended_last_tick: false,
+        }
     }
 
     /// Call once at the start of each tick, before observing anything. On a
@@ -334,7 +339,7 @@ mod tests {
         let session_locked = Arc::new(AtomicBool::new(false));
         let mut loop_suspension = window_activity(&suspension, scripted(&session_locked));
         suspension.raise_locked(); // e.g. an UNKNOWN seed
-        // No suspended tick came before, so there is no suspension end to report.
+                                   // No suspended tick came before, so there is no suspension end to report.
         assert_eq!(loop_suspension.begin_tick(), TickStart::Observing);
         assert!(loop_suspension.may_record());
     }
@@ -384,6 +389,10 @@ mod tests {
 
         suspension.clear_locked();
         assert_eq!(loop_suspension.begin_tick(), TickStart::SuspensionEnds);
-        assert_eq!(count(), 3, "queried on the tick suspension ends, before any record");
+        assert_eq!(
+            count(),
+            3,
+            "queried on the tick suspension ends, before any record"
+        );
     }
 }

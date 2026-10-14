@@ -75,11 +75,7 @@ pub fn is_writable(path: &std::path::Path) -> bool {
 /// Called once after migrations. Seeds the default `user_preferences` row and
 /// creates the screenshots directory on first launch. No-op if already seeded.
 fn seed_first_launch(conn: &Connection, db_path: &Path) -> SqlResult<()> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM user_preferences",
-        [],
-        |r| r.get(0),
-    )?;
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM user_preferences", [], |r| r.get(0))?;
 
     if count > 0 {
         return Ok(()); // Already seeded

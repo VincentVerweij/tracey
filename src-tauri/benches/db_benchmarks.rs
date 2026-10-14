@@ -77,11 +77,7 @@ fn bench_time_entry_list_100(c: &mut Criterion) {
                 format!("Entry {i}"),
                 &ts,
                 // Every other entry is completed (has ended_at); matches realistic data
-                if i % 2 == 0 {
-                    Some(ts.clone())
-                } else {
-                    None
-                },
+                if i % 2 == 0 { Some(ts.clone()) } else { None },
                 &ts,
                 &ts,
             ],
@@ -101,10 +97,7 @@ fn bench_time_entry_list_100(c: &mut Criterion) {
                      LIMIT  25 OFFSET 0",
                 )
                 .unwrap();
-            let rows: Vec<_> = stmt
-                .query_map([], |_row| Ok(()))
-                .unwrap()
-                .collect();
+            let rows: Vec<_> = stmt.query_map([], |_row| Ok(())).unwrap().collect();
             criterion::black_box(rows)
         })
     });
@@ -145,10 +138,7 @@ fn bench_time_entry_list_1000(c: &mut Criterion) {
                      LIMIT  25 OFFSET 0",
                 )
                 .unwrap();
-            let rows: Vec<_> = stmt
-                .query_map([], |_row| Ok(()))
-                .unwrap()
-                .collect();
+            let rows: Vec<_> = stmt.query_map([], |_row| Ok(())).unwrap().collect();
             criterion::black_box(rows)
         })
     });
@@ -207,10 +197,7 @@ fn bench_window_activity_unsynced_select(c: &mut Criterion) {
                      LIMIT  200",
                 )
                 .unwrap();
-            let rows: Vec<_> = stmt
-                .query_map([], |_row| Ok(()))
-                .unwrap()
-                .collect();
+            let rows: Vec<_> = stmt.query_map([], |_row| Ok(())).unwrap().collect();
             criterion::black_box(rows)
         })
     });

@@ -35,12 +35,8 @@ impl PlatformHooks for WindowsPlatformHooks {
             }
 
             // Open process to query executable path
-            let process = OpenProcess(
-                PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-                false,
-                pid,
-            )
-            .ok()?;
+            let process =
+                OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid).ok()?;
 
             let mut path_buf = [0u16; 1024];
             let path_len = GetModuleFileNameExW(process, None, &mut path_buf);
