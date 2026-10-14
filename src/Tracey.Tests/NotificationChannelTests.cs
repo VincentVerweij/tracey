@@ -306,7 +306,11 @@ file class FakeTauriIpcService : TauriIpcService
             NotificationChannelsJson: null,
             AutoClassificationEnabled: true,
             AutoClassificationConfidenceThreshold: 0.7f,
-            AutoClassificationGroupGapSeconds: 120);
+            AutoClassificationGroupGapSeconds: 120,
+            LoggingEnabled: false,
+            LogLevel: "info",
+            MinimizeToTray: false,
+            Theme: "system");
         return Task.FromResult(prefs);
     }
 }
@@ -438,5 +442,9 @@ public class NotificationOrchestrationServiceTests
             NotificationChannelsJson: channelsJson,
             AutoClassificationEnabled: true,
             AutoClassificationConfidenceThreshold: 0.7f,
-            AutoClassificationGroupGapSeconds: 120);
+            AutoClassificationGroupGapSeconds: 120,
+            LoggingEnabled: false,
+            LogLevel: "info",
+            MinimizeToTray: false,
+            Theme: "system");
 }
