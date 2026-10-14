@@ -3,7 +3,7 @@
     The full set of checks CI runs. Run this before committing.
 
 .DESCRIPTION
-    Rust: clippy (all targets, -D warnings) and tests, each with and without
+    Rust: rustfmt, clippy (all targets, -D warnings) and tests, each with and without
     the `test` feature, so code under #[cfg(feature = "test")] is built,
     linted and tested.
     .NET: build, format verification and tests.
@@ -64,6 +64,7 @@ if ($Only -in 'all', 'rust') {
     }
 
     $manifest = 'src-tauri/Cargo.toml'
+    Invoke-Step 'cargo fmt' { cargo fmt --manifest-path $manifest --check }
     Invoke-Step 'cargo clippy' { cargo clippy --manifest-path $manifest --all-targets -- -D warnings }
     Invoke-Step 'cargo clippy --features test' { cargo clippy --manifest-path $manifest --all-targets --features test -- -D warnings }
     Invoke-Step 'cargo test' { cargo test --manifest-path $manifest }
