@@ -440,12 +440,13 @@
         return utcIso;
     }
 
+    // Keep in sync with the Rust `Trigger` enum (src-tauri/src/models/mod.rs), the source of truth.
     private static string FormatTrigger(string trigger) => trigger switch
     {
-        "interval"      => "⏱ Interval",
-        "window_change" => "🔄 Window change",
-        "manual"        => "📸 Manual",
-        _               => trigger
+        "interval"       => "⏱ Interval",
+        "window_change"  => "🔄 Window change",
+        "suspension_end" => "▶ Resumed",
+        _                => trigger
     };
 
     private async Task HandleBarWheel(WheelEventArgs e)

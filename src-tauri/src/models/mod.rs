@@ -73,6 +73,34 @@ pub struct WindowActivityRecord {
     pub synced_at: Option<String>, // NULL = pending sync
 }
 
+/// What caused a screenshot capture. The single source of truth for the
+/// `screenshots.trigger` CHECK constraint and the timeline's trigger labels
+/// (`FormatTrigger` in Timeline.razor). Adding a variant needs a migration
+/// widening the CHECK; `every_trigger_is_accepted_by_the_schema` enforces it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Trigger {
+    Interval,
+    WindowChange,
+    SuspensionEnd,
+}
+
+impl Trigger {
+    pub const ALL: [Trigger; 3] = [
+        Trigger::Interval,
+        Trigger::WindowChange,
+        Trigger::SuspensionEnd,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Trigger::Interval => "interval",
+            Trigger::WindowChange => "window_change",
+            Trigger::SuspensionEnd => "suspension_end",
+        }
+    }
+}
+
 // SQL: screenshots has trigger + device_id, no width/height
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Screenshot {
@@ -81,7 +109,7 @@ pub struct Screenshot {
     pub captured_at: String,
     pub window_title: String,
     pub process_name: String,
-    pub trigger: String, // "interval" | "window_change" | "suspension_end"
+    pub trigger: Trigger,
     pub device_id: String,
     pub ocr_text: Option<String>,
 }
@@ -119,4 +147,34 @@ pub struct SyncQueueEntry {
     pub operation: String, // "upsert" | "delete"
     pub queued_at: String,
     pub attempts: i64, // retry counter; incremented on each failed sync attempt
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Trigger;
+
+    #[test]
+    fn all_lists_every_trigger() {
+        // The exhaustive match stops compiling when a variant is added, forcing ALL to follow.
+        for trigger in Trigger::ALL {
+            match trigger {
+                Trigger::Interval | Trigger::WindowChange | Trigger::SuspensionEnd => {}
+            }
+        }
+        let variants = [
+            Trigger::Interval,
+            Trigger::WindowChange,
+            Trigger::SuspensionEnd,
+        ];
+        assert!(variants.iter().all(|v| Trigger::ALL.contains(v)));
+        assert_eq!(Trigger::ALL.len(), variants.len());
+    }
+
+    #[test]
+    fn serde_names_match_as_str() {
+        for trigger in Trigger::ALL {
+            let json = serde_json::to_string(&trigger).unwrap();
+            assert_eq!(json, format!("\"{}\"", trigger.as_str()));
+        }
+    }
 }

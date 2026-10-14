@@ -132,11 +132,12 @@ mod tests {
     }
 
     #[test]
-    fn screenshots_accept_the_suspension_end_trigger() {
+    fn every_trigger_is_accepted_by_the_schema() {
         let conn = Connection::open_in_memory().unwrap();
         run(&conn).unwrap();
-        for trigger in ["interval", "window_change", "suspension_end"] {
-            insert_screenshot(&conn, trigger).unwrap();
+        for trigger in crate::models::Trigger::ALL {
+            insert_screenshot(&conn, trigger.as_str())
+                .unwrap_or_else(|e| panic!("{trigger:?} rejected by the screenshots CHECK: {e}"));
         }
     }
 
