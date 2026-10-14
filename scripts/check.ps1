@@ -7,6 +7,7 @@
     the `test` feature, so code under #[cfg(feature = "test")] is built,
     linted and tested.
     .NET: build, format verification and tests.
+    Both: no TODO/FIXME markers in the source; open work belongs in an issue.
 
     CI calls this script, so a clean local run means a clean CI run.
 
@@ -36,7 +37,23 @@ function Invoke-Step([string]$Name, [scriptblock]$Command) {
     }
 }
 
+# git grep exits 0 when it finds a match, so success here is a failure.
+function Assert-NoTodoMarkers([string[]]$Pathspec) {
+    Write-Host "`n==> no TODO/FIXME in $($Pathspec[0])" -ForegroundColor Cyan
+    git grep -nwE 'TODO|FIXME' -- @Pathspec
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "FAILED: TODO/FIXME markers found; track them as issues instead" -ForegroundColor Red
+        exit 1
+    }
+    if ($LASTEXITCODE -ne 1) {
+        Write-Host "FAILED: git grep exited $LASTEXITCODE" -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
+}
+
 if ($Only -in 'all', 'rust') {
+    Assert-NoTodoMarkers 'src-tauri/src'
+
     # tauri-build requires frontendDist to exist at compile time, but clippy
     # and unit tests never serve the frontend. A stub stands in when no real
     # Blazor publish is present; an existing publish is left untouched.
@@ -54,6 +71,9 @@ if ($Only -in 'all', 'rust') {
 }
 
 if ($Only -in 'all', 'dotnet') {
+    # wwwroot/lib is vendored third-party code.
+    Assert-NoTodoMarkers 'src/Tracey.App', ':!src/Tracey.App/wwwroot/lib'
+
     Invoke-Step 'dotnet build' { dotnet build src/Tracey.slnx }
     Invoke-Step 'dotnet format' { dotnet format src/Tracey.App/Tracey.App.csproj --verify-no-changes --no-restore }
     Invoke-Step 'dotnet test' { dotnet test src/Tracey.Tests/Tracey.Tests.csproj --no-build --logger 'trx;LogFileName=test-results.trx' }

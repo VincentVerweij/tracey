@@ -64,3 +64,10 @@ default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 # Test feature enables GDI screenshot test doubles (used by Playwright E2E CI)
 test = []
+
+[lints.clippy]
+# Threshold set in clippy.toml. Exceeding it needs an #[allow] with a reason.
+cognitive_complexity = "warn"
+# Forbid, not deny, so no #[allow] can switch it off. A MutexGuard held across
+# .await can deadlock the runtime.
+await_holding_lock = "forbid"

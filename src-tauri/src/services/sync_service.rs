@@ -223,6 +223,10 @@ async fn apply_migrations(client: &tokio_postgres::Client) -> Result<(), String>
 /// The `cursor` is the last `modified_at` timestamp successfully synced; None = sync everything.
 ///
 /// Upserts are done via `modified_at` scan (belt) + sync_queue delete entries (suspenders).
+// A straight run of per-table sync steps, each a loop with an ok/error tally.
+// It runs against a live Postgres and has no tests, so it is left whole rather
+// than split blind.
+#[allow(clippy::cognitive_complexity)]
 pub async fn run_sync_cycle_inline(
     app: &AppHandle,
     db: &std::sync::Mutex<rusqlite::Connection>,

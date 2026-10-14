@@ -18,6 +18,53 @@ fn tokenize(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Assigns each distinct token an index, in order of first appearance.
+fn build_vocab(tokenized: &[Vec<String>]) -> HashMap<String, usize> {
+    let mut vocab: HashMap<String, usize> = HashMap::new();
+    for t in tokenized.iter().flatten() {
+        if !vocab.contains_key(t) {
+            let idx = vocab.len();
+            vocab.insert(t.clone(), idx);
+        }
+    }
+    vocab
+}
+
+/// IDF: log((N+1)/(df+1))+1  (smooth, add-1)
+fn inverse_document_frequencies(tokenized: &[Vec<String>], vocab: &HashMap<String, usize>) -> Vec<f32> {
+    let n = tokenized.len() as f32;
+    let mut df = vec![0usize; vocab.len()];
+    for tokens in tokenized {
+        let unique: HashSet<&String> = tokens.iter().collect();
+        for t in unique {
+            if let Some(&i) = vocab.get(t) { df[i] += 1; }
+        }
+    }
+    df.iter()
+        .map(|&d| ((n + 1.0) / (d as f32 + 1.0)).ln() + 1.0)
+        .collect()
+}
+
+fn tfidf_vector(tokens: &[String], vocab: &HashMap<String, usize>, idf: &[f32]) -> Vec<f32> {
+    let mut counts = vec![0usize; vocab.len()];
+    for t in tokens { if let Some(&i) = vocab.get(t) { counts[i] += 1; } }
+    let doc_len = tokens.len().max(1) as f32;
+    counts.iter().enumerate()
+        .map(|(i, &c)| (c as f32 / doc_len) * idf[i])
+        .collect()
+}
+
+/// Mean of `vecs`, L2-normalized (left as-is if it is the zero vector).
+fn normalized_centroid(vecs: &[Vec<f32>], vocab_size: usize) -> Vec<f32> {
+    let mut c = vec![0.0f32; vocab_size];
+    for v in vecs { for (i, &x) in v.iter().enumerate() { c[i] += x; } }
+    let n = vecs.len() as f32;
+    for x in &mut c { *x /= n; }
+    let norm: f32 = c.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm > 0.0 { for x in &mut c { *x /= norm; } }
+    c
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassLabel {
     pub client_id: Option<String>,
@@ -46,32 +93,10 @@ impl TfIdfModel {
     pub fn train(samples: &[TrainingSample]) -> Option<Self> {
         if samples.is_empty() { return None; }
 
-        // Build vocabulary
         let tokenized: Vec<Vec<String>> = samples.iter().map(|s| tokenize(&s.text)).collect();
-        let mut vocab: HashMap<String, usize> = HashMap::new();
-        for tokens in &tokenized {
-            for t in tokens {
-                if !vocab.contains_key(t) {
-                    let idx = vocab.len();
-                    vocab.insert(t.clone(), idx);
-                }
-            }
-        }
+        let vocab = build_vocab(&tokenized);
         if vocab.is_empty() { return None; }
-        let vocab_size = vocab.len();
-
-        // IDF: log((N+1)/(df+1))+1  (smooth, add-1)
-        let n = samples.len() as f32;
-        let mut df = vec![0usize; vocab_size];
-        for tokens in &tokenized {
-            let unique: HashSet<&String> = tokens.iter().collect();
-            for t in unique {
-                if let Some(&i) = vocab.get(t) { df[i] += 1; }
-            }
-        }
-        let idf: Vec<f32> = df.iter()
-            .map(|&d| ((n + 1.0) / (d as f32 + 1.0)).ln() + 1.0)
-            .collect();
+        let idf = inverse_document_frequencies(&tokenized, &vocab);
 
         // Group samples by class key
         let mut class_vecs: HashMap<String, Vec<Vec<f32>>> = HashMap::new();
@@ -83,13 +108,7 @@ impl TfIdfModel {
                 sample.project_id.as_deref().unwrap_or(""),
                 sample.task_id.as_deref().unwrap_or(""),
             );
-            let mut counts = vec![0usize; vocab_size];
-            for t in tokens { if let Some(&i) = vocab.get(t) { counts[i] += 1; } }
-            let doc_len = tokens.len().max(1) as f32;
-            let tfidf: Vec<f32> = counts.iter().enumerate()
-                .map(|(i, &c)| (c as f32 / doc_len) * idf[i])
-                .collect();
-            class_vecs.entry(key.clone()).or_default().push(tfidf);
+            class_vecs.entry(key.clone()).or_default().push(tfidf_vector(tokens, &vocab, &idf));
             class_labels.entry(key).or_insert(ClassLabel {
                 client_id: sample.client_id.clone(),
                 project_id: sample.project_id.clone(),
@@ -97,17 +116,9 @@ impl TfIdfModel {
             });
         }
 
-        // Compute L2-normalized centroids
-        let mut centroids: HashMap<String, Vec<f32>> = HashMap::new();
-        for (key, vecs) in &class_vecs {
-            let mut c = vec![0.0f32; vocab_size];
-            for v in vecs { for (i, &x) in v.iter().enumerate() { c[i] += x; } }
-            let n = vecs.len() as f32;
-            for x in &mut c { *x /= n; }
-            let norm: f32 = c.iter().map(|x| x * x).sum::<f32>().sqrt();
-            if norm > 0.0 { for x in &mut c { *x /= norm; } }
-            centroids.insert(key.clone(), c);
-        }
+        let centroids: HashMap<String, Vec<f32>> = class_vecs.iter()
+            .map(|(key, vecs)| (key.clone(), normalized_centroid(vecs, vocab.len())))
+            .collect();
 
         Some(TfIdfModel { vocab, idf, centroids, class_labels })
     }

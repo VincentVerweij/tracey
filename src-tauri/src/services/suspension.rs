@@ -357,6 +357,7 @@ mod tests {
         assert_eq!(loop_suspension.begin_tick(), TickStart::SuspensionEnds);
     }
 
+    #[allow(clippy::cognitive_complexity)] // straight-line test; the count is all assert_eq! expansion
     #[test]
     fn the_reconcile_runs_on_suspended_ticks_and_before_each_record_and_nowhere_else() {
         let suspension = Arc::new(Suspension::new());

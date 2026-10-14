@@ -1,0 +1,4 @@
+# Constitution §I caps cyclomatic complexity at 10 per function unless justified.
+# Clippy has no cyclomatic lint, so `clippy::cognitive_complexity` (enabled in
+# Cargo.toml) stands in for it.
+cognitive-complexity-threshold = 10

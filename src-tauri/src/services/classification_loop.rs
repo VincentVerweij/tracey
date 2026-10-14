@@ -58,6 +58,10 @@ async fn process_batch(app: &AppHandle) {
     }
 }
 
+// Each step re-takes the db lock, with an early return if it is poisoned, so no
+// guard is held across an .await. It needs an AppHandle and has no tests, so it
+// is left whole rather than split blind.
+#[allow(clippy::cognitive_complexity)]
 async fn classify_record(app: &AppHandle, rec: &UnclassifiedRecord) {
     // 1. Fetch OCR text from most recent screenshot for this window — lock dropped before await
     let ocr_text: Option<String> = {
