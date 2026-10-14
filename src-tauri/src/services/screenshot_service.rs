@@ -4,6 +4,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use ulid::Ulid;
 
 use crate::commands::AppState;
+use crate::models::Trigger;
 use crate::services::suspension::{LoopSuspension, TickStart};
 
 // ─── T045 — Storage path resolution ──────────────────────────────────────────
@@ -180,7 +181,7 @@ fn downscale_jpeg(full_res_jpeg: Vec<u8>) -> Result<Vec<u8>, String> {
 
 async fn capture_and_save(
     app: &AppHandle,
-    trigger: &str,
+    trigger: Trigger,
     window_info: Option<(String, String)>,
 ) -> Result<(), String> {
     // 1. GDI full-resolution capture in spawn_blocking
@@ -220,7 +221,7 @@ async fn capture_and_save(
             "INSERT INTO screenshots \
              (id, file_path, captured_at, window_title, process_name, trigger, device_id, ocr_text) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)",
-            rusqlite::params![id, path_str, now, window_title, process_name, trigger, device_id],
+            rusqlite::params![id, path_str, now, window_title, process_name, trigger.as_str(), device_id],
         )
         .map_err(|e| e.to_string())?;
     } // MutexGuard dropped here — never held across an await point
@@ -249,7 +250,7 @@ async fn capture_and_save(
             "captured_at": now,
             "window_title": window_title,
             "process_name": process_name,
-            "trigger": trigger,
+            "trigger": trigger.as_str(),
         }),
     )
     .map_err(|e| e.to_string())?;
@@ -357,7 +358,7 @@ impl CaptureSchedule {
         now: tokio::time::Instant,
         interval_secs: u64,
         observe: impl FnOnce() -> Option<(String, String)>,
-    ) -> Option<(&'static str, Option<(String, String)>)> {
+    ) -> Option<(Trigger, Option<(String, String)>)> {
         match self.suspension.begin_tick() {
             // A suspended tick skips everything, observing nothing (ADR-0004 decision 3).
             TickStart::Suspended => return None,
@@ -399,9 +400,9 @@ impl CaptureSchedule {
             return None;
         }
         let trigger = if debounce_fired {
-            "window_change"
+            Trigger::WindowChange
         } else {
-            "interval"
+            Trigger::Interval
         };
         if debounce_fired {
             self.debounce_until = None;
@@ -419,11 +420,11 @@ impl CaptureSchedule {
         &mut self,
         now: tokio::time::Instant,
         window_info: Option<(String, String)>,
-    ) -> (&'static str, Option<(String, String)>) {
+    ) -> (Trigger, Option<(String, String)>) {
         self.settle_until = None;
         self.debounce_until = None;
         self.last_interval_capture = now;
-        ("suspension_end", window_info)
+        (Trigger::SuspensionEnd, window_info)
     }
 }
 
@@ -563,7 +564,7 @@ mod tests {
         start: Instant,
         secs: std::ops::RangeInclusive<u64>,
         title: &str,
-    ) -> Vec<&'static str> {
+    ) -> Vec<Trigger> {
         secs.filter_map(|s| {
             schedule
                 .tick(start + Duration::from_secs(s), 60, || window(title))
@@ -592,7 +593,7 @@ mod tests {
         let mut schedule = schedule(start, &suspension);
         // First observation counts as a window change, so one window_change capture at ~2s.
         let triggers = run_ticks(&mut schedule, start, 1..=60, "doc");
-        assert_eq!(triggers, vec!["window_change", "interval"]);
+        assert_eq!(triggers, vec![Trigger::WindowChange, Trigger::Interval]);
     }
 
     #[test]
@@ -644,7 +645,7 @@ mod tests {
 
         // Same window as before the lock, interval long overdue: one settled capture only.
         let triggers = run_ticks(&mut schedule, start, 301..=310, "doc");
-        assert_eq!(triggers, vec!["suspension_end"]);
+        assert_eq!(triggers, vec![Trigger::SuspensionEnd]);
     }
 
     #[test]
@@ -655,14 +656,17 @@ mod tests {
         lock_past_the_interval(&mut schedule, &suspension, start);
 
         // Re-entry at 301 settles at 303, so the next interval capture is due at 363.
-        let captures: Vec<(u64, &str)> = (301..=400)
+        let captures: Vec<(u64, Trigger)> = (301..=400)
             .filter_map(|s| {
                 schedule
                     .tick(start + Duration::from_secs(s), 60, || window("doc"))
                     .map(|(trigger, _)| (s, trigger))
             })
             .collect();
-        assert_eq!(captures, vec![(303, "suspension_end"), (363, "interval")]);
+        assert_eq!(
+            captures,
+            vec![(303, Trigger::SuspensionEnd), (363, Trigger::Interval)]
+        );
     }
 
     #[test]
@@ -683,7 +687,7 @@ mod tests {
 
         suspension.clear_locked();
         let triggers = run_ticks(&mut schedule, start, 401..=410, "doc");
-        assert_eq!(triggers, vec!["suspension_end"]);
+        assert_eq!(triggers, vec![Trigger::SuspensionEnd]);
     }
 
     #[test]
@@ -695,7 +699,7 @@ mod tests {
 
         let mut triggers = run_ticks(&mut schedule, start, 301..=302, "doc");
         triggers.extend(run_ticks(&mut schedule, start, 303..=310, "mail"));
-        assert_eq!(triggers, vec!["suspension_end"]);
+        assert_eq!(triggers, vec![Trigger::SuspensionEnd]);
     }
 
     #[test]
@@ -706,7 +710,7 @@ mod tests {
         lock_past_the_interval(&mut schedule, &suspension, start);
 
         // A title that changes every tick, e.g. a ticking clock.
-        let captures: Vec<(u64, &str)> = (301..=305)
+        let captures: Vec<(u64, Trigger)> = (301..=305)
             .filter_map(|s| {
                 schedule
                     .tick(start + Duration::from_secs(s), 60, || {
@@ -715,7 +719,7 @@ mod tests {
                     .map(|(trigger, _)| (s, trigger))
             })
             .collect();
-        assert_eq!(captures.first(), Some(&(303, "suspension_end")));
+        assert_eq!(captures.first(), Some(&(303, Trigger::SuspensionEnd)));
     }
 
     #[test]
