@@ -86,11 +86,15 @@ pub enum Trigger {
 }
 
 impl Trigger {
+<<<<<<< HEAD
     pub const ALL: [Trigger; 3] = [
         Trigger::Interval,
         Trigger::WindowChange,
         Trigger::SuspensionEnd,
     ];
+=======
+    pub const ALL: [Trigger; 3] = [Trigger::Interval, Trigger::WindowChange, Trigger::SuspensionEnd];
+>>>>>>> 889f0dc (refactor: replace screenshot trigger strings with a Trigger enum (#98))
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -166,6 +170,32 @@ mod tests {
             Trigger::WindowChange,
             Trigger::SuspensionEnd,
         ];
+        assert!(variants.iter().all(|v| Trigger::ALL.contains(v)));
+        assert_eq!(Trigger::ALL.len(), variants.len());
+    }
+
+    #[test]
+    fn serde_names_match_as_str() {
+        for trigger in Trigger::ALL {
+            let json = serde_json::to_string(&trigger).unwrap();
+            assert_eq!(json, format!("\"{}\"", trigger.as_str()));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Trigger;
+
+    #[test]
+    fn all_lists_every_trigger() {
+        // The exhaustive match stops compiling when a variant is added, forcing ALL to follow.
+        for trigger in Trigger::ALL {
+            match trigger {
+                Trigger::Interval | Trigger::WindowChange | Trigger::SuspensionEnd => {}
+            }
+        }
+        let variants = [Trigger::Interval, Trigger::WindowChange, Trigger::SuspensionEnd];
         assert!(variants.iter().all(|v| Trigger::ALL.contains(v)));
         assert_eq!(Trigger::ALL.len(), variants.len());
     }
