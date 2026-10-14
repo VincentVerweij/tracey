@@ -7,8 +7,8 @@
 //! File-system errors on screenshot deletion are logged as warnings but do NOT
 //! abort the operation — the DB delete count is returned regardless.
 
-use tauri::State;
 use crate::commands::AppState;
+use tauri::State;
 
 /// Delete all app data rows and screenshot files.
 ///
@@ -26,19 +26,20 @@ pub fn data_delete_all(state: State<'_, AppState>) -> Result<serde_json::Value, 
         let mut count: i64 = 0;
 
         for sql in &[
-            "DELETE FROM time_entry_tags",        // FK child of time_entries + tags
-            "DELETE FROM time_entries",           // FK child of projects/tasks (ON DELETE SET NULL)
-            "DELETE FROM window_activity_records",// standalone
-            "DELETE FROM screenshots",            // standalone
-            "DELETE FROM sync_queue",             // standalone
-            "DELETE FROM clients",               // cascades: projects → tasks
-            "DELETE FROM projects",              // 0 rows after clients cascade
-            "DELETE FROM tasks",                 // 0 rows after projects cascade
-            "DELETE FROM tags",                  // standalone (junction already cleared)
+            "DELETE FROM time_entry_tags", // FK child of time_entries + tags
+            "DELETE FROM time_entries",    // FK child of projects/tasks (ON DELETE SET NULL)
+            "DELETE FROM window_activity_records", // standalone
+            "DELETE FROM screenshots",     // standalone
+            "DELETE FROM sync_queue",      // standalone
+            "DELETE FROM clients",         // cascades: projects → tasks
+            "DELETE FROM projects",        // 0 rows after clients cascade
+            "DELETE FROM tasks",           // 0 rows after projects cascade
+            "DELETE FROM tags",            // standalone (junction already cleared)
         ] {
             count += conn
                 .execute(sql, [])
-                .map_err(|e| format!("data_delete_all: {} — {}", sql, e))? as i64;
+                .map_err(|e| format!("data_delete_all: {} — {}", sql, e))?
+                as i64;
         }
 
         // Read configured screenshot storage path; fall back to {exe_dir}/screenshots/

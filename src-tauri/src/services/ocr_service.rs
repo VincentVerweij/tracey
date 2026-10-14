@@ -34,5 +34,9 @@ pub async fn extract_text(jpeg_bytes: &[u8]) -> Option<String> {
     let result = engine.RecognizeAsync(&bitmap).ok()?.get().ok()?;
     let text = result.Text().ok()?.to_string();
 
-    if text.trim().is_empty() { None } else { Some(text) }
+    if text.trim().is_empty() {
+        None
+    } else {
+        Some(text)
+    }
 }

@@ -1,6 +1,6 @@
+use chrono::Utc;
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager};
-use chrono::Utc;
 use ulid::Ulid;
 
 use crate::commands::AppState;
@@ -51,10 +51,10 @@ fn capture_screen_full_res_jpeg() -> Result<Vec<u8>, String> {
 #[cfg(not(feature = "test"))]
 fn capture_screen_full_res_jpeg() -> Result<Vec<u8>, String> {
     use windows::Win32::Graphics::Gdi::{
-        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject,
-        GetDIBits, GetMonitorInfoW, GetWindowDC, MonitorFromWindow, ReleaseDC, SelectObject,
-        BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ, MONITORINFO,
-        MONITOR_DEFAULTTONEAREST, RGBQUAD, SRCCOPY,
+        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits,
+        GetMonitorInfoW, GetWindowDC, MonitorFromWindow, ReleaseDC, SelectObject, BITMAPINFO,
+        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+        RGBQUAD, SRCCOPY,
     };
     use windows::Win32::UI::WindowsAndMessaging::{GetDesktopWindow, GetForegroundWindow};
 
@@ -83,7 +83,9 @@ fn capture_screen_full_res_jpeg() -> Result<Vec<u8>, String> {
         let hbm = CreateCompatibleBitmap(hdc_screen, mon_w, mon_h);
         let hbm_old = SelectObject(hdc_mem, HGDIOBJ(hbm.0));
 
-        let blit_result = BitBlt(hdc_mem, 0, 0, mon_w, mon_h, hdc_screen, mon_x, mon_y, SRCCOPY);
+        let blit_result = BitBlt(
+            hdc_mem, 0, 0, mon_w, mon_h, hdc_screen, mon_x, mon_y, SRCCOPY,
+        );
         if let Err(e) = blit_result {
             SelectObject(hdc_mem, hbm_old);
             let _ = DeleteObject(HGDIOBJ(hbm.0));
@@ -117,7 +119,15 @@ fn capture_screen_full_res_jpeg() -> Result<Vec<u8>, String> {
 
         let buf_size = (mon_w * mon_h * 4) as usize;
         let mut pixels: Vec<u8> = vec![0u8; buf_size];
-        GetDIBits(hdc_mem, hbm, 0, mon_h as u32, Some(pixels.as_mut_ptr() as *mut _), &mut bmi, DIB_RGB_COLORS);
+        GetDIBits(
+            hdc_mem,
+            hbm,
+            0,
+            mon_h as u32,
+            Some(pixels.as_mut_ptr() as *mut _),
+            &mut bmi,
+            DIB_RGB_COLORS,
+        );
 
         SelectObject(hdc_mem, hbm_old);
         let _ = DeleteObject(HGDIOBJ(hbm.0));
@@ -127,14 +137,19 @@ fn capture_screen_full_res_jpeg() -> Result<Vec<u8>, String> {
         // BGRA → RGB
         let w = mon_w as u32;
         let h = mon_h as u32;
-        let rgb: Vec<u8> = pixels.chunks_exact(4).flat_map(|b| [b[2], b[1], b[0]]).collect();
+        let rgb: Vec<u8> = pixels
+            .chunks_exact(4)
+            .flat_map(|b| [b[2], b[1], b[0]])
+            .collect();
         let img = image::RgbImage::from_raw(w, h, rgb)
             .ok_or_else(|| "failed to build RgbImage".to_string())?;
 
         // Encode full resolution to JPEG — no resize
         let dyn_img: image::DynamicImage = img.into();
         let mut out = std::io::Cursor::new(Vec::new());
-        dyn_img.write_to(&mut out, image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;
+        dyn_img
+            .write_to(&mut out, image::ImageFormat::Jpeg)
+            .map_err(|e| e.to_string())?;
         Ok(out.into_inner())
     }
 }
@@ -148,11 +163,16 @@ fn downscale_jpeg(full_res_jpeg: Vec<u8>) -> Result<Vec<u8>, String> {
     let w = dyn_img.width() / 2;
     let h = dyn_img.height() / 2;
     let resized = image::imageops::resize(
-        &dyn_img.to_rgb8(), w, h, image::imageops::FilterType::Triangle,
+        &dyn_img.to_rgb8(),
+        w,
+        h,
+        image::imageops::FilterType::Triangle,
     );
     let dyn_resized: image::DynamicImage = resized.into();
     let mut out = std::io::Cursor::new(Vec::new());
-    dyn_resized.write_to(&mut out, image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;
+    dyn_resized
+        .write_to(&mut out, image::ImageFormat::Jpeg)
+        .map_err(|e| e.to_string())?;
     Ok(out.into_inner())
 }
 
@@ -259,17 +279,15 @@ async fn cleanup_expired(app: &AppHandle) {
         let cutoff = Utc::now() - chrono::Duration::days(retention_days);
         let cutoff_str = cutoff.to_rfc3339();
 
-        let mut stmt = match conn.prepare(
-            "SELECT id, file_path FROM screenshots WHERE captured_at < ?1",
-        ) {
-            Ok(s) => s,
-            Err(_) => return,
-        };
+        let mut stmt =
+            match conn.prepare("SELECT id, file_path FROM screenshots WHERE captured_at < ?1") {
+                Ok(s) => s,
+                Err(_) => return,
+            };
 
-        let rows: Vec<(String, String)> = match stmt.query_map(
-            rusqlite::params![cutoff_str],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        ) {
+        let rows: Vec<(String, String)> = match stmt.query_map(rusqlite::params![cutoff_str], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        }) {
             Ok(mapped) => mapped.filter_map(|r| r.ok()).collect(),
             Err(_) => return,
         };
@@ -354,9 +372,7 @@ impl CaptureSchedule {
         }
 
         let window_info = observe();
-        let current_key = window_info
-            .as_ref()
-            .map(|(p, t)| format!("{}|{}", p, t));
+        let current_key = window_info.as_ref().map(|(p, t)| format!("{}|{}", p, t));
 
         // Window-change detection with debounce
         if current_key != self.last_window_key {
@@ -382,7 +398,11 @@ impl CaptureSchedule {
         if !self.suspension.may_record() {
             return None;
         }
-        let trigger = if debounce_fired { "window_change" } else { "interval" };
+        let trigger = if debounce_fired {
+            "window_change"
+        } else {
+            "interval"
+        };
         if debounce_fired {
             self.debounce_until = None;
         }
@@ -448,22 +468,20 @@ pub fn start_screenshot_loop(app: AppHandle, suspension: LoopSuspension) {
                             .unwrap_or(30);
                         (interval as u64, retention)
                     }
-                }; x
+                };
+                x
             }; // db lock released
 
             // Get current foreground window info — platform access (no DB lock),
             // queried only when capture is not suspended
             let state = app.state::<AppState>();
-            let decision = schedule.tick(
-                tokio::time::Instant::now(),
-                interval_secs,
-                || {
-                    // get_foreground_window_info returns Option<WindowInfo>; title field is `title`
-                    state.platform.get_foreground_window_info().map(|w| {
-                        (w.process_name.clone(), w.title.clone())
-                    })
-                },
-            );
+            let decision = schedule.tick(tokio::time::Instant::now(), interval_secs, || {
+                // get_foreground_window_info returns Option<WindowInfo>; title field is `title`
+                state
+                    .platform
+                    .get_foreground_window_info()
+                    .map(|w| (w.process_name.clone(), w.title.clone()))
+            });
 
             if let Some((trigger, window_info)) = decision {
                 if let Err(e) = capture_and_save(&app, trigger, window_info).await {
@@ -493,11 +511,11 @@ pub fn start_screenshot_loop(app: AppHandle, suspension: LoopSuspension) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use tokio::time::{Duration, Instant};
     use crate::services::suspension::{
         no_session_state_query, SessionStateQuery, Suspension, TrackingLoop,
     };
+    use std::sync::Arc;
+    use tokio::time::{Duration, Instant};
 
     #[test]
     fn downscale_jpeg_halves_dimensions() {
@@ -506,16 +524,18 @@ mod tests {
             ImageBuffer::from_fn(100, 100, |_, _| Rgb([200u8, 200u8, 200u8]));
         let dyn_img: image::DynamicImage = img.into();
         let mut buf = std::io::Cursor::new(Vec::new());
-        dyn_img.write_to(&mut buf, image::ImageFormat::Jpeg).unwrap();
+        dyn_img
+            .write_to(&mut buf, image::ImageFormat::Jpeg)
+            .unwrap();
         let full_res = buf.into_inner();
 
         let small = downscale_jpeg(full_res).unwrap();
 
-        let decoded = image::load_from_memory_with_format(&small, image::ImageFormat::Jpeg).unwrap();
+        let decoded =
+            image::load_from_memory_with_format(&small, image::ImageFormat::Jpeg).unwrap();
         assert_eq!(decoded.width(), 50);
         assert_eq!(decoded.height(), 50);
     }
-
 
     fn window(title: &str) -> Option<(String, String)> {
         Some(("app.exe".to_string(), title.to_string()))
@@ -554,7 +574,11 @@ mod tests {
 
     /// Captures for a minute, holds `Locked` from 61s to 300s (well past the
     /// 60s interval), then clears it so suspension ends at the 301s tick.
-    fn lock_past_the_interval(schedule: &mut CaptureSchedule, suspension: &Suspension, start: Instant) {
+    fn lock_past_the_interval(
+        schedule: &mut CaptureSchedule,
+        suspension: &Suspension,
+        start: Instant,
+    ) {
         run_ticks(schedule, start, 1..=60, "doc");
         suspension.raise_locked();
         assert!(run_ticks(schedule, start, 61..=300, "doc").is_empty());
@@ -652,7 +676,10 @@ mod tests {
         assert!(run_ticks(&mut schedule, start, 301..=301, "doc").is_empty());
         suspension.raise_locked();
         let while_locked = run_ticks(&mut schedule, start, 302..=400, "doc");
-        assert!(while_locked.is_empty(), "captured while Locked: {while_locked:?}");
+        assert!(
+            while_locked.is_empty(),
+            "captured while Locked: {while_locked:?}"
+        );
 
         suspension.clear_locked();
         let triggers = run_ticks(&mut schedule, start, 401..=410, "doc");
@@ -682,7 +709,9 @@ mod tests {
         let captures: Vec<(u64, &str)> = (301..=305)
             .filter_map(|s| {
                 schedule
-                    .tick(start + Duration::from_secs(s), 60, || window(&format!("clock {s}")))
+                    .tick(start + Duration::from_secs(s), 60, || {
+                        window(&format!("clock {s}"))
+                    })
                     .map(|(trigger, _)| (s, trigger))
             })
             .collect();
@@ -694,8 +723,11 @@ mod tests {
         let start = Instant::now();
         let suspension = Arc::new(Suspension::new());
         // The lock event was missed; the query before each capture finds it.
-        let mut schedule =
-            schedule_querying(start, &suspension, Arc::new(|s: &Suspension| s.raise_locked()));
+        let mut schedule = schedule_querying(
+            start,
+            &suspension,
+            Arc::new(|s: &Suspension| s.raise_locked()),
+        );
         let triggers = run_ticks(&mut schedule, start, 1..=300, "LockApp");
         assert!(triggers.is_empty(), "captured while locked: {triggers:?}");
     }

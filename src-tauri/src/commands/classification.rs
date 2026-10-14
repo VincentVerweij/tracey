@@ -1,17 +1,13 @@
 //! Tauri commands for managing classification rules and testing the engine.
 
-use tauri::{State, Manager};
-use serde::{Deserialize, Serialize};
-use ulid::Ulid;
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use tauri::{Manager, State};
+use ulid::Ulid;
 
 use crate::commands::AppState;
 use crate::services::classification::{
-    self,
-    feature_extractor::extract,
-    heuristic::HeuristicRule,
-    trainer,
-    ClassificationResult,
+    self, feature_extractor::extract, heuristic::HeuristicRule, trainer, ClassificationResult,
 };
 
 // ── Rules CRUD ────────────────────────────────────────────────────────────────
@@ -19,12 +15,17 @@ use crate::services::classification::{
 #[tauri::command]
 pub fn classification_rules_get(state: State<'_, AppState>) -> Result<Vec<HeuristicRule>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let json: Option<String> = conn.query_row(
-        "SELECT classification_rules_json FROM user_preferences LIMIT 1",
-        [],
-        |r| r.get(0),
-    ).ok().flatten();
-    Ok(json.and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default())
+    let json: Option<String> = conn
+        .query_row(
+            "SELECT classification_rules_json FROM user_preferences LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .ok()
+        .flatten();
+    Ok(json
+        .and_then(|j| serde_json::from_str(&j).ok())
+        .unwrap_or_default())
 }
 
 #[tauri::command]
@@ -38,10 +39,14 @@ pub fn classification_rules_update(
         conn.execute(
             "UPDATE user_preferences SET classification_rules_json = ?1 WHERE id = 1",
             rusqlite::params![json],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     }
     // Refresh in-memory rules cache
-    let mut cs = state.classification_state.lock().map_err(|e| e.to_string())?;
+    let mut cs = state
+        .classification_state
+        .lock()
+        .map_err(|e| e.to_string())?;
     cs.rules = rules;
     Ok(())
 }
@@ -60,9 +65,20 @@ pub fn classification_classify_test(
     state: State<'_, AppState>,
     request: ClassifyTestRequest,
 ) -> Result<ClassificationResult, String> {
-    let features = extract(&request.process_name, &request.window_title, request.ocr_text.as_deref());
-    let cs = state.classification_state.lock().map_err(|e| e.to_string())?;
-    Ok(classification::classify(&features, &cs.rules, cs.model.as_ref()))
+    let features = extract(
+        &request.process_name,
+        &request.window_title,
+        request.ocr_text.as_deref(),
+    );
+    let cs = state
+        .classification_state
+        .lock()
+        .map_err(|e| e.to_string())?;
+    Ok(classification::classify(
+        &features,
+        &cs.rules,
+        cs.model.as_ref(),
+    ))
 }
 
 // ── Labeled sample submit ─────────────────────────────────────────────────────
@@ -84,7 +100,11 @@ pub fn labeled_sample_submit(
     state: State<'_, AppState>,
     request: LabeledSampleSubmitRequest,
 ) -> Result<(), String> {
-    let features = extract(&request.process_name, &request.window_title, request.ocr_text.as_deref());
+    let features = extract(
+        &request.process_name,
+        &request.window_title,
+        request.ocr_text.as_deref(),
+    );
     let id = Ulid::new().to_string().to_lowercase();
     let now = Utc::now().to_rfc3339();
     let device_id = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".to_string());
@@ -97,17 +117,30 @@ pub fn labeled_sample_submit(
               source, device_id, created_at, modified_at) \
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?10)",
             rusqlite::params![
-                id, features.combined_text,
-                features.process_name, features.window_title,
-                request.client_id, request.project_id, request.task_id,
-                request.source, device_id, now,
+                id,
+                features.combined_text,
+                features.process_name,
+                features.window_title,
+                request.client_id,
+                request.project_id,
+                request.task_id,
+                request.source,
+                device_id,
+                now,
             ],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
 
         let total = trainer::count_samples(&conn);
-        let cs = state.classification_state.lock().map_err(|e| e.to_string())?;
+        let cs = state
+            .classification_state
+            .lock()
+            .map_err(|e| e.to_string())?;
         let new_since_last = total - cs.sample_count_at_last_train;
-        (new_since_last >= 10 && total >= trainer::PHASE2_MIN_SAMPLES, total)
+        (
+            new_since_last >= 10 && total >= trainer::PHASE2_MIN_SAMPLES,
+            total,
+        )
     }; // db lock released
 
     if should_retrain {
@@ -138,7 +171,8 @@ mod tests {
 
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE user_preferences (
                 id INTEGER PRIMARY KEY, classification_rules_json TEXT
             );
@@ -156,17 +190,23 @@ mod tests {
                 trained_at TEXT NOT NULL, sample_count INTEGER NOT NULL,
                 device_id TEXT NOT NULL
             );
-        ").unwrap();
+        ",
+        )
+        .unwrap();
         conn
     }
 
     #[test]
     fn rules_roundtrip_empty() {
         let conn = setup_db();
-        let json: Option<String> = conn.query_row(
-            "SELECT classification_rules_json FROM user_preferences LIMIT 1",
-            [], |r| r.get(0),
-        ).ok().flatten();
+        let json: Option<String> = conn
+            .query_row(
+                "SELECT classification_rules_json FROM user_preferences LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .ok()
+            .flatten();
         let rules: Vec<HeuristicRule> = json
             .and_then(|j| serde_json::from_str(&j).ok())
             .unwrap_or_default();
@@ -187,12 +227,17 @@ mod tests {
         conn.execute(
             "UPDATE user_preferences SET classification_rules_json = ?1 WHERE id = 1",
             rusqlite::params![json],
-        ).unwrap();
+        )
+        .unwrap();
 
-        let stored: Option<String> = conn.query_row(
-            "SELECT classification_rules_json FROM user_preferences LIMIT 1",
-            [], |r| r.get(0),
-        ).ok().flatten();
+        let stored: Option<String> = conn
+            .query_row(
+                "SELECT classification_rules_json FROM user_preferences LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .ok()
+            .flatten();
         let loaded: Vec<HeuristicRule> = stored
             .and_then(|j| serde_json::from_str(&j).ok())
             .unwrap_or_default();
@@ -209,10 +254,13 @@ mod tests {
              VALUES ('s1','feat','app','title',NULL,'p1',NULL,'user_confirmed','dev',datetime('now'),datetime('now'))",
             [],
         ).unwrap();
-        let modified_at: String = conn.query_row(
-            "SELECT modified_at FROM labeled_samples WHERE id = 's1'", [],
-            |r| r.get(0),
-        ).unwrap();
+        let modified_at: String = conn
+            .query_row(
+                "SELECT modified_at FROM labeled_samples WHERE id = 's1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert!(!modified_at.is_empty(), "modified_at should be set");
     }
 }
@@ -239,7 +287,11 @@ pub fn classification_submit_label(
     state: State<'_, AppState>,
     request: ClassificationSubmitLabelRequest,
 ) -> Result<(), String> {
-    let features = extract(&request.process_name, &request.window_title, request.ocr_text.as_deref());
+    let features = extract(
+        &request.process_name,
+        &request.window_title,
+        request.ocr_text.as_deref(),
+    );
     let sample_id = Ulid::new().to_string().to_lowercase();
     let entry_id = Ulid::new().to_string().to_lowercase();
     let now = Utc::now().to_rfc3339();
@@ -274,25 +326,33 @@ pub fn classification_submit_label(
         conn.execute(
             "UPDATE classification_events SET outcome = ?1 WHERE id = ?2",
             rusqlite::params![request.source, request.event_id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
 
         conn.execute(
             "UPDATE window_activity_records SET classified_at = ?1 WHERE id = ?2",
             rusqlite::params![now, request.war_id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
 
         trainer::count_samples(&conn)
     }; // db lock released
 
     // Remove from in-memory queue
     {
-        let mut alq = state.active_learning_queue.lock().map_err(|e| e.to_string())?;
+        let mut alq = state
+            .active_learning_queue
+            .lock()
+            .map_err(|e| e.to_string())?;
         alq.dequeue(&request.war_id);
     }
 
     // Trigger retrain if enough new samples
     let should_retrain = {
-        let cs = state.classification_state.lock().map_err(|e| e.to_string())?;
+        let cs = state
+            .classification_state
+            .lock()
+            .map_err(|e| e.to_string())?;
         sample_count - cs.sample_count_at_last_train >= 10
             && sample_count >= trainer::PHASE2_MIN_SAMPLES
     };
@@ -330,7 +390,10 @@ pub fn classification_dismiss(
     request: ClassificationDismissRequest,
 ) -> Result<(), String> {
     let snooze_json = {
-        let mut alq = state.active_learning_queue.lock().map_err(|e| e.to_string())?;
+        let mut alq = state
+            .active_learning_queue
+            .lock()
+            .map_err(|e| e.to_string())?;
         alq.record_dismissal(&request.pattern_key);
         alq.dequeue(&request.war_id);
         serde_json::to_string(&alq.snooze_state()).map_err(|e| e.to_string())?
@@ -340,7 +403,8 @@ pub fn classification_dismiss(
     conn.execute(
         "UPDATE user_preferences SET classification_snooze_json = ?1 WHERE id = 1",
         rusqlite::params![snooze_json],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -352,7 +416,8 @@ mod submit_label_tests {
 
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE labeled_samples (
                 id TEXT PRIMARY KEY, feature_text TEXT NOT NULL,
                 process_name TEXT NOT NULL, window_title TEXT NOT NULL,
@@ -390,7 +455,9 @@ mod submit_label_tests {
                 id INTEGER PRIMARY KEY, classification_snooze_json TEXT
             );
             INSERT INTO user_preferences (id) VALUES (1);
-        ").unwrap();
+        ",
+        )
+        .unwrap();
         conn
     }
 
@@ -421,8 +488,8 @@ mod submit_label_tests {
             ).unwrap();
         }
         let total = trainer::count_samples(&conn);
-        let should_retrain = (total - sample_count_at_last_train) >= 10
-            && total >= trainer::PHASE2_MIN_SAMPLES;
+        let should_retrain =
+            (total - sample_count_at_last_train) >= 10 && total >= trainer::PHASE2_MIN_SAMPLES;
         assert!(!should_retrain, "9 new samples should not trigger retrain");
 
         conn.execute(
@@ -432,8 +499,8 @@ mod submit_label_tests {
             [],
         ).unwrap();
         let total = trainer::count_samples(&conn);
-        let should_retrain = (total - sample_count_at_last_train) >= 10
-            && total >= trainer::PHASE2_MIN_SAMPLES;
+        let should_retrain =
+            (total - sample_count_at_last_train) >= 10 && total >= trainer::PHASE2_MIN_SAMPLES;
         assert_eq!(should_retrain, total >= trainer::PHASE2_MIN_SAMPLES);
     }
 
@@ -491,14 +558,15 @@ pub fn classification_event_list(
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let offset = request.page * request.page_size;
 
-    let total: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM classification_events",
-        [],
-        |r| r.get(0),
-    ).unwrap_or(0);
+    let total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM classification_events", [], |r| {
+            r.get(0)
+        })
+        .unwrap_or(0);
 
-    let mut stmt = conn.prepare(
-        "SELECT ce.id, ce.war_id, ce.process_name, ce.window_title, \
+    let mut stmt = conn
+        .prepare(
+            "SELECT ce.id, ce.war_id, ce.process_name, ce.window_title, \
                 ce.client_id, ce.project_id, ce.task_id, \
                 c.name, p.name, t.name, \
                 ce.confidence, ce.classification_source, ce.outcome, ce.ocr_text, ce.created_at \
@@ -508,30 +576,32 @@ pub fn classification_event_list(
          LEFT JOIN tasks t ON ce.task_id = t.id \
          ORDER BY ce.created_at DESC \
          LIMIT ?1 OFFSET ?2",
-    ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
 
-    let items: Vec<ClassificationEventItem> = stmt.query_map(
-        rusqlite::params![request.page_size, offset],
-        |r| Ok(ClassificationEventItem {
-            id:                    r.get(0)?,
-            war_id:                r.get(1)?,
-            process_name:          r.get(2)?,
-            window_title:          r.get(3)?,
-            client_id:             r.get(4)?,
-            project_id:            r.get(5)?,
-            task_id:               r.get(6)?,
-            client_name:           r.get(7)?,
-            project_name:          r.get(8)?,
-            task_name:             r.get(9)?,
-            confidence:            r.get(10)?,
-            classification_source: r.get(11)?,
-            outcome:               r.get(12)?,
-            ocr_text:              r.get(13)?,
-            created_at:            r.get(14)?,
-        }),
-    ).map_err(|e| e.to_string())?
-    .filter_map(|r| r.ok())
-    .collect();
+    let items: Vec<ClassificationEventItem> = stmt
+        .query_map(rusqlite::params![request.page_size, offset], |r| {
+            Ok(ClassificationEventItem {
+                id: r.get(0)?,
+                war_id: r.get(1)?,
+                process_name: r.get(2)?,
+                window_title: r.get(3)?,
+                client_id: r.get(4)?,
+                project_id: r.get(5)?,
+                task_id: r.get(6)?,
+                client_name: r.get(7)?,
+                project_name: r.get(8)?,
+                task_name: r.get(9)?,
+                confidence: r.get(10)?,
+                classification_source: r.get(11)?,
+                outcome: r.get(12)?,
+                ocr_text: r.get(13)?,
+                created_at: r.get(14)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
 
     Ok(ClassificationEventListResponse { items, total })
 }
@@ -542,7 +612,8 @@ mod event_list_tests {
 
     fn test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE classification_events (
                 id TEXT PRIMARY KEY, war_id TEXT NOT NULL,
                 process_name TEXT NOT NULL, window_title TEXT NOT NULL,
@@ -553,7 +624,9 @@ mod event_list_tests {
                 ocr_text TEXT,
                 created_at TEXT NOT NULL
             );
-        ").unwrap();
+        ",
+        )
+        .unwrap();
         conn.execute_batch("
             INSERT INTO classification_events VALUES
               ('e1','w1','Code','tracey',NULL,'p1',NULL,0.9,'heuristic','auto',NULL,'2026-01-01T10:00:00Z'),
@@ -565,12 +638,17 @@ mod event_list_tests {
     #[test]
     fn list_returns_events_descending() {
         let conn = test_db();
-        let mut stmt = conn.prepare(
-            "SELECT id, process_name, confidence FROM classification_events \
-             ORDER BY created_at DESC LIMIT 50 OFFSET 0"
-        ).unwrap();
-        let rows: Vec<(String, String, f64)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
-            .unwrap().filter_map(|r| r.ok()).collect();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, process_name, confidence FROM classification_events \
+             ORDER BY created_at DESC LIMIT 50 OFFSET 0",
+            )
+            .unwrap();
+        let rows: Vec<(String, String, f64)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].0, "e2"); // most recent first
         assert_eq!(rows[1].0, "e1");

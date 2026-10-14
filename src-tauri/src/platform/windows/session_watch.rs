@@ -26,18 +26,17 @@ use windows::Win32::Foundation::{
     WAIT_TIMEOUT, WPARAM,
 };
 use windows::Win32::System::RemoteDesktop::{
-    WTSFreeMemory, WTSQuerySessionInformationW, WTSRegisterSessionNotification,
-    WTSSessionInfoEx, WTSUnRegisterSessionNotification, NOTIFY_FOR_THIS_SESSION, WTSINFOEXW,
-    WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTS_SESSIONSTATE_LOCK,
-    WTS_SESSIONSTATE_UNLOCK,
+    WTSFreeMemory, WTSQuerySessionInformationW, WTSRegisterSessionNotification, WTSSessionInfoEx,
+    WTSUnRegisterSessionNotification, NOTIFY_FOR_THIS_SESSION, WTSINFOEXW,
+    WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTS_SESSIONSTATE_LOCK, WTS_SESSIONSTATE_UNLOCK,
 };
 use windows::Win32::System::Threading::{
     OpenEventW, WaitForSingleObject, SYNCHRONIZATION_SYNCHRONIZE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
-    RegisterClassW, HWND_MESSAGE, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_WTSSESSION_CHANGE,
-    WNDCLASSW, WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, RegisterClassW,
+    HWND_MESSAGE, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_WTSSESSION_CHANGE, WNDCLASSW,
+    WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
 };
 
 use crate::services::suspension::Suspension;
@@ -85,7 +84,9 @@ fn run(suspension: Arc<Suspension>, seeded: mpsc::Sender<()>) {
     seed(&suspension, query_session_flags());
     let _ = seeded.send(()); // start() may have stopped waiting; nothing to do then
 
-    let Some((hwnd, first_attempt)) = first_attempt else { return };
+    let Some((hwnd, first_attempt)) = first_attempt else {
+        return;
+    };
 
     // Retry after seeding, so a slow Remote Desktop Services never delays the
     // tracking loops; they stay guarded by the reconcile in the meantime.
@@ -408,8 +409,7 @@ mod tests {
     #[test]
     fn other_session_codes_change_nothing() {
         // 1–6 and 9–11 are documented, 0 and 0xC–0xE are not (#67).
-        let other_codes =
-            (0..=0xE).filter(|c| *c != WTS_SESSION_LOCK && *c != WTS_SESSION_UNLOCK);
+        let other_codes = (0..=0xE).filter(|c| *c != WTS_SESSION_LOCK && *c != WTS_SESSION_UNLOCK);
         for code in other_codes {
             let suspension = Suspension::new();
             on_session_change(&suspension, code);
@@ -443,11 +443,17 @@ mod tests {
     #[test]
     fn an_agreeing_answer_changes_nothing() {
         let suspension = Suspension::new();
-        assert_eq!(reconcile_from(&suspension, || Ok(WTS_SESSIONSTATE_UNLOCK)), None);
+        assert_eq!(
+            reconcile_from(&suspension, || Ok(WTS_SESSIONSTATE_UNLOCK)),
+            None
+        );
         assert!(!suspension.is_locked());
 
         suspension.raise_locked();
-        assert_eq!(reconcile_from(&suspension, || Ok(WTS_SESSIONSTATE_LOCK)), None);
+        assert_eq!(
+            reconcile_from(&suspension, || Ok(WTS_SESSIONSTATE_LOCK)),
+            None
+        );
         assert!(suspension.is_locked());
     }
 
@@ -458,7 +464,10 @@ mod tests {
             if held {
                 suspension.raise_locked();
             }
-            assert_eq!(reconcile_from(&suspension, || Ok(WTS_SESSIONSTATE_UNKNOWN)), None);
+            assert_eq!(
+                reconcile_from(&suspension, || Ok(WTS_SESSIONSTATE_UNKNOWN)),
+                None
+            );
             assert_eq!(suspension.is_locked(), held);
             let failed = || Err(windows::core::Error::from(E_FAIL));
             assert_eq!(reconcile_from(&suspension, failed), None);

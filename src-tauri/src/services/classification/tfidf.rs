@@ -1,12 +1,13 @@
 //! Phase 2: TF-IDF bag-of-words classifier.
 //! Trains on `LabeledSample` data. Predicts top-3 (ClassLabel, confidence) pairs.
 
-use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 
 const STOPWORDS: &[&str] = &[
-    "the","a","an","and","or","but","in","on","at","to","for","of","with","by",
-    "from","is","was","are","be","has","have","do","did","not","this","that","it","its",
+    "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by",
+    "from", "is", "was", "are", "be", "has", "have", "do", "did", "not", "this", "that", "it",
+    "its",
 ];
 
 fn tokenize(text: &str) -> Vec<String> {
@@ -31,13 +32,18 @@ fn build_vocab(tokenized: &[Vec<String>]) -> HashMap<String, usize> {
 }
 
 /// IDF: log((N+1)/(df+1))+1  (smooth, add-1)
-fn inverse_document_frequencies(tokenized: &[Vec<String>], vocab: &HashMap<String, usize>) -> Vec<f32> {
+fn inverse_document_frequencies(
+    tokenized: &[Vec<String>],
+    vocab: &HashMap<String, usize>,
+) -> Vec<f32> {
     let n = tokenized.len() as f32;
     let mut df = vec![0usize; vocab.len()];
     for tokens in tokenized {
         let unique: HashSet<&String> = tokens.iter().collect();
         for t in unique {
-            if let Some(&i) = vocab.get(t) { df[i] += 1; }
+            if let Some(&i) = vocab.get(t) {
+                df[i] += 1;
+            }
         }
     }
     df.iter()
@@ -47,9 +53,15 @@ fn inverse_document_frequencies(tokenized: &[Vec<String>], vocab: &HashMap<Strin
 
 fn tfidf_vector(tokens: &[String], vocab: &HashMap<String, usize>, idf: &[f32]) -> Vec<f32> {
     let mut counts = vec![0usize; vocab.len()];
-    for t in tokens { if let Some(&i) = vocab.get(t) { counts[i] += 1; } }
+    for t in tokens {
+        if let Some(&i) = vocab.get(t) {
+            counts[i] += 1;
+        }
+    }
     let doc_len = tokens.len().max(1) as f32;
-    counts.iter().enumerate()
+    counts
+        .iter()
+        .enumerate()
         .map(|(i, &c)| (c as f32 / doc_len) * idf[i])
         .collect()
 }
@@ -57,11 +69,21 @@ fn tfidf_vector(tokens: &[String], vocab: &HashMap<String, usize>, idf: &[f32]) 
 /// Mean of `vecs`, L2-normalized (left as-is if it is the zero vector).
 fn normalized_centroid(vecs: &[Vec<f32>], vocab_size: usize) -> Vec<f32> {
     let mut c = vec![0.0f32; vocab_size];
-    for v in vecs { for (i, &x) in v.iter().enumerate() { c[i] += x; } }
+    for v in vecs {
+        for (i, &x) in v.iter().enumerate() {
+            c[i] += x;
+        }
+    }
     let n = vecs.len() as f32;
-    for x in &mut c { *x /= n; }
+    for x in &mut c {
+        *x /= n;
+    }
     let norm: f32 = c.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm > 0.0 { for x in &mut c { *x /= norm; } }
+    if norm > 0.0 {
+        for x in &mut c {
+            *x /= norm;
+        }
+    }
     c
 }
 
@@ -91,11 +113,15 @@ impl TfIdfModel {
     /// Build model from training samples. Returns `None` if samples are empty
     /// or produce fewer than 2 distinct classes.
     pub fn train(samples: &[TrainingSample]) -> Option<Self> {
-        if samples.is_empty() { return None; }
+        if samples.is_empty() {
+            return None;
+        }
 
         let tokenized: Vec<Vec<String>> = samples.iter().map(|s| tokenize(&s.text)).collect();
         let vocab = build_vocab(&tokenized);
-        if vocab.is_empty() { return None; }
+        if vocab.is_empty() {
+            return None;
+        }
         let idf = inverse_document_frequencies(&tokenized, &vocab);
 
         // Group samples by class key
@@ -108,7 +134,10 @@ impl TfIdfModel {
                 sample.project_id.as_deref().unwrap_or(""),
                 sample.task_id.as_deref().unwrap_or(""),
             );
-            class_vecs.entry(key.clone()).or_default().push(tfidf_vector(tokens, &vocab, &idf));
+            class_vecs
+                .entry(key.clone())
+                .or_default()
+                .push(tfidf_vector(tokens, &vocab, &idf));
             class_labels.entry(key).or_insert(ClassLabel {
                 client_id: sample.client_id.clone(),
                 project_id: sample.project_id.clone(),
@@ -116,31 +145,51 @@ impl TfIdfModel {
             });
         }
 
-        let centroids: HashMap<String, Vec<f32>> = class_vecs.iter()
+        let centroids: HashMap<String, Vec<f32>> = class_vecs
+            .iter()
             .map(|(key, vecs)| (key.clone(), normalized_centroid(vecs, vocab.len())))
             .collect();
 
-        Some(TfIdfModel { vocab, idf, centroids, class_labels })
+        Some(TfIdfModel {
+            vocab,
+            idf,
+            centroids,
+            class_labels,
+        })
     }
 
     /// Returns top-3 `(ClassLabel, confidence)` sorted descending by cosine similarity.
     /// Returns `None` if the query produces a zero vector.
     pub fn predict(&self, text: &str) -> Option<Vec<(ClassLabel, f32)>> {
         let tokens = tokenize(text);
-        if tokens.is_empty() { return None; }
+        if tokens.is_empty() {
+            return None;
+        }
 
         let vocab_size = self.vocab.len();
         let mut counts = vec![0usize; vocab_size];
-        for t in &tokens { if let Some(&i) = self.vocab.get(t) { counts[i] += 1; } }
+        for t in &tokens {
+            if let Some(&i) = self.vocab.get(t) {
+                counts[i] += 1;
+            }
+        }
         let doc_len = tokens.len() as f32;
-        let mut query: Vec<f32> = counts.iter().enumerate()
+        let mut query: Vec<f32> = counts
+            .iter()
+            .enumerate()
             .map(|(i, &c)| (c as f32 / doc_len) * self.idf[i])
             .collect();
         let norm: f32 = query.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm == 0.0 { return None; }
-        for x in &mut query { *x /= norm; }
+        if norm == 0.0 {
+            return None;
+        }
+        for x in &mut query {
+            *x /= norm;
+        }
 
-        let mut scores: Vec<(String, f32)> = self.centroids.iter()
+        let mut scores: Vec<(String, f32)> = self
+            .centroids
+            .iter()
             .map(|(k, c)| {
                 let sim: f32 = query.iter().zip(c.iter()).map(|(q, v)| q * v).sum();
                 (k.clone(), sim.clamp(0.0, 1.0))
@@ -148,11 +197,16 @@ impl TfIdfModel {
             .collect();
         scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        let results: Vec<(ClassLabel, f32)> = scores.into_iter()
+        let results: Vec<(ClassLabel, f32)> = scores
+            .into_iter()
             .take(3)
             .filter_map(|(k, s)| self.class_labels.get(&k).map(|l| (l.clone(), s)))
             .collect();
-        if results.is_empty() { None } else { Some(results) }
+        if results.is_empty() {
+            None
+        } else {
+            Some(results)
+        }
     }
 }
 

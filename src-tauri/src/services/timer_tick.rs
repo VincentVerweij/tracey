@@ -1,6 +1,6 @@
-use tauri::{AppHandle, Emitter, Manager};
-use chrono::Utc;
 use crate::commands::AppState;
+use chrono::Utc;
+use tauri::{AppHandle, Emitter, Manager};
 
 /// Start the timer-tick background task.
 /// Call once from lib.rs `.setup()`. Emits `tracey://timer-tick` every second
