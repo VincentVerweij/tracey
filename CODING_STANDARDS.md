@@ -2,7 +2,7 @@
 
 The rules a reviewer checks by reading a diff. Each one takes judgement, so
 no tool enforces it. Mechanical rules are left to `scripts/check.ps1`:
-clippy (including cognitive complexity ≤ 10 and no `MutexGuard` held across
+rustfmt, clippy (including cognitive complexity ≤ 10 and no `MutexGuard` held across
 `.await`), `dotnet format`, and no `TODO`/`FIXME` in source. Don't re-check
 those by hand.
 
