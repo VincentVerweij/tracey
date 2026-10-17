@@ -81,3 +81,43 @@ of four tracking loops above is only its current answer.
   application. Tracking is *suspended*, never stopped.
 - **"Paused" as a synonym for suspended** — `Paused` is one reason, not the
   state. Tracking suspended under `Locked` alone is not paused.
+
+---
+
+## Presence
+
+Settled by [ADR-0005](docs/adr/0005-timeline-shows-presence-not-suspension.md).
+
+**Presence** — what the Timeline bar shows over time: whether the user was
+working at the device. Distinct from **Suspension**, which says whether Tracey
+is observing. Internal vocabulary.
+
+**Presence span** — a maximal stretch of time in one presence state.
+
+| State | Holds when | UI word | Color |
+|---|---|---|---|
+| **`Present`** | Tracked, not `Locked`, not idle | "Active" | green |
+| **`Away`** | Tracked, and `Locked` or idle | "Away" | red |
+| **`Untracked`** | Tracey not running, or `Paused` holds | "Not tracked" | none |
+
+Precedence when several hold: `Untracked` > `Away` > `Present`. Nothing is
+observed while `Paused`, so locking while paused stays `Untracked`.
+
+**Idle** (for presence) — no input for `inactivity_timeout_seconds`. An idle
+`Away` span starts at the last input (`idle_since`), not when the threshold is
+crossed, so away-time shorter than the threshold stays `Present`.
+
+**Away cause** — why a span is `Away`: `Locked` or idle. `Locked` wins when
+both hold, and a change of cause splits the span. The cause never changes the
+color.
+
+The idle-prompt resolution (`break`, `meeting`, `keep`, `specify`) belongs to
+time entries and never changes a presence span. The bar records what was
+observed, not how it was interpreted.
+
+### Retired terms
+
+- **"Tracking-state span"**: charting shorthand from map #104. Say presence
+  span.
+- **"Active" as an internal state name**: it is only the UI word for
+  `Present`. "Active" already means a running timer in code.
