@@ -5,6 +5,7 @@
 - **Deciders:** Vincent Verweij
 - **Resolves:** [#70](https://github.com/VincentVerweij/tracey/issues/70), under map [#65](https://github.com/VincentVerweij/tracey/issues/65)
 - **Amends:** [ADR-0001](0001-suspension-is-one-concept-with-reasons.md) decision 5 (one sentence), [ADR-0002](0002-wts-session-notifications-detect-lock.md) decisions 1 and 5
+- **Relates to:** [ADR-0006](0006-presence-is-recorded-as-heartbeat-extended-spans.md) — lock *history* is persisted as presence spans; the `Locked` reason itself stays in-memory
 - **Vocabulary:** [`GLOSSARY.md` § Suspension](../../GLOSSARY.md#suspension)
 
 ## Context
