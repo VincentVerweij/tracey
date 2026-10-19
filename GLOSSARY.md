@@ -27,7 +27,7 @@ today. Reasons are independent, and each may be cleared only by its own owner.
 | Reason | Raised by | Suspends | Durability | Visible |
 |---|---|---|---|---|
 | **Paused** | The user, from the tray | **All tracking** | Persisted as an absolute deadline; survives restart | Yes — tray and in-app indicator |
-| **Locked** | The session watch: WTS lock/unlock notifications, reconciled by a session-state query ([ADR-0002](docs/adr/0002-wts-session-notifications-detect-lock.md)) | **Screenshot capture and window activity tracking** ([ADR-0003](docs/adr/0003-locked-is-lock-only-and-suspends-window-activity.md)) | In-memory; re-seeded at startup, never persisted | No — logged only |
+| **Locked** | The session watch: WTS lock/unlock notifications, reconciled by a session-state query ([ADR-0002](docs/adr/0002-wts-session-notifications-detect-lock.md)) | **Screenshot capture and window activity tracking** ([ADR-0003](docs/adr/0003-locked-is-lock-only-and-suspends-window-activity.md)) | In-memory; re-seeded at startup, never restored. Lock *history* is kept as presence spans ([ADR-0006](docs/adr/0006-presence-is-recorded-as-heartbeat-extended-spans.md)) | No — logged only |
 
 **Paused** — the user-initiated reason. The UI word is *pause*: "Pause
 tracking", "Continue paused tracking".
@@ -86,7 +86,8 @@ of four tracking loops above is only its current answer.
 
 ## Presence
 
-Settled by [ADR-0005](docs/adr/0005-timeline-shows-presence-not-suspension.md).
+Settled by [ADR-0005](docs/adr/0005-timeline-shows-presence-not-suspension.md);
+recording by [ADR-0006](docs/adr/0006-presence-is-recorded-as-heartbeat-extended-spans.md).
 
 **Presence** — what the Timeline bar shows over time: whether the user was
 working at the device. Distinct from **Suspension**, which says whether Tracey
@@ -110,6 +111,16 @@ crossed, so away-time shorter than the threshold stays `Present`.
 **Away cause** — why a span is `Away`: `Locked` or idle. `Locked` wins when
 both hold, and a change of cause splits the span. The cause never changes the
 color.
+
+**Presence recorder** — the sole writer of presence spans. It runs its own
+1 s tick, reading idle seconds, `Locked` and `Paused` as one snapshot, and is
+never suspended, because it observes suspension rather than being subject to
+it. It stores only `Present` and `Away` spans. Every gap, including Tracey not
+running, `Paused`, and sleep or hibernate, is `Untracked`. It emits
+`presence-changed` after each transition. Settled by ADR-0006.
+
+**Open span** — the span the presence recorder is still extending. A heartbeat
+moves its end to now every ~30 s, so a crash loses at most that much.
 
 The idle-prompt resolution (`break`, `meeting`, `keep`, `specify`) belongs to
 time entries and never changes a presence span. The bar records what was
