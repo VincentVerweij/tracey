@@ -1,0 +1,401 @@
+<title>Timeline Bar Prototype</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--
+  PROTOTYPE — throwaway, ticket #107 (map #104). Not part of the app; never served by Blazor.
+  Question: how should the presence-colored main bar + overview zoom bar look and behave?
+  Three variants on one page, switch with the bottom bar, ← / →, or #A / #B / #C in the URL.
+  Fake data: one day of Present/Away/Untracked spans and screenshots (only while Present).
+  Run: start src/Tracey.App/Pages/Timeline.prototype-107.html
+-->
+<style>
+/* Layout: the real Timeline page column (header, bar card, preview, activity line) + a prototype-only state panel. */
+:root {
+  --accent: #6366f1;
+  --surface: #ffffff;
+  --surface-alt: #f8f9fa;
+  --border: #e5e7eb;
+  --text: #111827;
+  --muted: #6b7280;
+  --bar-top: #1e1e2e;
+  --bar-bottom: #16213e;
+  --bar-ink: rgba(255,255,255,.4);
+  --present: rgba(34,197,94,.62);
+  --away: rgba(239,68,68,.66);
+  --proto: #b45309;
+  --proto-bg: #fef3c7;
+  --mono: 'SFMono-Regular', Consolas, monospace;
+  --radius: 8px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --surface: #161b22; --surface-alt: #0d1117; --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+  --proto: #fbbf24; --proto-bg: #2d1a00; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --surface: #161b22; --surface-alt: #0d1117; --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+  --proto: #fbbf24; --proto-bg: #2d1a00; color-scheme: dark;
+}
+body {
+  background: var(--surface-alt); color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 96px;
+}
+.page { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.25rem; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+h1 { font-size: 1.5rem; margin: 0; }
+.fake-date { font-size: .875rem; padding: .4rem .75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.variant-blurb { font-size: .85rem; color: var(--muted); margin: 0; max-width: 70ch; }
+.variant-blurb b { color: var(--text); }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+
+/* bar header row (variant A/C) */
+.bar-row { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; padding: .3rem .75rem; border-bottom: 1px solid var(--border); font-size: .75rem; color: var(--muted); min-height: 1.9rem; }
+.range-text { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: .75rem; color: var(--text); }
+.reset-btn { background: none; border: 1px solid var(--border); border-radius: var(--radius); color: var(--muted); font-size: .7rem; padding: .1rem .45rem; cursor: pointer; }
+.reset-btn:hover, .reset-btn:focus-visible { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* main bar */
+.mb { position: relative; height: 72px; background: linear-gradient(var(--bar-top), var(--bar-bottom)); cursor: crosshair; user-select: none; overflow: hidden; touch-action: none; }
+.span { position: absolute; top: 0; bottom: 0; }
+.span.P { background: var(--present); }
+.span.A { background: var(--away); }
+.tick { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.1); pointer-events: none; }
+.tick span { position: absolute; top: 3px; left: 4px; font: .62rem var(--mono); color: var(--bar-ink); white-space: nowrap; }
+.hover-line { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.85); pointer-events: none; z-index: 4; }
+.hover-label { position: absolute; bottom: 4px; transform: translateX(-50%); background: rgba(0,0,0,.78); color: #fff; font: .7rem var(--mono); padding: 1px 6px; border-radius: 3px; white-space: nowrap; pointer-events: none; z-index: 5; }
+.pin-line { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 6px 1px var(--accent); pointer-events: none; z-index: 3; }
+.sel { position: absolute; top: 0; bottom: 0; background: rgba(255,255,255,.18); border-inline: 1px solid rgba(255,255,255,.7); pointer-events: none; z-index: 2; }
+
+/* overview bar */
+.ov { position: relative; background: var(--surface-alt); user-select: none; touch-action: none; cursor: pointer; }
+.ov .span { opacity: .75; }
+.ov-tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border); pointer-events: none; }
+.ov-tick span { position: absolute; bottom: 1px; left: 3px; font: .58rem var(--mono); color: var(--muted); }
+.rect { position: absolute; top: 0; bottom: 0; cursor: grab; z-index: 2; }
+.rect.dragging { cursor: grabbing; }
+.handle { position: absolute; top: 0; bottom: 0; cursor: ew-resize; z-index: 3; }
+.handle-label { position: absolute; top: 100%; margin-top: 2px; font: .65rem var(--mono); color: var(--text); white-space: nowrap; pointer-events: none; }
+
+/* A: mini-map below, colored */
+.vA .ov { height: 26px; border-top: 1px solid var(--border); }
+.vA .rect { border: 2px solid var(--accent); border-radius: 4px; background: rgba(99,102,241,.12); box-shadow: 0 0 0 9999px rgba(15,23,42,.28); }
+.vA .handle::after { content: ""; position: absolute; top: 6px; bottom: 6px; left: 50%; width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--accent); }
+
+/* B: overview strip above, plain, times on handles */
+.vB .ov { height: 18px; border-bottom: 1px solid var(--border); margin-bottom: 18px; overflow: visible; }
+.vB .ov-wrap { padding-bottom: 0; }
+.vB .rect { background: var(--accent); opacity: .9; border-radius: 3px; }
+.vB .handle-label { color: var(--accent); font-weight: 600; }
+.vB .handle-label.l { right: 50%; }
+.vB .handle-label.r { left: 50%; }
+
+/* C: scrollbar track under the bar */
+.vC .ov { height: 12px; padding: 2px 0; background: var(--surface); }
+.vC .rect { top: 2px; bottom: 2px; background: var(--muted); opacity: .55; border-radius: 6px; transition: opacity .1s; }
+.vC .ov:hover .rect, .vC .rect.dragging { opacity: .9; }
+.vC .handle::after { content: ""; position: absolute; top: 1px; bottom: 1px; left: 50%; width: 2px; margin-left: -1px; background: var(--surface); opacity: 0; }
+.vC .ov:hover .handle::after { opacity: .9; }
+
+/* preview */
+.preview-head { display: flex; align-items: center; gap: .75rem; padding: .65rem 1rem; border-bottom: 1px solid var(--border); flex-wrap: wrap; font-size: .8rem; min-height: 2.6rem; }
+.p-time { font: 600 .875rem var(--mono); color: var(--accent); }
+.p-trig { font-size: .7rem; padding: .15rem .5rem; border-radius: 999px; background: rgba(99,102,241,.12); color: var(--accent); }
+.p-proc { font-weight: 600; }
+.p-title { color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.p-hint { color: var(--muted); }
+.shot { aspect-ratio: 16/7; max-width: 100%; background: #0d0d1a; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.fake-win { width: min(92%, 640px); aspect-ratio: 16/8; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+.fake-win .tb { height: 22px; padding: 0 8px; display: flex; align-items: center; font-size: .7rem; color: #fff; background: rgba(0,0,0,.35); white-space: nowrap; overflow: hidden; }
+.fake-win .body { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 7px; }
+.fake-win .ln { height: 7px; border-radius: 3px; background: rgba(255,255,255,.28); }
+.shot.hover { opacity: .85; }
+.shot-empty { color: #8b949e; font-size: .85rem; }
+
+.activity-line { font-size: .85rem; padding: .6rem 1rem; display: flex; gap: .6rem; align-items: center; }
+.badge { font-size: .7rem; padding: .15rem .5rem; border-radius: 999px; background: rgba(99,102,241,.12); color: var(--accent); }
+
+/* prototype-only state panel */
+.proto { border: 1px dashed var(--proto); background: var(--proto-bg); border-radius: var(--radius); padding: .6rem .9rem; font-size: .78rem; display: grid; gap: .45rem; }
+.proto-title { font-weight: 700; color: var(--proto); letter-spacing: .04em; text-transform: uppercase; font-size: .68rem; }
+.proto dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .25rem 1rem; margin: 0; }
+.proto dt { color: var(--muted); display: inline; }
+.proto dd { margin: 0; display: inline; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.proto .tune { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
+.proto select { font-size: .78rem; }
+.legend { display: flex; gap: .9rem; flex-wrap: wrap; color: var(--muted); }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+
+/* floating variant switcher */
+.switcher { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; align-items: center; gap: .25rem; background: #111827; color: #fff; border-radius: 999px; padding: .3rem; box-shadow: 0 6px 20px rgba(0,0,0,.35); z-index: 50; font-size: .82rem; max-width: calc(100% - 32px); }
+.switcher button { background: none; border: 0; color: #fff; font-size: 1rem; width: 2rem; height: 2rem; border-radius: 999px; cursor: pointer; }
+.switcher button:hover, .switcher button:focus-visible { background: rgba(255,255,255,.15); }
+.switcher .lbl { padding: 0 .5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<div class="page">
+  <div class="head">
+    <h1>Timeline</h1>
+    <span class="fake-date">2026-10-15 (sample day)</span>
+  </div>
+  <p class="variant-blurb" id="blurb"></p>
+  <div class="card" id="barCard"></div>
+  <div class="card">
+    <div class="preview-head" id="pHead"></div>
+    <div class="shot" id="pShot"></div>
+  </div>
+  <div class="card activity-line" id="activity"></div>
+  <div class="proto" aria-live="polite">
+    <div class="proto-title">Prototype state (not part of the design)</div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--present)"></i>Present</span>
+      <span><i class="sw" style="background:var(--away)"></i>Away (locked or idle)</span>
+      <span><i class="sw" style="background:var(--bar-top);outline:1px solid var(--border)"></i>Untracked (no color)</span>
+    </div>
+    <dl id="state"></dl>
+    <div class="tune">
+      <label>Minimum visible range
+        <select id="minRange"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="60">1 h</option></select>
+      </label>
+      <label>Edge grab width
+        <select id="edgePx"><option value="4">4 px</option><option value="8" selected>8 px</option><option value="14">14 px</option></select>
+      </label>
+    </div>
+  </div>
+</div>
+
+<div class="switcher" role="group" aria-label="Prototype variant switcher">
+  <button id="prev" aria-label="Previous variant">←</button>
+  <span class="lbl" id="vLabel"></span>
+  <button id="next" aria-label="Next variant">→</button>
+</div>
+
+<script>
+const DAY = 1440;
+const VARIANTS = {
+  A: { name: 'Mini-map below',
+       blurb: '<b>Overview below the bar, in color.</b> The overview is a miniature of the whole day with the same green/red spans; the rest of the day is dimmed outside the rectangle. Range shown as text in the header next to “↺ full day”. Wheel zooms on both bars (main: around the cursor, overview: around the rectangle). Click the overview outside the rectangle to jump there. Double-click the main bar to reset.' },
+  B: { name: 'Strip above, times on handles',
+       blurb: '<b>Plain overview strip above the bar.</b> No colors in the overview, just hours; the rectangle is solid and its start/end times hang off the handles, so there is no header row. Wheel on the main bar pans; Ctrl+wheel zooms. Drag on the strip outside the rectangle to draw a new range. Double-click the strip to reset.' },
+  C: { name: 'Scrollbar track',
+       blurb: '<b>Overview as a thin scrollbar under the bar.</b> No range text: the main bar’s own hour labels say where you are. The thumb shows grips on hover. Wheel zooms around the cursor; Shift+wheel pans. Drag across the main bar to zoom into that stretch (a plain click still pins a screenshot). Click the track to page. Double-click the main bar to reset.' },
+};
+const KEYS = Object.keys(VARIANTS);
+
+// ── fake day ───────────────────────────────────────────────
+const SPANS = [[0,490,'U'],[490,625,'P'],[625,640,'A'],[640,750,'P'],[750,795,'A'],[795,905,'P'],[905,912,'A'],[912,1065,'P'],[1065,1200,'U'],[1200,1270,'P'],[1270,1440,'U']];
+const APPS = [
+  ['Code.exe', 'Timeline.razor — tracey — Visual Studio Code', '#1e3a5f'],
+  ['msedge.exe', 'refactor: Trigger enum · Pull Request #103 · GitHub', '#2b2d42'],
+  ['ms-teams.exe', 'Daily standup | Microsoft Teams', '#3b2f63'],
+  ['WindowsTerminal.exe', 'cargo test — src-tauri', '#1f2a1f'],
+  ['OUTLOOK.EXE', 'Inbox — vincent@example.com — Outlook', '#163a5c'],
+];
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const SHOTS = [];
+for (const [s, e, st] of SPANS) {
+  if (st !== 'P') continue;
+  let app = APPS[Math.floor(rnd() * APPS.length)];
+  SHOTS.push({ m: s + .2, app, trig: s > 490 && SPANS.some(x => x[1] === s && x[2] === 'A') ? 'suspension_end' : 'interval' });
+  for (let m = s + 5; m < e; m += 5) {
+    if (rnd() < .3) { app = APPS[Math.floor(rnd() * APPS.length)]; SHOTS.push({ m: m - 2 - rnd() * 2, app, trig: 'window_change' }); }
+    SHOTS.push({ m, app, trig: 'interval' });
+  }
+}
+SHOTS.sort((a, b) => a.m - b.m);
+const TRIG = { interval: '⏱ Interval', window_change: '🔄 Window change', suspension_end: '▶ Resumed' };
+const STATE_NAME = { P: 'Present', A: 'Away', U: 'Untracked' };
+
+// ── state ──────────────────────────────────────────────────
+let variant = KEYS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'A';
+let view = { s: 480, e: 810 };
+let hover = null;      // minute under cursor
+let pinned = null;     // pinned screenshot
+let lastGesture = '—';
+let sel = null;        // C: drag-select on main bar
+const minRange = () => +document.getElementById('minRange').value;
+const edgePx = () => +document.getElementById('edgePx').value;
+
+const fmt = m => { m = Math.max(0, Math.min(DAY, Math.round(m))); return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); };
+const fmtDur = m => m >= 60 ? (m / 60).toFixed(m % 60 ? 1 : 0) + ' h' : Math.round(m) + ' min';
+const stateAt = m => (SPANS.find(([s, e]) => m >= s && m < e) || [0, 0, 'U'])[2];
+const nearest = m => { let best = null; for (const x of SHOTS) if (x.m >= view.s && x.m <= view.e && (!best || Math.abs(x.m - m) < Math.abs(best.m - m))) best = x; return best; };
+
+function setView(s, e, gesture) {
+  const min = minRange();
+  if (e - s < min) { const c = (s + e) / 2; s = c - min / 2; e = c + min / 2; }
+  if (e - s > DAY) { s = 0; e = DAY; }
+  if (s < 0) { e -= s; s = 0; }
+  if (e > DAY) { s -= e - DAY; e = DAY; }
+  view = { s, e };
+  if (gesture) lastGesture = gesture;
+  render();
+}
+const zoomAround = (anchor, factor, g) => {
+  const len = Math.max(minRange(), Math.min(DAY, (view.e - view.s) * factor));
+  const f = (anchor - view.s) / (view.e - view.s);
+  setView(anchor - f * len, anchor - f * len + len, g);
+};
+const pan = (dm, g) => { const len = view.e - view.s; let s = Math.max(0, Math.min(DAY - len, view.s + dm)); setView(s, s + len, g); };
+const reset = g => setView(0, DAY, g);
+
+// ── bar markup per variant ─────────────────────────────────
+function barCardHtml() {
+  const main = '<div class="mb" id="mb" aria-label="Presence for the visible range"></div>';
+  const ov = '<div class="ov" id="ov" aria-label="Whole day overview; the rectangle is the visible range"></div>';
+  if (variant === 'A') return `<div class="vA"><div class="bar-row"><span class="range-text" id="rangeText"></span><button class="reset-btn" id="resetBtn">↺ full day</button></div>${main}${ov}</div>`;
+  if (variant === 'B') return `<div class="vB">${ov}${main}</div>`;
+  return `<div class="vC">${main}${ov}<div class="bar-row" style="border-bottom:0;border-top:1px solid var(--border)"><button class="reset-btn" id="resetBtn" title="Show the whole day">↺ full day</button></div></div>`;
+}
+
+function mount() {
+  document.getElementById('barCard').innerHTML = barCardHtml();
+  document.getElementById('blurb').innerHTML = VARIANTS[variant].blurb;
+  document.getElementById('vLabel').textContent = `${variant} — ${VARIANTS[variant].name}`;
+  wireMain(); wireOverview();
+  const rb = document.getElementById('resetBtn'); if (rb) rb.onclick = () => reset('reset button');
+  render();
+}
+
+// ── rendering ──────────────────────────────────────────────
+function tickStep(len) { for (const st of [15, 30, 60, 120, 180, 360]) if (len / st <= 12) return st; return 360; }
+function render() {
+  const mb = document.getElementById('mb'), ov = document.getElementById('ov');
+  const len = view.e - view.s, pct = m => ((m - view.s) / len * 100) + '%';
+  let h = '';
+  for (const [s, e, st] of SPANS) if (st !== 'U' && e > view.s && s < view.e)
+    h += `<div class="span ${st}" style="left:${pct(Math.max(s, view.s))};width:${(Math.min(e, view.e) - Math.max(s, view.s)) / len * 100}%"></div>`;
+  const step = tickStep(len);
+  for (let t = Math.ceil(view.s / step) * step; t < view.e; t += step)
+    h += `<div class="tick" style="left:${pct(t)}"><span>${step < 60 ? fmt(t) : fmt(t).slice(0, 2)}</span></div>`;
+  if (pinned && pinned.m >= view.s && pinned.m <= view.e) h += `<div class="pin-line" style="left:${pct(pinned.m)}"></div>`;
+  if (sel) h += `<div class="sel" style="left:${pct(Math.min(sel.a, sel.b))};width:${Math.abs(sel.b - sel.a) / len * 100}%"></div>`;
+  if (hover !== null && !sel) h += `<div class="hover-line" style="left:${pct(hover)}"></div><div class="hover-label" style="left:clamp(40px, ${pct(hover)}, calc(100% - 40px))">${fmt(hover)} · ${STATE_NAME[stateAt(hover)]}</div>`;
+  mb.innerHTML = h;
+
+  // overview
+  const dp = m => (m / DAY * 100) + '%';
+  let o = '';
+  if (variant === 'A') for (const [s, e, st] of SPANS) if (st !== 'U') o += `<div class="span ${st}" style="left:${dp(s)};width:${dp(e - s)}"></div>`;
+  if (variant !== 'C') for (let t = 0; t <= DAY; t += 180) o += `<div class="ov-tick" style="left:${dp(t)}">${variant === 'B' || t % 360 === 0 ? `<span>${fmt(t).slice(0, 2)}</span>` : ''}</div>`;
+  const ep = edgePx();
+  const labels = variant === 'B' ? `<span class="handle-label l">${fmt(view.s)}</span>` : '';
+  const labelsR = variant === 'B' ? `<span class="handle-label r">${fmt(view.e)}</span>` : '';
+  o += `<div class="rect${drag ? ' dragging' : ''}" data-role="rect" style="left:${dp(view.s)};width:${dp(len)}">
+          <div class="handle" data-role="l" style="left:${-ep / 2}px;width:${ep}px">${labels}</div>
+          <div class="handle" data-role="r" style="right:${-ep / 2}px;width:${ep}px">${labelsR}</div></div>`;
+  ov.innerHTML = o;
+
+  const rt = document.getElementById('rangeText'); if (rt) rt.textContent = `${fmt(view.s)}–${fmt(view.e)}`;
+  const rb = document.getElementById('resetBtn'); if (rb) rb.hidden = len >= DAY;
+
+  renderPreview(); renderActivity(); renderState();
+}
+
+function fakeShot(x, cls) {
+  const lines = Array.from({ length: 7 }, (_, i) => `<div class="ln" style="width:${30 + ((i * 37 + Math.round(x.m)) % 60)}%"></div>`).join('');
+  return `<div class="fake-win ${cls}" style="background:${x.app[2]}"><div class="tb">${x.app[1]}</div><div class="body">${lines}</div></div>`;
+}
+function renderPreview() {
+  const head = document.getElementById('pHead'), shot = document.getElementById('pShot');
+  const x = pinned || (hover !== null ? nearest(hover) : null);
+  shot.classList.toggle('hover', !pinned && !!x);
+  if (!x) { head.innerHTML = '<span class="p-hint">Hover the bar to preview, click to pin a screenshot</span>'; shot.innerHTML = '<span class="shot-empty">No screenshot</span>'; return; }
+  head.innerHTML = `<span class="p-time">${fmt(x.m)}</span>${pinned ? `<span class="p-trig">${TRIG[x.trig]}</span>` : ''}<span class="p-proc">${x.app[0]}</span><span class="p-title">${x.app[1]}</span>${pinned ? '<button class="reset-btn" id="unpin">✕</button>' : ''}`;
+  shot.innerHTML = fakeShot(x, '');
+  const u = document.getElementById('unpin'); if (u) u.onclick = () => { pinned = null; render(); };
+}
+function renderActivity() {
+  const entries = new Set(SHOTS.filter(x => x.m >= view.s && x.m <= view.e).map(x => x.app[1] + Math.floor(x.m / 30))).size;
+  const full = view.e - view.s >= DAY;
+  document.getElementById('activity').innerHTML = `<b>🪟 Active Windows &amp; Titles</b>${full ? '' : `<span class="badge">${fmt(view.s)}–${fmt(view.e)}</span>`}<span style="color:var(--muted)">${entries} entries · list unchanged, still filtered by the visible range</span>`;
+}
+function renderState() {
+  const n = hover !== null ? nearest(hover) : null;
+  const rows = {
+    'Visible range': `${fmt(view.s)}–${fmt(view.e)}`,
+    'Visible length': fmtDur(view.e - view.s),
+    'Last gesture': lastGesture,
+    'Cursor': hover === null ? '—' : `${fmt(hover)} (${STATE_NAME[stateAt(hover)]})`,
+    'Nearest screenshot': n ? `${fmt(n.m)}, ${Math.round(Math.abs(n.m - hover))} min away` : '—',
+    'Rect width on screen': (() => { const ov = document.getElementById('ov'); return ov ? Math.round(ov.clientWidth * (view.e - view.s) / DAY) + ' px' : '—'; })(),
+  };
+  document.getElementById('state').innerHTML = Object.entries(rows).map(([k, v]) => `<div><dt>${k}:</dt> <dd>${v}</dd></div>`).join('');
+}
+
+// ── main bar interactions ──────────────────────────────────
+function wireMain() {
+  const mb = document.getElementById('mb');
+  const minuteAt = cx => { const r = mb.getBoundingClientRect(); return view.s + Math.max(0, Math.min(1, (cx - r.left) / r.width)) * (view.e - view.s); };
+  let down = null;
+  mb.onpointermove = ev => {
+    hover = minuteAt(ev.clientX);
+    if (down && variant === 'C' && Math.abs(ev.clientX - down.x) > 4) { sel = { a: down.m, b: hover }; mb.setPointerCapture(ev.pointerId); }
+    render();
+  };
+  mb.onpointerleave = () => { if (!down) { hover = null; render(); } };
+  mb.onpointerdown = ev => { down = { x: ev.clientX, m: minuteAt(ev.clientX) }; };
+  mb.onpointerup = ev => {
+    if (sel) { const a = Math.min(sel.a, sel.b), b = Math.max(sel.a, sel.b); sel = null; down = null; setView(a, b, 'drag-select on main bar'); return; }
+    if (down) { const n = nearest(minuteAt(ev.clientX)); pinned = n && pinned !== n ? n : null; lastGesture = 'click main bar (pin)'; }
+    down = null; render();
+  };
+  mb.ondblclick = () => { if (variant !== 'B') reset('double-click main bar'); };
+  mb.onwheel = ev => {
+    ev.preventDefault();
+    const m = minuteAt(ev.clientX), dir = Math.sign(ev.deltaY || ev.deltaX);
+    const zoom = variant === 'B' ? ev.ctrlKey : !ev.shiftKey;
+    if (zoom) zoomAround(m, dir > 0 ? 1.5 : 1 / 1.5, `${variant === 'B' ? 'Ctrl+' : ''}wheel on main bar (zoom)`);
+    else pan(dir * (view.e - view.s) * .15, `${variant === 'C' ? 'Shift+' : ''}wheel on main bar (pan)`);
+  };
+}
+
+// ── overview interactions (pointer capture, like the #109 JS module would) ──
+let drag = null;
+function wireOverview() {
+  const ov = document.getElementById('ov');
+  const minuteAt = cx => { const r = ov.getBoundingClientRect(); return Math.max(0, Math.min(1, (cx - r.left) / r.width)) * DAY; };
+  ov.onpointerdown = ev => {
+    const role = ev.target.closest('[data-role]')?.dataset.role, m = minuteAt(ev.clientX), len = view.e - view.s;
+    ov.setPointerCapture(ev.pointerId);
+    if (role === 'l' || role === 'r') drag = { mode: role, g: `resize ${role === 'l' ? 'left' : 'right'} edge` };
+    else if (role === 'rect') drag = { mode: 'pan', m0: m, s0: view.s, g: 'drag rectangle (pan)' };
+    else if (variant === 'A') { setView(m - len / 2, m + len / 2, 'click overview (jump)'); drag = { mode: 'pan', m0: m, s0: view.s, g: 'jump + drag' }; }
+    else if (variant === 'B') drag = { mode: 'draw', a: m, g: 'draw new range on strip' };
+    else { pan(m < view.s ? -len : len, 'click track (page)'); drag = null; }
+    render();
+  };
+  ov.onpointermove = ev => {
+    if (!drag) return;
+    const m = minuteAt(ev.clientX), min = minRange();
+    if (drag.mode === 'pan') { const len = view.e - view.s; const s = Math.max(0, Math.min(DAY - len, drag.s0 + m - drag.m0)); view = { s, e: s + len }; }
+    else if (drag.mode === 'l') view = { s: Math.max(0, Math.min(m, view.e - min)), e: view.e };
+    else if (drag.mode === 'r') view = { s: view.s, e: Math.min(DAY, Math.max(m, view.s + min)) };
+    else if (drag.mode === 'draw') { const a = Math.min(drag.a, m), b = Math.max(drag.a, m); if (b - a >= min) view = { s: a, e: b }; }
+    lastGesture = drag.g; render();
+  };
+  ov.onpointerup = () => { drag = null; render(); };
+  ov.ondblclick = () => { if (variant === 'B') reset('double-click strip'); };
+  ov.onwheel = ev => {
+    if (variant !== 'A') return;
+    ev.preventDefault();
+    zoomAround((view.s + view.e) / 2, Math.sign(ev.deltaY) > 0 ? 1.5 : 1 / 1.5, 'wheel on overview (zoom around centre)');
+  };
+}
+
+// ── switcher ───────────────────────────────────────────────
+function go(d) { variant = KEYS[(KEYS.indexOf(variant) + d + KEYS.length) % KEYS.length]; history.replaceState(null, '', '#' + variant); hover = null; mount(); }
+document.getElementById('prev').onclick = () => go(-1);
+document.getElementById('next').onclick = () => go(1);
+document.addEventListener('keydown', ev => {
+  if (ev.target.closest('input,textarea,select,[contenteditable]')) return;
+  if (ev.key === 'ArrowLeft') go(-1); if (ev.key === 'ArrowRight') go(1);
+});
+window.addEventListener('hashchange', () => { const k = location.hash.slice(1); if (KEYS.includes(k) && k !== variant) { variant = k; mount(); } });
+document.getElementById('minRange').onchange = () => setView(view.s, view.e, 'changed minimum range');
+document.getElementById('edgePx').onchange = () => render();
+window.addEventListener('resize', renderState);
+mount();
+</script>
