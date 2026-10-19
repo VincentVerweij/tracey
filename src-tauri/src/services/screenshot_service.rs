@@ -399,15 +399,11 @@ impl CaptureSchedule {
         if !self.suspension.may_record() {
             return None;
         }
-<<<<<<< HEAD
         let trigger = if debounce_fired {
             Trigger::WindowChange
         } else {
             Trigger::Interval
         };
-=======
-        let trigger = if debounce_fired { Trigger::WindowChange } else { Trigger::Interval };
->>>>>>> 889f0dc (refactor: replace screenshot trigger strings with a Trigger enum (#98))
         if debounce_fired {
             self.debounce_until = None;
         }
@@ -667,14 +663,10 @@ mod tests {
                     .map(|(trigger, _)| (s, trigger))
             })
             .collect();
-<<<<<<< HEAD
         assert_eq!(
             captures,
             vec![(303, Trigger::SuspensionEnd), (363, Trigger::Interval)]
         );
-=======
-        assert_eq!(captures, vec![(303, Trigger::SuspensionEnd), (363, Trigger::Interval)]);
->>>>>>> 889f0dc (refactor: replace screenshot trigger strings with a Trigger enum (#98))
     }
 
     #[test]
