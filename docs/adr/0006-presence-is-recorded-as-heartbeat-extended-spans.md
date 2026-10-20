@@ -64,7 +64,7 @@ ADR-0003 and `GLOSSARY.md` describe `Locked` as "in-memory; re-seeded at startup
 ## Consequences
 
 - A new migration adds `presence_spans`. Retention, cleanup and sync of span data remain open on map #104 ("Span storage lifecycle").
-- Days recorded before this ships have no spans. How they render remains open on map #104 ("Historical days").
+- Days recorded before this ships have no spans. They render as plain `Untracked`, with no legacy mode or inferred spans ([#113](https://github.com/VincentVerweij/tracey/issues/113)).
 - Today's bar grows live from `open` plus `presence-changed`, without polling.
 - **Disconnected sessions** become `Away` through idle. `GetLastInputInfo` reports session-specific input for the calling session only (Microsoft documentation), and a disconnected session receives none, so its idle count keeps growing. This is confirmed by documentation, not by test.
 - The idle reading is correct across the 49.7-day wraparound of the 32-bit `LASTINPUTINFO.dwTime`: it subtracts on the low 32 bits of `GetTickCount64()` with wrapping arithmetic (#112). Before that fix, long uptimes would have painted the whole bar `Away`. An idle stretch of 49.7 days or more still wraps, which `dwTime` cannot represent anyway.

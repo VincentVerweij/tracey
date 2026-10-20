@@ -104,6 +104,10 @@ is observing. Internal vocabulary.
 Precedence when several hold: `Untracked` > `Away` > `Present`. Nothing is
 observed while `Paused`, so locking while paused stays `Untracked`.
 
+Any time without a recorded presence span is `Untracked`, including all time
+before presence recording began. Such time is not told apart from Tracey not
+running.
+
 **Idle** (for presence) — no input for `inactivity_timeout_seconds`. An idle
 `Away` span starts at the last input (`idle_since`), not when the threshold is
 crossed, so away-time shorter than the threshold stays `Present`.
