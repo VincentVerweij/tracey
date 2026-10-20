@@ -84,14 +84,12 @@ fn idle_ms(now: u64, last_input: u32) -> u32 {
 mod tests {
     use super::idle_ms;
 
+    const WRAP: u64 = 1 << 32;
+
     #[test]
     fn idle_is_time_since_last_input() {
         assert_eq!(idle_ms(10_000, 4_000), 6_000);
     }
-
-    /// GetTickCount64 never wraps, but LASTINPUTINFO.dwTime is 32-bit and
-    /// wraps to 0 every ~49.7 days of uptime.
-    const WRAP: u64 = 1 << 32;
 
     #[test]
     fn idle_is_correct_after_the_input_tick_wraps() {
