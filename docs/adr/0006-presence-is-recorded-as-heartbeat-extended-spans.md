@@ -67,7 +67,7 @@ ADR-0003 and `GLOSSARY.md` describe `Locked` as "in-memory; re-seeded at startup
 - Days recorded before this ships have no spans. How they render remains open on map #104 ("Historical days").
 - Today's bar grows live from `open` plus `presence-changed`, without polling.
 - **Disconnected sessions** become `Away` through idle. `GetLastInputInfo` reports session-specific input for the calling session only (Microsoft documentation), and a disconnected session receives none, so its idle count keeps growing. This is confirmed by documentation, not by test.
-- The idle reading has a pre-existing 49.7-day wraparound bug: the 32-bit `LASTINPUTINFO.dwTime` is subtracted from the 64-bit `GetTickCount64()`. On long uptimes it would paint the whole bar `Away`. It is tracked as its own bug.
+- The idle reading is correct across the 49.7-day wraparound of the 32-bit `LASTINPUTINFO.dwTime`: it subtracts on the low 32 bits of `GetTickCount64()` with wrapping arithmetic (#112). Before that fix, long uptimes would have painted the whole bar `Away`. An idle stretch of 49.7 days or more still wraps, which `dwTime` cannot represent anyway.
 
 ## Alternatives considered
 
