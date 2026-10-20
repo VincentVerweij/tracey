@@ -126,6 +126,10 @@ running, `Paused`, and sleep or hibernate, is `Untracked`. It emits
 **Open span** — the span the presence recorder is still extending. A heartbeat
 moves its end to now every ~30 s, so a crash loses at most that much.
 
+Presence spans are local to the device. They never sync, and they expire with
+screenshots (`screenshot_retention_days`). Days past the retention cutoff render
+as `Untracked`.
+
 The idle-prompt resolution (`break`, `meeting`, `keep`, `specify`) belongs to
 time entries and never changes a presence span. The bar records what was
 observed, not how it was interpreted.

@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-18
 - **Deciders:** Vincent Verweij
-- **Resolves:** [#106](https://github.com/VincentVerweij/tracey/issues/106), under map [#104](https://github.com/VincentVerweij/tracey/issues/104)
+- **Resolves:** [#106](https://github.com/VincentVerweij/tracey/issues/106); decision 7 resolves [#114](https://github.com/VincentVerweij/tracey/issues/114); both under map [#104](https://github.com/VincentVerweij/tracey/issues/104)
 - **Relates to:** [ADR-0002](0002-wts-session-notifications-detect-lock.md), [ADR-0003](0003-locked-is-lock-only-and-suspends-window-activity.md), [ADR-0005](0005-timeline-shows-presence-not-suspension.md)
 - **Vocabulary:** [`GLOSSARY.md` § Presence](../../GLOSSARY.md#presence)
 
@@ -61,10 +61,18 @@ When #62 lands, the recorder closes the open span when `Paused` is raised and op
 
 ADR-0003 and `GLOSSARY.md` describe `Locked` as "in-memory; re-seeded at startup, never persisted." That describes the *reason*: live state that gates the tracking loops. It still holds. Presence spans record lock *history*, and nothing ever reads them back to decide whether `Locked` holds now. ADR-0003's decision is neither amended nor superseded. It gains a pointer to this ADR.
 
+### 7. Span data is local and expires with screenshots
+
+Decided in #114.
+
+- **Retention:** spans are pruned by `screenshot_retention_days`, the same setting that prunes screenshots. A span is deleted once its `ended_at` is before the cutoff. A span that straddles the cutoff is kept whole. Both existing prune paths delete spans: the screenshot service's periodic cleanup and `screenshot_delete_expired`. The setting keeps its name, so no migration is needed. Its hint in Settings changes to "Screenshots and timeline presence history older than this are automatically deleted."
+- **Delete all:** `data_delete_all` also clears `presence_spans`.
+- **No sync:** spans are never pushed to or pulled from the external DB. Presence is per machine, because lock and idle are per session, and the bar only shows this device. The screenshots beside it don't sync either. Devices therefore never combine on one bar, and the external schema stays at version 2.
+
 ## Consequences
 
-- A new migration adds `presence_spans`. Retention, cleanup and sync of span data remain open on map #104 ("Span storage lifecycle").
-- Days recorded before this ships have no spans. They render as plain `Untracked`, with no legacy mode or inferred spans ([#113](https://github.com/VincentVerweij/tracey/issues/113)).
+- A new migration adds `presence_spans`. It is local-only data with the same lifetime as screenshots (decision 7).
+- Days recorded before this ships have no spans. They render as plain `Untracked` (#113). So does any day past the retention cutoff, where the spans have expired along with the screenshots, even though its time entries remain.
 - Today's bar grows live from `open` plus `presence-changed`, without polling.
 - **Disconnected sessions** become `Away` through idle. `GetLastInputInfo` reports session-specific input for the calling session only (Microsoft documentation), and a disconnected session receives none, so its idle count keeps growing. This is confirmed by documentation, not by test.
 - The idle reading is correct across the 49.7-day wraparound of the 32-bit `LASTINPUTINFO.dwTime`: it subtracts on the low 32 bits of `GetTickCount64()` with wrapping arithmetic (#112). Before that fix, long uptimes would have painted the whole bar `Away`. An idle stretch of 49.7 days or more still wraps, which `dwTime` cannot represent anyway.
