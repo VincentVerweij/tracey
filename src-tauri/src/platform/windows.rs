@@ -63,14 +63,44 @@ impl PlatformHooks for WindowsPlatformHooks {
             };
 
             if GetLastInputInfo(&mut last_input).as_bool() {
-                // GetTickCount64 MUST be used (not GetTickCount)
-                // GetTickCount wraps at ~49 days; GetTickCount64 does not
-                let now = GetTickCount64();
-                let elapsed_ms = now.saturating_sub(last_input.dwTime as u64);
-                elapsed_ms / 1000
+                u64::from(idle_ms(GetTickCount64(), last_input.dwTime)) / 1000
             } else {
                 0
             }
         }
+    }
+}
+
+/// Milliseconds since the last input. `last_input` is `LASTINPUTINFO.dwTime`,
+/// a 32-bit tick count that wraps every ~49.7 days of uptime, so the
+/// subtraction is done on the low 32 bits of `now` with wrapping arithmetic.
+/// Correct across a wrap as long as the user has been idle for less than
+/// ~49.7 days.
+fn idle_ms(now: u64, last_input: u32) -> u32 {
+    (now as u32).wrapping_sub(last_input)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::idle_ms;
+
+    #[test]
+    fn idle_is_time_since_last_input() {
+        assert_eq!(idle_ms(10_000, 4_000), 6_000);
+    }
+
+    /// GetTickCount64 never wraps, but LASTINPUTINFO.dwTime is 32-bit and
+    /// wraps to 0 every ~49.7 days of uptime.
+    const WRAP: u64 = 1 << 32;
+
+    #[test]
+    fn idle_is_correct_after_the_input_tick_wraps() {
+        assert_eq!(idle_ms(WRAP + 10_000, 4_000), 6_000);
+    }
+
+    #[test]
+    fn idle_is_correct_when_input_and_now_straddle_the_wrap() {
+        let last_input = (WRAP - 1_000) as u32;
+        assert_eq!(idle_ms(WRAP + 5_000, last_input), 6_000);
     }
 }

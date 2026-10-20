@@ -15,8 +15,9 @@ pub trait PlatformHooks: Send + Sync {
     /// (no mouse or keyboard input).
     ///
     /// Implementation uses GetLastInputInfo + GetTickCount64.
-    /// GetTickCount64 MUST be used (not GetTickCount) to avoid
-    /// 32-bit rollover after ~49 days of uptime.
+    /// `LASTINPUTINFO.dwTime` is 32-bit and wraps every ~49.7 days of
+    /// uptime, so the elapsed time is computed on the low 32 bits of
+    /// GetTickCount64 with wrapping arithmetic.
     fn get_idle_seconds(&self) -> u64;
 }
 
