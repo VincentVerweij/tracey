@@ -13,10 +13,6 @@ pub trait PlatformHooks: Send + Sync {
 
     /// Returns the number of seconds the system has been idle
     /// (no mouse or keyboard input).
-    ///
-    /// Implementation uses GetLastInputInfo + GetTickCount64.
-    /// GetTickCount64 MUST be used (not GetTickCount) to avoid
-    /// 32-bit rollover after ~49 days of uptime.
     fn get_idle_seconds(&self) -> u64;
 }
 
