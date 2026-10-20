@@ -366,9 +366,31 @@ Follow same pattern; scoped to `task_id`.
 ---
 
 ### `screenshot_delete_expired`
-Manually trigger retention cleanup.  
+Manually trigger retention cleanup. Also deletes presence spans that ended before the same cutoff ([ADR-0006](../../../docs/adr/0006-presence-is-recorded-as-heartbeat-extended-spans.md) decision 7).  
 **Input**: _(none)_  
-**Output**: `{ "deleted_count": "number" }`
+**Output**: `{ "deleted_count": "number" }` (screenshots only)
+
+---
+
+## Presence Commands
+
+### `presence_list`
+**Data source**: Local `presence_spans` SQLite table, written only by the presence recorder (never synced, see [ADR-0006](../../../docs/adr/0006-presence-is-recorded-as-heartbeat-extended-spans.md)).  
+**Input**:
+```json
+{ "request": { "from": "string (RFC 3339)", "to": "string (RFC 3339)" } }
+```
+**Output**: Array of spans overlapping `[from, to)` (`started_at < to AND ended_at > from`), ascending by `started_at`, **unclipped**:
+```json
+[{
+  "started_at": "string (UTC, e.g. 2026-10-20T09:00:00.000Z)",
+  "ended_at": "string (UTC)",
+  "state": "Present | Away",
+  "away_cause": "Locked | Idle | null",
+  "open": "boolean — true only for the span still being extended"
+}]
+```
+`Untracked` is never returned: every uncovered stretch is `Untracked`. A `from` or `to` that is not RFC 3339 is an error.
 
 ---
 
@@ -527,6 +549,7 @@ The Rust layer emits these events to all WebView2 windows; Blazor subscribes via
 | `tracey://timer-tick` | `{ elapsed_seconds: number }` | Every second while a timer is running |
 | `tracey://idle-detected` | `{ idle_since: string, had_active_timer: boolean }` | When idle threshold crossed |
 | `tracey://idle-resolved` | `{ created_entry_id: string \| null }` | After idle resolution saved |
+| `tracey://presence-changed` | `{ state: "Present" \| "Away" \| null, away_cause: "Locked" \| "Idle" \| null, at: string }` | After each presence transition the presence recorder writes (never for a heartbeat). `state: null` means nothing is open (`Untracked`); `at` is where the new span starts, or where the last one ended |
 | `tracey://screenshot-captured` | `{ id: string, captured_at: string }` | After each screenshot saved |
 | `tracey://sync-status-changed` | `{ connected: boolean, pending: number }` | When sync state changes |
 | `tracey://notification-sent` | `{ channel_id: string, message: string }` | When a notification fires |

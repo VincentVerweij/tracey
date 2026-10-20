@@ -63,7 +63,8 @@ pub fn screenshot_delete_expired(state: State<'_, AppState>) -> Result<serde_jso
         )
         .unwrap_or(30);
 
-    let cutoff = (chrono::Utc::now() - chrono::Duration::days(retention_days)).to_rfc3339();
+    let cutoff_at = chrono::Utc::now() - chrono::Duration::days(retention_days);
+    let cutoff = cutoff_at.to_rfc3339();
 
     // Get paths to delete from disk
     let mut stmt = conn
@@ -87,6 +88,9 @@ pub fn screenshot_delete_expired(state: State<'_, AppState>) -> Result<serde_jso
             rusqlite::params![cutoff],
         )
         .map_err(|e| e.to_string())?;
+
+    // Presence spans expire with screenshots (ADR-0006 decision 7).
+    crate::services::presence::store::prune_expired(&conn, cutoff_at).map_err(|e| e.to_string())?;
 
     Ok(serde_json::json!({ "deleted_count": deleted_count }))
 }

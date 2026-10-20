@@ -54,6 +54,7 @@ pub fn run() {
     let sync_state = Arc::new(std::sync::Mutex::new(SyncState::default()));
     let sync_notify = Arc::new(tokio::sync::Notify::new());
     let suspension = Arc::new(services::suspension::Suspension::new());
+    let presence = Arc::new(services::presence::recorder::PresenceRecording::new());
 
     // Load persisted classification model and rules at startup
     let classification_state = {
@@ -86,6 +87,7 @@ pub fn run() {
             platform,
             sync_state,
             suspension,
+            presence,
             sync_notify,
             classification_state,
             active_learning_queue,
@@ -132,18 +134,21 @@ pub fn run() {
             // and the session-state query is a no-op so a real session state never
             // overrides them.
             use services::suspension::{LoopSuspension, SessionStateQuery, TrackingLoop};
-            let suspension = {
+            let (suspension, presence_wake) = {
                 use tauri::Manager;
-                app.state::<AppState>().suspension.clone()
+                let state = app.state::<AppState>();
+                (state.suspension.clone(), state.presence.wake.clone())
             };
             #[cfg(not(feature = "test"))]
             let session_state_query: SessionStateQuery = {
-                platform::windows::session_watch::start(suspension.clone());
+                platform::windows::session_watch::start(suspension.clone(), presence_wake);
                 Arc::new(platform::windows::session_watch::reconcile)
             };
             #[cfg(feature = "test")]
-            let session_state_query: SessionStateQuery =
-                services::suspension::no_session_state_query();
+            let session_state_query: SessionStateQuery = {
+                let _ = presence_wake; // no session watch to wake the recorder
+                services::suspension::no_session_state_query()
+            };
             let loop_suspension = |tracking_loop| {
                 LoopSuspension::new(
                     suspension.clone(),
@@ -152,6 +157,11 @@ pub fn run() {
                 )
             };
 
+            // Not a tracking loop: never suspended, it records presence (ADR-0006).
+            services::presence::recorder::start_presence_recorder(
+                app.handle().clone(),
+                session_state_query.clone(),
+            );
             services::timer_tick::start_tick_loop(app.handle().clone());
             services::idle_service::start_idle_loop(app.handle().clone());
             services::screenshot_service::start_screenshot_loop(
@@ -228,6 +238,7 @@ pub fn run() {
             commands::hierarchy::fuzzy_match_tasks,
             commands::screenshot::screenshot_list,
             commands::screenshot::screenshot_delete_expired,
+            commands::presence::presence_list,
             commands::activity::tag_list,
             commands::activity::tag_create,
             commands::activity::tag_delete,
@@ -243,6 +254,11 @@ pub fn run() {
             commands::classification::classification_dismiss,
             commands::classification::classification_event_list,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                services::presence::recorder::close_on_exit(app);
+            }
+        });
 }

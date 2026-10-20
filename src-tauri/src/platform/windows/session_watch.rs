@@ -20,6 +20,8 @@ use std::cell::OnceCell;
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
+use tokio::sync::Notify;
+
 use windows::core::{w, PWSTR};
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_CLASS_ALREADY_EXISTS, E_UNEXPECTED, HWND, LPARAM, LRESULT, WAIT_OBJECT_0,
@@ -45,15 +47,18 @@ thread_local! {
     /// The suspension the window procedure pushes into. Set once, on the
     /// watch thread, before the window exists.
     static SUSPENSION: OnceCell<Arc<Suspension>> = const { OnceCell::new() };
+    /// Wakes the presence recorder on lock and unlock, so lock instants are
+    /// exact (ADR-0006 decision 2). Set alongside `SUSPENSION`.
+    static PRESENCE_WAKE: OnceCell<Arc<Notify>> = const { OnceCell::new() };
 }
 
 /// Start the session watch on its own thread. Returns once `Locked` has been
 /// seeded, so no loop observes before the reason reflects the session.
-pub fn start(suspension: Arc<Suspension>) {
+pub fn start(suspension: Arc<Suspension>, presence_wake: Arc<Notify>) {
     let (seeded_tx, seeded_rx) = mpsc::channel();
     let spawned = std::thread::Builder::new()
         .name("session-watch".into())
-        .spawn(move || run(suspension, seeded_tx));
+        .spawn(move || run(suspension, presence_wake, seeded_tx));
     match spawned {
         Ok(_) => {
             if seeded_rx.recv().is_err() {
@@ -67,9 +72,13 @@ pub fn start(suspension: Arc<Suspension>) {
 /// The watch thread: window, registration, seed, then the message pump.
 /// Registering before seeding means a lock that lands after the seed query is
 /// queued as an event rather than lost.
-fn run(suspension: Arc<Suspension>, seeded: mpsc::Sender<()>) {
+fn run(suspension: Arc<Suspension>, presence_wake: Arc<Notify>, seeded: mpsc::Sender<()>) {
+    // Fresh thread: both cells are empty.
     SUSPENSION.with(|cell| {
-        let _ = cell.set(Arc::clone(&suspension)); // fresh thread: the cell is empty
+        let _ = cell.set(Arc::clone(&suspension));
+    });
+    PRESENCE_WAKE.with(|cell| {
+        let _ = cell.set(presence_wake);
     });
 
     let hwnd = match create_message_window() {
@@ -253,12 +262,20 @@ unsafe extern "system" fn window_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     if msg == WM_WTSSESSION_CHANGE {
-        // try_with: a panic cannot unwind out of an extern "system" fn.
+        // try_with, here and below: a panic cannot unwind out of an
+        // extern "system" fn, and a missing cell has nothing to notify.
         let _ = SUSPENSION.try_with(|cell| {
             if let Some(suspension) = cell.get() {
                 on_session_change(suspension, wparam.0 as u32);
             }
         });
+        if matches!(wparam.0 as u32, WTS_SESSION_LOCK | WTS_SESSION_UNLOCK) {
+            let _ = PRESENCE_WAKE.try_with(|cell| {
+                if let Some(wake) = cell.get() {
+                    wake.notify_one();
+                }
+            });
+        }
         return LRESULT(0);
     }
     DefWindowProcW(hwnd, msg, wparam, lparam)

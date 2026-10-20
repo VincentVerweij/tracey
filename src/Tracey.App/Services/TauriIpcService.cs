@@ -153,6 +153,12 @@ public class TauriIpcService
     public Task<DeletedCountResponse> ScreenshotDeleteExpiredAsync() =>
         Invoke<DeletedCountResponse>("screenshot_delete_expired");
 
+    // ── Presence ──────────────────────────────────────────────────────────
+
+    /// Presence spans overlapping [from, to), ascending and unclipped (ADR-0006).
+    public Task<PresenceSpan[]> PresenceListAsync(string from, string to) =>
+        Invoke<PresenceSpan[]>("presence_list", new { request = new { from, to } });
+
     // ── Idle Detection ────────────────────────────────────────────────────
 
     public Task<IdleStatusResponse> IdleGetStatusAsync() =>
@@ -520,6 +526,19 @@ public record ScreenshotItem(
     [property: JsonPropertyName("window_title")] string WindowTitle,
     [property: JsonPropertyName("process_name")] string ProcessName,
     [property: JsonPropertyName("trigger")] string Trigger);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Presence
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A presence span: State is "Present" or "Away"; AwayCause is "Locked" or
+/// "Idle" exactly when Away. Open marks the span still being extended.
+public record PresenceSpan(
+    [property: JsonPropertyName("started_at")] string StartedAt,
+    [property: JsonPropertyName("ended_at")] string EndedAt,
+    [property: JsonPropertyName("state")] string State,
+    [property: JsonPropertyName("away_cause")] string? AwayCause,
+    [property: JsonPropertyName("open")] bool Open);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Idle Detection
