@@ -258,7 +258,7 @@ test.describe('Issue Regressions — March 17 2026', () => {
   });
 
   test.describe('Issue 1 — Timeline zoom', () => {
-    test('scroll wheel zooms in and shows zoom indicator', async ({ page }) => {
+    test('scroll wheel zooms in and shows the visible range', async ({ page }) => {
       await goToTimeline(page);
       
       // If there are no screenshots, zoom still works on the bar
@@ -274,15 +274,19 @@ test.describe('Issue Regressions — March 17 2026', () => {
         await bar.dispatchEvent('wheel', { deltaY: -100, deltaX: 0 });
         await page.waitForTimeout(300);
         
-        // Zoom indicator should appear
-        const indicator = page.locator('.timeline-zoom-indicator');
-        await expect(indicator).toBeVisible();
-        await expect(indicator).toContainText('window');
+        // The header shows the visible range, followed by ↺ full day
+        const rangeText = page.locator('[data-testid="zoom-range-text"]');
+        const resetButton = page.getByRole('button', { name: 'Reset zoom' });
+        await expect(rangeText).toHaveText(/^\d{2}:\d{2}–\d{2}:\d{2}$/);
+        await expect(rangeText).not.toHaveText('00:00–24:00');
+        await expect(resetButton).toBeVisible();
+        await expect(resetButton).toHaveText('↺ full day');
         
         // Double click to reset
         await bar.dblclick();
         await page.waitForTimeout(300);
-        await expect(page.locator('.timeline-zoom-indicator')).not.toBeVisible();
+        await expect(rangeText).toHaveText('00:00–24:00');
+        await expect(resetButton).not.toBeVisible();
       }
     });
   });
