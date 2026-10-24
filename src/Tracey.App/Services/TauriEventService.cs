@@ -19,6 +19,7 @@ public class TauriEventService : IDisposable
     public event Action<TimerTickPayload>? OnTimerTick;
     public event Action<IdleDetectedPayload>? OnIdleDetected;
     public event Action<IdleResolvedPayload>? OnIdleResolved;
+    public event Action<PresenceChangedPayload>? OnPresenceChanged;
     public event Action<ScreenshotCapturedPayload>? OnScreenshotCaptured;
     public event Action<SyncStatusPayload>? OnSyncStatusChanged;
     public event Action<NotificationSentPayload>? OnNotificationSent;
@@ -81,6 +82,10 @@ public class TauriEventService : IDisposable
                     var resolved = JsonSerializer.Deserialize<IdleResolvedPayload>(jsonPayload, _jsonOptions);
                     if (resolved != null) OnIdleResolved?.Invoke(resolved);
                     break;
+                case "tracey://presence-changed":
+                    var presence = JsonSerializer.Deserialize<PresenceChangedPayload>(jsonPayload, _jsonOptions);
+                    if (presence != null) OnPresenceChanged?.Invoke(presence);
+                    break;
                 case "tracey://screenshot-captured":
                     var shot = JsonSerializer.Deserialize<ScreenshotCapturedPayload>(jsonPayload, _jsonOptions);
                     if (shot != null) OnScreenshotCaptured?.Invoke(shot);
@@ -130,6 +135,12 @@ public record IdleDetectedPayload(
 
 public record IdleResolvedPayload(
     [property: JsonPropertyName("created_entry_id")] string? CreatedEntryId);
+
+/// State is "Present", "Away" or null (nothing open: `Untracked`).
+public record PresenceChangedPayload(
+    [property: JsonPropertyName("state")] string? State,
+    [property: JsonPropertyName("away_cause")] string? AwayCause,
+    [property: JsonPropertyName("at")] string At);
 
 public record ScreenshotCapturedPayload(
     [property: JsonPropertyName("id")] string Id,

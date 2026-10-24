@@ -105,8 +105,8 @@ Precedence when several hold: `Untracked` > `Away` > `Present`. Nothing is
 observed while `Paused`, so locking while paused stays `Untracked`.
 
 Any time without a recorded presence span is `Untracked`, including all time
-before presence recording began. Such time is not told apart from Tracey not
-running.
+before presence recording began, and on today, also the rest of the day after
+now. Such time is not told apart from Tracey not running.
 
 **Idle** (for presence) — no input for `inactivity_timeout_seconds`. An idle
 `Away` span starts at the last input (`idle_since`), not when the threshold is

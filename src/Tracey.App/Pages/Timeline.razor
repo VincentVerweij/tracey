@@ -2,6 +2,7 @@
 @inject TauriIpcService Tauri
 @inject TauriEventService Events
 @inject IJSRuntime JS
+@using Tracey.App.TimelineModel
 @implements IDisposable
 
 <PageTitle>Timeline — Tracey</PageTitle>
@@ -20,7 +21,7 @@
         <div class="timeline-controls">
             <input type="date"
                    @bind="_dateFilter"
-                   @bind:after="LoadScreenshots"
+                   @bind:after="LoadDay"
                    aria-label="Filter by date" />
             <button @onclick="RunCleanup" class="t-btn t-btn-ghost" aria-label="Clean up expired screenshots">
                 Clean up
@@ -32,7 +33,7 @@
     {
         <div class="t-loading-text" aria-live="polite">Loading…</div>
     }
-    else if (_screenshots.Count == 0)
+    else if (_day.IsEmpty)
     {
         <div class="empty-state-illustration" aria-label="No screenshots yet">
             <span class="empty-state-emoji">📅</span>
@@ -45,67 +46,70 @@
         <div class="timeline-day-bar"
              aria-label="24-hour timeline for @_dateFilter.ToString("yyyy-MM-dd")">
             <div class="timeline-zoom-indicator" aria-live="polite">
-                <span class="zoom-level-text">@FormatZoomLevel()</span>
-                @if (_zoomHours < 23.9)
+                <span class="zoom-range-text" data-testid="zoom-range-text">@_zoom.RangeText</span>
+                @if (!_zoom.IsFullDay)
                 {
                     <button class="zoom-reset-btn" @onclick="ResetZoom" title="Reset to full day view" aria-label="Reset zoom">↺ full day</button>
                 }
             </div>
             <div class="timeline-bar-inner"
-                  @onmousemove="HandleBarMouseMove"
+                 @onmousemove="HandleBarMouseMove"
                  @onmouseup="HandleBarMouseUp"
                  @onmouseleave="HandleBarMouseLeave"
                  @onclick="HandleBarClick"
-                  @onwheel="HandleBarWheel"
-                  @onwheel:preventDefault="true"
-                  @ondblclick="ResetZoom"
-                  data-zoom="@_zoomHours.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)">
+                 @onwheel="HandleBarWheel"
+                 @onwheel:preventDefault="true"
+                 @ondblclick="HandleBarDoubleClick">
 
-                @* Hour markers — only render hours within the current zoom window *@
-                @for (int h = 0; h <= 23; h++)
+                @* Presence spans; Untracked draws nothing *@
+                @foreach (var span in _day.VisibleSpans(_zoom))
                 {
-                    var hPct = (h - _viewStartHours) / _zoomHours * 100.0;
-                    if (hPct < -2 || hPct > 102) continue;
-                    var hour = h;
-                    <div class="timeline-hour-marker"
-                         style="left: @hPct.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%"
+                    <div class="timeline-span @(span.Presence == Presence.Present ? "timeline-span-present" : "timeline-span-away")"
+                         style="left: @Pct(_zoom.PercentOf(span.Start))%; width: @Pct((span.End - span.Start) / _zoom.Length * 100.0)%"
                          aria-hidden="true">
-                        <span class="hour-label">@hour.ToString("D2")</span>
                     </div>
                 }
 
-                @if (_zoomHours < 23.9)
+                @{
+                    var labelStep = _zoom.LabelStep;
+                }
+                @foreach (var t in _zoom.LabelTimes())
+                {
+                    var label = ZoomRange.Clock(t);
+                    <div class="timeline-hour-marker"
+                         style="left: @Pct(_zoom.PercentOf(t))%"
+                         aria-hidden="true">
+                        <span class="hour-label">@(labelStep < TimeSpan.FromHours(1) ? label : label[..2])</span>
+                    </div>
+                }
+
+                @if (!_zoom.IsFullDay)
                 {
                     <div class="timeline-zoom-range-overlay @(_isDraggingZoomRange ? "timeline-zoom-range-overlay-dragging" : "")"
-                         style="left: @GetZoomRangeLeftPercent().ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%; width: @GetZoomRangeWidthPercent().ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%;"
+                         style="left: @Pct(_zoom.Start / TimelineDay.Length * 100.0)%; width: @Pct(_zoom.Length / TimelineDay.Length * 100.0)%;"
                          @onmousedown="HandleZoomRangeMouseDown"
                          @onmousedown:stopPropagation="true"
                          aria-label="Current zoom range. Drag left or right to move the visible time window.">
                     </div>
                 }
 
-                @* Screenshot dots *@
-                @foreach (var s in _screenshots)
+                @* Pin marker at the pinned capture's own time *@
+                @if (PinnedOffset() is { } pinOffset && pinOffset >= _zoom.Start && pinOffset <= _zoom.End)
                 {
-                    var dotPct = TimeToPercent(s.CapturedAt);
-                    <button class="timeline-screenshot-dot @(_selected?.Id == s.Id ? "timeline-dot-selected" : "")"
-                            style="left: @dotPct.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%"
-                            @onclick:stopPropagation="true"
-                            @onclick="() => SelectScreenshot(s)"
-                            aria-label="Screenshot at @FormatTime(s.CapturedAt) — @s.WindowTitle"
-                            data-testid="screenshot-item"
-                            title="@FormatTime(s.CapturedAt) · @s.WindowTitle">
-                    </button>
+                    <div class="timeline-pin-line"
+                         style="left: @Pct(_zoom.PercentOf(pinOffset))%"
+                         data-testid="timeline-pin-line"
+                         aria-hidden="true">
+                    </div>
                 }
 
-                @* Hover indicator *@
-                @if (_hoverTimeLabel is not null)
+                @if (_hoverOffset is { } hoverOffset)
                 {
-                    <div class="timeline-hover-indicator"
-                         style="left: @_hoverPct.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)%"
-                         aria-hidden="true">
-                        <span class="hover-time-label">@_hoverTimeLabel</span>
-                    </div>
+                    var hoverPct = Pct(_zoom.PercentOf(hoverOffset));
+                    <div class="timeline-hover-line" style="left: @hoverPct%" aria-hidden="true"></div>
+                    <span class="hover-time-label"
+                          style="left: clamp(4.5rem, @hoverPct%, calc(100% - 4.5rem))"
+                          aria-hidden="true">@ZoomRange.Clock(hoverOffset) · @_day.PresenceAt(_day.At(hoverOffset)).Word()</span>
                 }
             </div>
         </div>
@@ -126,21 +130,27 @@
                      class="screenshot-img"
                      @onerror="HandleImageError" />
             }
-            else if (_hoverNearest is not null)
+            else if (_hoverPick is HoverPick.Shot hoverShot)
             {
                 <div class="preview-header preview-header-hover">
-                    <span class="preview-time">@FormatTime(_hoverNearest.CapturedAt)</span>
-                    <span class="preview-process">@_hoverNearest.ProcessName</span>
-                    <span class="preview-title preview-title-text">@_hoverNearest.WindowTitle</span>
+                    <span class="preview-time">@FormatTime(hoverShot.Screenshot.CapturedAt)</span>
+                    <span class="preview-process">@hoverShot.Screenshot.ProcessName</span>
+                    <span class="preview-title preview-title-text">@hoverShot.Screenshot.WindowTitle</span>
                 </div>
                 <img src="@_hoverImageUrl"
-                     alt="Screenshot from @FormatTime(_hoverNearest.CapturedAt)"
+                     alt="Screenshot from @FormatTime(hoverShot.Screenshot.CapturedAt)"
                      class="screenshot-img screenshot-img-hover" />
+            }
+            else if (_hoverPick is HoverPick.Gap gap && _hoverOffset is { } gapOffset)
+            {
+                <div class="preview-placeholder preview-gap" data-testid="preview-gap">
+                    <span>@PresenceText.GapCard(gap.Presence, ZoomRange.Clock(gapOffset))</span>
+                </div>
             }
             else
             {
                 <div class="preview-placeholder">
-                    <span>Hover or click a dot to preview</span>
+                    <span>Hover the bar to preview a screenshot</span>
                 </div>
             }
         </div>
@@ -152,9 +162,9 @@
                     aria-expanded="@_activityExpanded"
                     aria-controls="activity-list-body">
                 <span class="activity-list-title">🪟 Active Windows &amp; Titles</span>
-                @if (_zoomHours < 23.9)
+                @if (!_zoom.IsFullDay)
                 {
-                    <span class="activity-filter-badge">@FormatZoomLevel()</span>
+                    <span class="activity-filter-badge">@_zoom.RangeText</span>
                 }
                 <span class="activity-list-count">@_visibleActivityEntries.Count @(_visibleActivityEntries.Count == 1 ? "entry" : "entries")</span>
                 <span class="activity-list-chevron" aria-hidden="true">@(_activityExpanded ? "▲" : "▼")</span>
@@ -204,26 +214,30 @@
     }
 </div>
 
+
 @code {
-    private const double HoursPerDay = 24.0;
     private const double DefaultTimelineWidthPx = 800;
-    private const double MinViewStartDelta = 0.0001;
     private const string TimelineWidthJsMethod = "traceyBridge.getTimelineBarWidth";
 
+    // Matches the presence recorder's heartbeat (#120).
+    private static readonly TimeSpan LiveTickInterval = TimeSpan.FromSeconds(30);
+
     private List<ScreenshotItem> _screenshots = new();
+    private PresenceSpan[] _spans = [];
+    private TimelineDay _day = TimelineDay.Create(DateTimeOffset.Now, [], []);
     private ScreenshotItem? _selected;
-    private ScreenshotItem? _hoverNearest;
     private string _selectedImageUrl = string.Empty;
-    private string _hoverImageUrl = string.Empty;
     private bool _isLoading;
     private string? _errorMessage;
     private DateOnly _dateFilter = DateOnly.FromDateTime(DateTime.Today);
-    private double _hoverPct = 0;
-    private string? _hoverTimeLabel;
 
-    // Zoom state
-    private double _zoomHours = HoursPerDay;    // hours visible in the window (24 = full day)
-    private double _viewStartHours = 0.0; // hours from midnight where view starts
+    // Hover state
+    private TimeSpan? _hoverOffset;
+    private HoverPick? _hoverPick;
+    private string? _hoverImageId;
+    private string _hoverImageUrl = string.Empty;
+
+    private ZoomRange _zoom = ZoomRange.FullDay;
 
     // Activity list state
     private bool _activityExpanded = true;
@@ -235,44 +249,121 @@
     private bool _didDragZoomRange;
     private bool _suppressNextBarClick;
     private double _dragStartClientX;
-    private double _dragStartViewStartHours;
+    private ZoomRange _dragStartZoom = ZoomRange.FullDay;
+
+    // The pin before a double-click's first click, restored by the double-click.
+    private ScreenshotItem? _pinBeforeClick;
+    private string _pinImageBeforeClick = string.Empty;
+
+    private Timer? _liveTick;
 
     protected override async Task OnInitializedAsync()
     {
         Events.OnScreenshotCaptured += HandleScreenshotCaptured;
+        Events.OnPresenceChanged += HandlePresenceChanged;
         Events.OnError += HandleError;
-        await LoadScreenshots();
+        await LoadDay();
     }
 
-    private Task LoadScreenshots() => LoadScreenshots(showLoading: true);
+    private DateTimeOffset DayStart =>
+        new(_dateFilter.ToDateTime(TimeOnly.MinValue, DateTimeKind.Local));
 
-    private async Task LoadScreenshots(bool showLoading)
+    private Task LoadDay() => LoadDay(showLoading: true);
+
+    private async Task LoadDay(bool showLoading)
     {
         if (showLoading)
         {
             _isLoading = true;
             _selected = null;
             _selectedImageUrl = string.Empty;
-            _hoverNearest = null;
-            _hoverImageUrl = string.Empty;
+            ClearHover();
             StateHasChanged();
         }
+        var date = _dateFilter;
         try
         {
             var from = _dateFilter.ToDateTime(TimeOnly.MinValue).ToUniversalTime().ToString("o");
             var to = _dateFilter.ToDateTime(TimeOnly.MaxValue).ToUniversalTime().ToString("o");
-            var result = await Tauri.ScreenshotListAsync(from, to);
-            _screenshots = (result ?? Array.Empty<ScreenshotItem>()).ToList();
+            var screenshots = Tauri.ScreenshotListAsync(from, to);
+            var spans = FetchSpansAsync();
+            await Task.WhenAll(screenshots, spans);
+            if (date != _dateFilter) return;
+            _screenshots = (screenshots.Result ?? Array.Empty<ScreenshotItem>()).ToList();
+            _spans = spans.Result;
+            BuildDay();
             BuildActivityEntries();
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Failed to load screenshots: {ex.Message}";
+            _errorMessage = $"Failed to load the timeline: {ex.Message}";
         }
         finally
         {
             _isLoading = false;
         }
+    }
+
+    private async Task<PresenceSpan[]> FetchSpansAsync()
+    {
+        var dayStart = DayStart;
+        var from = dayStart.UtcDateTime.ToString("o");
+        var to = (dayStart + TimelineDay.Length).UtcDateTime.ToString("o");
+        return await Tauri.PresenceListAsync(from, to) ?? [];
+    }
+
+    private void BuildDay()
+    {
+        _day = TimelineDay.Create(DayStart, _spans, _screenshots).GrowOpenSpan(DateTimeOffset.Now);
+        UpdateLiveTick();
+    }
+
+    // ── Live today (#120) ────────────────────────────────────────────────
+
+    private void UpdateLiveTick()
+    {
+        var now = DateTimeOffset.Now;
+        var isToday = now >= _day.DayStart && now < _day.DayEnd;
+        if (!isToday)
+            StopLiveTick();
+        else
+            _liveTick ??= new Timer(_ => InvokeAsync(LiveTick), null, LiveTickInterval, LiveTickInterval);
+    }
+
+    private void LiveTick()
+    {
+        var now = DateTimeOffset.Now;
+        _day = _day.GrowOpenSpan(now);
+        // Past midnight the page stays on its date: that was the last grow.
+        if (now >= _day.DayEnd)
+            StopLiveTick();
+        StateHasChanged();
+    }
+
+    private void StopLiveTick()
+    {
+        _liveTick?.Dispose();
+        _liveTick = null;
+    }
+
+    private void HandlePresenceChanged(PresenceChangedPayload payload)
+    {
+        InvokeAsync(async () =>
+        {
+            var date = _dateFilter;
+            try
+            {
+                var spans = await FetchSpansAsync();
+                if (date != _dateFilter) return;
+                _spans = spans;
+                BuildDay();
+            }
+            catch (Exception ex)
+            {
+                _errorMessage = $"Failed to load presence: {ex.Message}";
+            }
+            StateHasChanged();
+        });
     }
 
     private async Task RunCleanup()
@@ -281,7 +372,7 @@
         {
             await Tauri.ScreenshotDeleteExpiredAsync();
             _errorMessage = null;
-            await LoadScreenshots();
+            await LoadDay();
         }
         catch (Exception ex)
         {
@@ -289,18 +380,14 @@
         }
     }
 
-    private async Task SelectScreenshot(ScreenshotItem s)
+    private async Task SelectScreenshot(ScreenshotItem s) =>
+        await PinAsync(_selected?.Id == s.Id ? null : s);
+
+    private async Task PinAsync(ScreenshotItem? s)
     {
-        if (_selected?.Id == s.Id)
-        {
-            _selected = null;
-            _selectedImageUrl = string.Empty;
-        }
-        else
-        {
-            _selected = s;
-            _selectedImageUrl = await GetImgSrcAsync(s.FilePath);
-        }
+        if (s?.Id == _selected?.Id) return;
+        _selected = s;
+        _selectedImageUrl = s is null ? string.Empty : await GetImgSrcAsync(s.FilePath);
     }
 
     private void ClosePreview()
@@ -308,6 +395,11 @@
         _selected = null;
         _selectedImageUrl = string.Empty;
     }
+
+    private TimeSpan? PinnedOffset() =>
+        _selected is not null && DateTimeOffset.TryParse(_selected.CapturedAt, out var at)
+            ? _day.OffsetOf(at)
+            : null;
 
     private void DismissError() => _errorMessage = null;
 
@@ -320,7 +412,7 @@
         {
             InvokeAsync(async () =>
             {
-                await LoadScreenshots(showLoading: false);
+                await LoadDay(showLoading: false);
                 StateHasChanged();
             });
         }
@@ -337,6 +429,8 @@
         _errorMessage = "Could not load screenshot image — file may have been moved or deleted.";
     }
 
+    // ── Bar mouse handling ───────────────────────────────────────────────
+
     private async Task HandleBarMouseMove(MouseEventArgs e)
     {
         if (_isDraggingZoomRange)
@@ -345,51 +439,58 @@
             return;
         }
 
-        var pct = await GetMousePercentAsync(e.ClientX);
-        _hoverPct = pct;
-
-        var actualHours = _viewStartHours + pct / 100.0 * _zoomHours;
-        var h = (int)actualHours;
-        var m = (int)((actualHours - h) * 60);
-        _hoverTimeLabel = $"{h:D2}:{m:D2}";
-
-        _hoverNearest = FindNearestScreenshot(pct);
-        if (_hoverNearest != null && _hoverNearest.Id != (_selected?.Id ?? ""))
+        var offset = await GetMouseOffsetAsync(e.ClientX);
+        _hoverOffset = offset;
+        _hoverPick = _day.Pick(_day.At(offset));
+        if (_hoverPick is HoverPick.Shot shot && shot.Screenshot.Id != _hoverImageId)
         {
-            _hoverImageUrl = await GetImgSrcAsync(_hoverNearest.FilePath);
+            _hoverImageId = shot.Screenshot.Id;
+            _hoverImageUrl = await GetImgSrcAsync(shot.Screenshot.FilePath);
         }
     }
 
     private void HandleBarMouseLeave()
     {
         HandleBarMouseUp();
-        _hoverTimeLabel = null;
-        _hoverNearest = null;
+        ClearHover();
+    }
+
+    private void ClearHover()
+    {
+        _hoverOffset = null;
+        _hoverPick = null;
+        _hoverImageId = null;
         _hoverImageUrl = string.Empty;
-        _hoverPct = 0;
     }
 
     private async Task HandleBarClick(MouseEventArgs e)
     {
+        // A double-click's clicks arrive before it: the first one notes the pin
+        // so the double-click can put it back, the second one is ignored.
+        if (e.Detail > 1) return;
+        _pinBeforeClick = _selected;
+        _pinImageBeforeClick = _selectedImageUrl;
+
         if (_suppressNextBarClick)
         {
             _suppressNextBarClick = false;
             return;
         }
 
-        var pct = await GetMousePercentAsync(e.ClientX);
-        var nearest = FindNearestScreenshot(pct);
-        if (nearest != null)
-            await SelectScreenshot(nearest);
+        var offset = await GetMouseOffsetAsync(e.ClientX);
+        await PinAsync(_day.Click(_day.At(offset), _selected));
     }
 
-    private ScreenshotItem? FindNearestScreenshot(double pct)
+    private void HandleBarDoubleClick()
     {
-        if (_screenshots.Count == 0) return null;
-        return _screenshots
-            .OrderBy(s => Math.Abs(TimeToPercent(s.CapturedAt) - pct))
-            .FirstOrDefault();
+        // A double-click never pins, unpins or clears.
+        _selected = _pinBeforeClick;
+        _selectedImageUrl = _pinImageBeforeClick;
+        ResetZoom();
     }
+
+    private async Task<TimeSpan> GetMouseOffsetAsync(double clientX) =>
+        _zoom.OffsetAt(await GetMousePercentAsync(clientX));
 
     private async Task<double> GetMousePercentAsync(double clientX)
     {
@@ -419,19 +520,8 @@
         }
     }
 
-    private double TimeToPercent(string utcIso)
-    {
-        // DateTimeOffset.TryParse correctly handles RFC 3339 strings with UTC offset
-        // (e.g. "2026-03-24T08:47:06+00:00") and is not affected by IL trimming in
-        // Blazor WASM release builds, unlike DateTime.TryParse + RoundtripKind.
-        if (DateTimeOffset.TryParse(utcIso, out var dto))
-        {
-            var local = dto.LocalDateTime;
-            var hours = local.Hour + local.Minute / 60.0 + local.Second / 3600.0;
-            return (hours - _viewStartHours) / _zoomHours * 100.0;
-        }
-        return 0;
-    }
+    private static string Pct(double percent) =>
+        percent.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 
     private static string FormatTime(string utcIso)
     {
@@ -449,24 +539,17 @@
         _                => trigger
     };
 
+    // ── Zoom ─────────────────────────────────────────────────────────────
+
     private async Task HandleBarWheel(WheelEventArgs e)
     {
         // DeltaY > 0 = scroll down = zoom out; DeltaY < 0 = scroll up = zoom in
-        var factor = e.DeltaY > 0 ? 1.5 : (1.0 / 1.5);
-        var newZoom = Math.Clamp(_zoomHours * factor, 0.5, HoursPerDay);
-        if (Math.Abs(newZoom - _zoomHours) < 0.001) return;
+        if (e.DeltaY == 0) return;
+        var anchor = await GetMouseOffsetAsync(e.ClientX);
+        var zoomed = e.DeltaY > 0 ? _zoom.ZoomOut(anchor) : _zoom.ZoomIn(anchor);
+        if (zoomed == _zoom) return;
 
-        // Get mouse position as fraction [0,1] within bar
-        var rawPct = await GetMousePercentAsync(e.ClientX);
-        // Mouse is at this hour in the current view
-        var mouseHours = _viewStartHours + rawPct / 100.0 * _zoomHours;
-
-        // Anchor zoom around mouse position
-        _viewStartHours = mouseHours - (rawPct / 100.0 * newZoom);
-        _zoomHours = newZoom;
-
-        // Clamp so we don't scroll past midnight
-        _viewStartHours = Math.Clamp(_viewStartHours, 0.0, Math.Max(0.0, HoursPerDay - _zoomHours));
+        _zoom = zoomed;
         RefreshVisibleEntries();
         StateHasChanged();
     }
@@ -476,7 +559,7 @@
         _isDraggingZoomRange = true;
         _didDragZoomRange = false;
         _dragStartClientX = e.ClientX;
-        _dragStartViewStartHours = _viewStartHours;
+        _dragStartZoom = _zoom;
     }
 
     private async Task HandleZoomRangeDragAsync(MouseEventArgs e)
@@ -484,12 +567,12 @@
         var width = await GetTimelineBarWidthAsync();
         var deltaPx = e.ClientX - _dragStartClientX;
         var safeWidth = width > 0 ? width : DefaultTimelineWidthPx;
-        var deltaHours = deltaPx / safeWidth * HoursPerDay;
-        var newStart = Math.Clamp(_dragStartViewStartHours + deltaHours, 0.0, Math.Max(0.0, HoursPerDay - _zoomHours));
-        if (Math.Abs(newStart - _viewStartHours) < MinViewStartDelta) return;
+        var moved = _dragStartZoom.MoveTo(_dragStartZoom.Start + TimelineDay.Length * (deltaPx / safeWidth));
+        if (moved == _zoom) return;
 
-        _viewStartHours = newStart;
+        _zoom = moved;
         _didDragZoomRange = true;
+        RefreshVisibleEntries();
         StateHasChanged();
     }
 
@@ -516,23 +599,12 @@
 
     private void ResetZoom()
     {
-        _zoomHours = HoursPerDay;
-        _viewStartHours = 0.0;
+        _zoom = ZoomRange.FullDay;
         RefreshVisibleEntries();
         StateHasChanged();
     }
 
-    private string FormatZoomLevel()
-    {
-        if (_zoomHours >= 23.9) return "full day";
-        if (_zoomHours < 1) return $"{(int)(_zoomHours * 60)}min window";
-        if (_zoomHours < 1.5) return "1h window";
-        return $"{_zoomHours:F0}h window";
-    }
-
-    private double GetZoomRangeLeftPercent() => _viewStartHours / HoursPerDay * 100.0;
-
-    private double GetZoomRangeWidthPercent() => _zoomHours / HoursPerDay * 100.0;
+    // ── Activity list ────────────────────────────────────────────────────
 
     private void ToggleActivity() => _activityExpanded = !_activityExpanded;
 
@@ -573,21 +645,19 @@
 
     private void RefreshVisibleEntries()
     {
-        if (_zoomHours >= 23.9)
+        if (_zoom.IsFullDay)
         {
             _visibleActivityEntries = _allActivityEntries;
             return;
         }
 
-        var date = _dateFilter.ToDateTime(TimeOnly.MinValue, DateTimeKind.Local);
-        var viewStart = date.AddHours(_viewStartHours);
-        var viewEnd = date.AddHours(_viewStartHours + _zoomHours);
+        var viewStart = _day.At(_zoom.Start);
+        var viewEnd = _day.At(_zoom.End);
 
         _visibleActivityEntries = _allActivityEntries.Where(e =>
         {
-            var entryStart = e.Start.LocalDateTime;
-            var entryEnd = e.End.HasValue ? e.End.Value.LocalDateTime : DateTime.MaxValue;
-            return entryStart < viewEnd && entryEnd > viewStart;
+            var entryEnd = e.End ?? DateTimeOffset.MaxValue;
+            return e.Start < viewEnd && entryEnd > viewStart;
         }).ToList();
     }
 
@@ -603,7 +673,9 @@
 
     public void Dispose()
     {
+        StopLiveTick();
         Events.OnScreenshotCaptured -= HandleScreenshotCaptured;
+        Events.OnPresenceChanged -= HandlePresenceChanged;
         Events.OnError -= HandleError;
     }
 }

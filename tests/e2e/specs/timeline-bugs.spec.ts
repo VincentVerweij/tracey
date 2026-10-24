@@ -111,11 +111,8 @@ test.describe('Timeline Bug Regressions', () => {
     }
 
     // BEFORE FIX: empty state still showing (no reactive update without navigation)
-    // AFTER FIX:  screenshot item visible WITHOUT navigating away and back
-    const screenshotItem =
-      page.locator('[data-testid="screenshot-item"]')
-        .or(page.locator('[data-testid="screenshot-card"]'))
-        .first();
+    // AFTER FIX:  activity row visible WITHOUT navigating away and back
+    const screenshotItem = page.locator('[data-testid="activity-row"]').first();
 
     await expect(screenshotItem).toBeVisible({ timeout: 5000 });
   });
@@ -143,12 +140,11 @@ test.describe('Timeline Bug Regressions', () => {
       return;
     }
 
-    // The screenshot card / item must render an <img> element for the preview thumbnail.
-    // Root may use .screenshot-img or an <img> nested inside the card element.
-    const screenshotImg =
-      page.locator('[data-testid="screenshot-item"] img, [data-testid="screenshot-card"] img')
-        .or(page.locator('.screenshot-img'))
-        .first();
+    // Pinning a capture from the activity list renders its image in the preview.
+    const row = page.locator('[data-testid="activity-row"]').first();
+    await expect(row).toBeVisible({ timeout: 5000 });
+    await row.click();
+    const screenshotImg = page.locator('.screenshot-img').first();
 
     await expect(screenshotImg).toBeVisible({ timeout: 5000 });
 

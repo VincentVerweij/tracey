@@ -70,7 +70,7 @@
 
 .timeline-bar-inner {
     position: relative;
-    height: 80px;
+    height: 72px;
     cursor: crosshair;
     background: linear-gradient(to bottom, #1e1e2e 0%, #16213e 100%);
     user-select: none;
@@ -101,89 +101,70 @@
     top: 0;
     bottom: 0;
     width: 1px;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.1);
     pointer-events: none;
-    transform: translateX(-50%);
 }
 
 .hour-label {
     position: absolute;
-    top: 4px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.6rem;
+    top: 3px;
+    left: 4px;
+    font-size: 0.62rem;
     font-family: 'SFMono-Regular', Consolas, monospace;
-    color: rgba(255, 255, 255, 0.35);
+    color: rgba(255, 255, 255, 0.4);
     white-space: nowrap;
     pointer-events: none;
 }
 
-/* Show only every 4th hour label at small widths to avoid crowding */
-/* Hour labels for 0, 6, 12, 18 always visible; others hidden via nth-child */
-/* Note: these are nth-child selectors on .timeline-hour-marker */
-.timeline-hour-marker:nth-child(n+2):not(:nth-child(6n+1)) .hour-label {
-    display: none;
-}
-
-/* ─── Screenshot dots ──────────────────────────────────────── */
-.timeline-screenshot-dot {
-    position: absolute;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: var(--tracey-accent, #6366f1);
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    cursor: pointer;
-    transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.1s ease;
-    z-index: 2;
-    padding: 0;
-}
-
-.timeline-screenshot-dot:hover {
-    transform: translate(-50%, -50%) scale(1.4);
-    background: #818cf8;
-    box-shadow: 0 0 8px 2px rgba(99, 102, 241, 0.5);
-}
-
-.timeline-screenshot-dot:focus-visible {
-    outline: 2px solid white;
-    outline-offset: 2px;
-}
-
-.timeline-screenshot-dot.timeline-dot-selected {
-    background: #ffffff;
-    box-shadow: 0 0 0 3px var(--tracey-accent, #6366f1), 0 0 12px 4px rgba(99, 102, 241, 0.6);
-    transform: translate(-50%, -50%) scale(1.6);
-    z-index: 3;
-}
-
-/* ─── Hover indicator ──────────────────────────────────────── */
-.timeline-hover-indicator {
+/* ─── Presence spans ───────────────────────────────────────── */
+/* Untracked draws nothing; both away causes share one color. */
+.timeline-span {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 1px;
-    background: rgba(255, 255, 255, 0.7);
+    pointer-events: none;
+}
+
+.timeline-span-present { background: rgba(34, 197, 94, 0.62); }
+.timeline-span-away { background: rgba(239, 68, 68, 0.66); }
+
+/* ─── Pin marker ───────────────────────────────────────────── */
+.timeline-pin-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--tracey-accent, #6366f1);
+    box-shadow: 0 0 6px 1px rgba(99, 102, 241, 0.7);
     pointer-events: none;
     transform: translateX(-50%);
+    z-index: 3;
+}
+
+/* ─── Hover line ───────────────────────────────────────────── */
+.timeline-hover-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    border-left: 1px dashed rgba(255, 255, 255, 0.8);
+    pointer-events: none;
     z-index: 4;
 }
 
 .hover-time-label {
     position: absolute;
-    top: -20px;
-    left: 50%;
+    bottom: 4px;
     transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.75);
+    background: rgba(0, 0, 0, 0.78);
     color: #fff;
     font-size: 0.7rem;
     font-family: 'SFMono-Regular', Consolas, monospace;
-    padding: 1px 5px;
+    padding: 1px 6px;
     border-radius: 3px;
     white-space: nowrap;
     pointer-events: none;
+    z-index: 5;
 }
 
 /* ─── Preview area ─────────────────────────────────────────── */
@@ -299,10 +280,11 @@
     color: var(--tracey-text-muted, #6b7280);
 }
 
-.zoom-level-text {
+.zoom-range-text {
     font-family: 'SFMono-Regular', Consolas, monospace;
-    font-size: 0.7rem;
-    letter-spacing: 0.03em;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.75rem;
+    color: var(--tracey-text);
 }
 
 .zoom-reset-btn {
@@ -357,6 +339,8 @@
 }
 
 .activity-filter-badge {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-variant-numeric: tabular-nums;
     font-size: 0.7rem;
     padding: 0.15rem 0.5rem;
     border-radius: 9999px;

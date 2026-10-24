@@ -13,6 +13,7 @@
             'tracey://timer-tick',
             'tracey://idle-detected',
             'tracey://idle-resolved',
+            'tracey://presence-changed',
             'tracey://screenshot-captured',
             'tracey://sync-status-changed',
             'tracey://notification-sent',

@@ -190,11 +190,9 @@ test.describe('US4 — Screenshot Timeline', () => {
       return;
     }
 
-    // At least one screenshot item must be rendered in the UI
+    // At least one capture must be listed (the bar has no per-capture marks)
     const item =
-      page.locator('[data-testid="screenshot-item"]')
-        .or(page.locator('[data-testid="screenshot-card"]'))
-        .first();
+      page.locator('[data-testid="activity-row"]').first();
 
     await expect(item).toBeVisible({ timeout: 5000 });
   });
@@ -236,11 +234,9 @@ test.describe('US4 — Screenshot Timeline', () => {
 
     await goToTimeline(page);
 
-    // Each screenshot item must show process_name and window_title
+    // Each activity row must show process_name and window_title
     const item =
-      page.locator('[data-testid="screenshot-item"]')
-        .or(page.locator('[data-testid="screenshot-card"]'))
-        .first();
+      page.locator('[data-testid="activity-row"]').first();
 
     await expect(item).toBeVisible({ timeout: 5000 });
 
@@ -269,20 +265,17 @@ test.describe('US4 — Screenshot Timeline', () => {
     await goToTimeline(page);
 
     const item =
-      page.locator('[data-testid="screenshot-item"]')
-        .or(page.locator('[data-testid="screenshot-card"]'))
-        .first();
+      page.locator('[data-testid="activity-row"]').first();
 
     await expect(item).toBeVisible({ timeout: 5000 });
 
-    // Trigger badge must display one of the three trigger values
-    const triggerBadge = item.locator('[data-testid="trigger-badge"]')
-      .or(item.locator('[class*="trigger"]'))
-      .or(item.locator('[class*="badge"]'));
+    // The trigger badge is shown in the preview of the pinned capture
+    await item.click();
+    const triggerBadge = page.locator('[data-testid="trigger-badge"]');
 
     await expect(triggerBadge).toBeVisible();
     const badgeText = await triggerBadge.textContent();
-    expect(badgeText).toMatch(/interval|window.?change|manual/i);
+    expect(badgeText).toMatch(/interval|window.?change|resumed/i);
   });
 
   test('clicking screenshot opens preview', async ({ page }) => {
@@ -297,11 +290,9 @@ test.describe('US4 — Screenshot Timeline', () => {
 
     await goToTimeline(page);
 
-    // Click the first screenshot item
+    // Click the first activity row: rows pin their capture
     const item =
-      page.locator('[data-testid="screenshot-item"]')
-        .or(page.locator('[data-testid="screenshot-card"]'))
-        .first();
+      page.locator('[data-testid="activity-row"]').first();
 
     await expect(item).toBeVisible({ timeout: 5000 });
     await item.click();
