@@ -290,4 +290,35 @@ test.describe('Issue Regressions — March 17 2026', () => {
       }
     });
   });
+
+  test.describe('Issue 125 — Timeline overview bar', () => {
+    test('dragging the overview rectangle pans and the wheel narrows it', async ({ page }) => {
+      await goToTimeline(page);
+
+      // Like its neighbours: only when the day has something to show
+      const overview = page.locator('[data-testid="timeline-overview"]');
+      await expect(overview.or(page.locator('.empty-state-illustration')).first()).toBeVisible();
+      if (await overview.isVisible().catch(() => false)) {
+        const rangeText = page.locator('[data-testid="zoom-range-text"]');
+        await expect(rangeText).toHaveText('00:00–24:00');
+
+        // Wheel over the overview zooms in around the rectangle's centre
+        await overview.hover();
+        await overview.dispatchEvent('wheel', { deltaY: -100, deltaX: 0 });
+        await expect(rangeText).toHaveText('04:00–20:00');
+
+        // Drag the rectangle's body left by a quarter of the day
+        const box = await overview.boundingBox();
+        if (!box) throw new Error('overview has no box');
+        const y = box.y + box.height / 2;
+        await page.mouse.move(box.x + box.width / 2, y);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.width / 4, y, { steps: 5 });
+        await page.mouse.up();
+
+        // A quarter of the day left from 04:00 stops at midnight
+        await expect(rangeText).toHaveText('00:00–16:00');
+      }
+    });
+  });
 });
