@@ -16,7 +16,7 @@ Build and start Tracey with `cargo tauri dev` from `src-tauri`, use the desktop 
 - [ ] **Hover before Tracey started.** The label reads `HH:MM · Not tracked`, and the preview is the `HH:MM · Not tracked` card.
 - [ ] **Pin.** Click a green stretch: the hovered capture is pinned, and a solid accent line sits at the capture's own time, not where you clicked.
 - [ ] **Unpin.** Click again where the same capture is picked: the pin is gone.
-- [ ] **Clear in a gap.** Pin something, then click a red locked stretch or an uncolored one: the pin is cleared.
+- [ ] **Clear in a gap.** Pin something, then click a red locked stretch, an uncolored one, or a green stretch before the day's first screenshot: the pin is cleared.
 - [ ] **Double-click.** With a capture pinned and the bar zoomed in, double-click anywhere: the zoom returns to the full day and the pin is unchanged. Repeat with nothing pinned: nothing becomes pinned.
 - [ ] **Zoom.** The wheel zooms around the cursor, no further in than 15 min. The header shows `HH:MM–HH:MM` and **↺ full day**, which is hidden at full day. The activity-list badge shows the same range, and the list is filtered to it. Hour labels stay readable at every zoom level.
 - [ ] **Rows.** Clicking an activity row still pins its capture, and ✕ still clears the pin.

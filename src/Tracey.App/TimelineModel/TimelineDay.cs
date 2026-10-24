@@ -177,15 +177,10 @@ public sealed class TimelineDay
     }
 
     /// The pin after clicking the bar at <paramref name="t"/> (#108): the hover
-    /// pick, or no pin when that is already pinned or <paramref name="t"/> is
-    /// in a gap. Before the first capture the pin is left as it was.
-    public ScreenshotItem? PinAfterClick(DateTimeOffset t, ScreenshotItem? pinned) => Pick(t) switch
-    {
-        HoverPick.Shot shot when shot.Screenshot.Id == pinned?.Id => null,
-        HoverPick.Shot shot => shot.Screenshot,
-        HoverPick.Gap => null,
-        _ => pinned,
-    };
+    /// pick, or no pin when that is already pinned or there is nothing to pin
+    /// (a gap, or before the first capture).
+    public ScreenshotItem? PinAfterClick(DateTimeOffset t, ScreenshotItem? pinned) =>
+        Pick(t) is HoverPick.Shot shot && shot.Screenshot.Id != pinned?.Id ? shot.Screenshot : null;
 
     /// The spans overlapping <paramref name="range"/>, clipped to it.
     public IReadOnlyList<VisibleSpan> VisibleSpans(ZoomRange range)

@@ -187,11 +187,11 @@ public class TimelineDayTests
     }
 
     [Fact]
-    public void PinAfterClick_BeforeTheFirstCapture_KeepsThePin()
+    public void PinAfterClick_BeforeTheFirstCapture_ClearsThePin()
     {
         var b = Shot("b", "08:20");
         var day = Day([Present("08:00", "12:00")], [b]);
-        Assert.Equal("b", day.PinAfterClick(At("08:05"), pinned: b)?.Id);
+        Assert.Null(day.PinAfterClick(At("08:05"), pinned: b));
     }
 
     // ─── Visible spans ──────────────────────────────────────────────────────
