@@ -79,10 +79,6 @@
         return 'https://asset.localhost/' + encoded;
     }
 
-    function getTimelineBarWidth() {
-        return document.querySelector('.timeline-bar-inner')?.clientWidth ?? 800;
-    }
-
     function getTimelineBarPercent(clientX) {
         var bar = document.querySelector('.timeline-bar-inner');
         if (!bar) return 0;
@@ -91,5 +87,5 @@
         return Math.max(0, Math.min(100, (clientX - rect.left) / rect.width * 100));
     }
 
-    window.traceyBridge = { initializeTauriBridge, disposeTauriBridge, convertFileSrc, getTimelineBarWidth, getTimelineBarPercent };
+    window.traceyBridge = { initializeTauriBridge, disposeTauriBridge, convertFileSrc, getTimelineBarPercent };
 })();

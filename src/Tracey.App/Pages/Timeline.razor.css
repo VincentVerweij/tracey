@@ -77,22 +77,17 @@
     overflow: hidden;
 }
 
-/* ─── Zoom drag range ────────────────────────────────────────── */
-.timeline-zoom-range-overlay {
+/* ─── The day under the zoom range ───────────────────────── */
+/* timeline-brush.js sets --zoom-start and --zoom-length (fractions of the
+   day) on the page root; the whole day is laid out here and shifted and
+   stretched so only the zoom range shows. */
+.timeline-bar-day {
     position: absolute;
     top: 0;
     bottom: 0;
-    border: 1px solid rgba(255, 255, 255, 0.55);
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-    cursor: grab;
-    z-index: 1;
-}
-
-.timeline-zoom-range-overlay-dragging {
-    cursor: grabbing;
-    background: rgba(255, 255, 255, 0.14);
+    width: calc(100% / var(--zoom-length, 1));
+    left: calc(-100% * var(--zoom-start, 0) / var(--zoom-length, 1));
+    pointer-events: none;
 }
 
 /* ─── Hour markers ─────────────────────────────────────────── */
@@ -103,6 +98,10 @@
     width: 1px;
     background: rgba(255, 255, 255, 0.1);
     pointer-events: none;
+    /* Hidden while an overview drag widens the range past 12 labels of this
+       step (minutes); the commit re-renders at the right step. A committed
+       range always has --label-step × 12 ≥ its length, so this never hides one then. */
+    opacity: clamp(0, calc((var(--label-step) * 12 - var(--zoom-length, 1) * 1440) * 1000 + 1), 1);
 }
 
 .hour-label {
@@ -166,6 +165,103 @@
     pointer-events: none;
     z-index: 5;
 }
+
+/* ─── Overview bar ─────────────────────────────────────────── */
+.timeline-overview {
+    position: relative;
+    height: 26px;
+    border-top: 1px solid var(--tracey-border);
+    background: var(--tracey-surface-alt, #f8f9fa);
+    overflow: hidden;
+    user-select: none;
+    touch-action: none;
+    cursor: pointer;
+}
+
+.timeline-overview .timeline-span {
+    opacity: 0.75;
+}
+
+.overview-tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--tracey-border);
+    pointer-events: none;
+}
+
+.overview-tick span {
+    position: absolute;
+    bottom: 1px;
+    left: 3px;
+    font-size: 0.58rem;
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    color: var(--tracey-text-muted, #6b7280);
+}
+
+/* The visible range; the shadow dims the rest of the day. */
+.overview-range {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(var(--zoom-start, 0) * 100%);
+    width: calc(var(--zoom-length, 1) * 100%);
+    box-sizing: border-box;
+    border: 2px solid var(--tracey-accent, #6366f1);
+    border-radius: 4px;
+    background: rgba(99, 102, 241, 0.12);
+    box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.28);
+    cursor: grab;
+    z-index: 1;
+}
+
+/* Each 8 px grab area is centred on its edge, or outside a rectangle under
+   24 px wide (ZoomRange.HitTest decides; these only draw it and set the cursor).
+   Offsets are from inside the 2 px border: -6px = 4 px outside the edge,
+   -10px = 8 px. Keep them in step with GrabPx and NarrowPx. */
+.overview-grip {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 8px;
+    cursor: ew-resize;
+    z-index: 2;
+}
+
+.overview-grip-left { left: -6px; }
+.overview-grip-right { right: -6px; }
+.timeline-page[data-zoom-narrow] .overview-grip-left { left: -10px; }
+.timeline-page[data-zoom-narrow] .overview-grip-right { right: -10px; }
+
+.overview-grip::after {
+    content: "";
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    left: 50%;
+    width: 3px;
+    margin-left: -1.5px;
+    border-radius: 2px;
+    background: var(--tracey-accent, #6366f1);
+}
+
+.overview-pin-tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    transform: translateX(-50%);
+    background: var(--tracey-accent, #6366f1);
+    pointer-events: none;
+    z-index: 3;
+}
+
+/* During a drag the cursor shows the action anywhere on the overview. */
+.timeline-page[data-brush="pan"] .timeline-overview,
+.timeline-page[data-brush="pan"] .timeline-overview * { cursor: grabbing; }
+.timeline-page[data-brush="resize"] .timeline-overview,
+.timeline-page[data-brush="resize"] .timeline-overview * { cursor: ew-resize; }
 
 /* ─── Preview area ─────────────────────────────────────────── */
 .timeline-preview-area {
@@ -337,6 +433,8 @@
 .activity-list-title {
     flex: 1;
 }
+
+.timeline-page[data-zoom-full] .activity-filter-badge { display: none; }
 
 .activity-filter-badge {
     font-family: 'SFMono-Regular', Consolas, monospace;

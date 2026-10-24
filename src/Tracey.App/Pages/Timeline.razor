@@ -3,11 +3,11 @@
 @inject TauriEventService Events
 @inject IJSRuntime JS
 @using Tracey.App.TimelineModel
-@implements IDisposable
+@implements IAsyncDisposable
 
 <PageTitle>Timeline — Tracey</PageTitle>
 
-<div class="timeline-page">
+<div class="timeline-page" @ref="_page">
     @if (_errorMessage is not null)
     {
         <div role="alert" class="t-error-banner">
@@ -43,10 +43,13 @@
     }
     else
     {
+        var daySpans = _day.VisibleSpans(ZoomRange.FullDay);
+        var pinOffset = PinnedOffset();
         <div class="timeline-day-bar"
              aria-label="24-hour timeline for @_dateFilter.ToString("yyyy-MM-dd")">
             <div class="timeline-zoom-indicator" aria-live="polite">
-                <span class="zoom-range-text" data-testid="zoom-range-text">@_zoom.RangeText</span>
+                @* Its text is written by timeline-brush.js, so it follows a drag *@
+                <span class="zoom-range-text" data-testid="zoom-range-text" data-zoom-text></span>
                 @if (!_zoom.IsFullDay)
                 {
                     <button class="zoom-reset-btn" @onclick="ResetZoom" title="Reset to full day view" aria-label="Reset zoom">↺ full day</button>
@@ -54,54 +57,43 @@
             </div>
             <div class="timeline-bar-inner"
                  @onmousemove="HandleBarMouseMove"
-                 @onmouseup="HandleBarMouseUp"
-                 @onmouseleave="HandleBarMouseLeave"
+                 @onmouseleave="ClearHover"
                  @onclick="HandleBarClick"
                  @onwheel="HandleBarWheel"
                  @onwheel:preventDefault="true"
                  @ondblclick="HandleBarDoubleClick">
 
-                @* Presence spans; Untracked draws nothing *@
-                @foreach (var span in _day.VisibleSpans(_zoom))
-                {
-                    <div class="timeline-span @(span.Presence == Presence.Present ? "timeline-span-present" : "timeline-span-away")"
-                         style="left: @CssPercent(_zoom.PercentOf(span.Start))%; width: @CssPercent((span.End - span.Start) / _zoom.Length * 100.0)%"
-                         aria-hidden="true">
-                    </div>
-                }
+                @* The whole day, shifted and stretched to the zoom range by CSS,
+                   so it follows a drag on the overview without a render *@
+                <div class="timeline-bar-day" aria-hidden="true">
+                    @* Presence spans; Untracked draws nothing *@
+                    @foreach (var span in daySpans)
+                    {
+                        <div class="timeline-span @SpanClass(span)"
+                             style="left: @DayPercent(span.Start)%; width: @DayPercent(span.End - span.Start)%">
+                        </div>
+                    }
 
-                @{
-                    var labelStep = _zoom.LabelStep;
-                }
-                @foreach (var t in _zoom.LabelTimes())
-                {
-                    var label = ZoomRange.Clock(t);
-                    <div class="timeline-hour-marker"
-                         style="left: @CssPercent(_zoom.PercentOf(t))%"
-                         aria-hidden="true">
-                        <span class="hour-label">@(labelStep < TimeSpan.FromHours(1) ? label : label[..2])</span>
-                    </div>
-                }
+                    @{
+                        var labelStep = _zoom.LabelStep;
+                    }
+                    @foreach (var t in _zoom.LabelTimes())
+                    {
+                        var label = ZoomRange.Clock(t);
+                        <div class="timeline-hour-marker" style="left: @DayPercent(t)%; --label-step: @labelStep.TotalMinutes">
+                            <span class="hour-label">@(labelStep < TimeSpan.FromHours(1) ? label : label[..2])</span>
+                        </div>
+                    }
 
-                @if (!_zoom.IsFullDay)
-                {
-                    <div class="timeline-zoom-range-overlay @(_isDraggingZoomRange ? "timeline-zoom-range-overlay-dragging" : "")"
-                         style="left: @CssPercent(_zoom.Start / ZoomRange.MaxLength * 100.0)%; width: @CssPercent(_zoom.Length / ZoomRange.MaxLength * 100.0)%;"
-                         @onmousedown="HandleZoomRangeMouseDown"
-                         @onmousedown:stopPropagation="true"
-                         aria-label="Current zoom range. Drag left or right to move the visible time window.">
-                    </div>
-                }
-
-                @* Pin marker at the pinned capture's own time *@
-                @if (PinnedOffset() is { } pinOffset && pinOffset >= _zoom.Start && pinOffset <= _zoom.End)
-                {
-                    <div class="timeline-pin-line"
-                         style="left: @CssPercent(_zoom.PercentOf(pinOffset))%"
-                         data-testid="timeline-pin-line"
-                         aria-hidden="true">
-                    </div>
-                }
+                    @* Pin marker at the pinned capture's own time *@
+                    @if (pinOffset is { } pinAt)
+                    {
+                        <div class="timeline-pin-line"
+                             style="left: @DayPercent(pinAt)%"
+                             data-testid="timeline-pin-line">
+                        </div>
+                    }
+                </div>
 
                 @if (_hoverOffset is { } hoverOffset)
                 {
@@ -110,6 +102,43 @@
                     <span class="hover-time-label"
                           style="left: clamp(4.5rem, @hoverPct%, calc(100% - 4.5rem))"
                           aria-hidden="true">@ZoomRange.Clock(hoverOffset) · @_day.PresenceAt(_day.At(hoverOffset)).Word()</span>
+                }
+            </div>
+
+            @* Overview: the whole day in miniature. timeline-brush.js handles the
+               drag; the wheel zooms around the rectangle's centre. *@
+            <div class="timeline-overview"
+                 data-testid="timeline-overview"
+                 aria-label="Whole day overview. The rectangle is the visible range: drag it to pan, drag an edge to resize."
+                 @onwheel="HandleOverviewWheel"
+                 @onwheel:preventDefault="true">
+                @foreach (var span in daySpans)
+                {
+                    <div class="timeline-span @SpanClass(span)"
+                         style="left: @DayPercent(span.Start)%; width: @DayPercent(span.End - span.Start)%"
+                         aria-hidden="true">
+                    </div>
+                }
+                @for (var hour = 0; hour < 24; hour += 3)
+                {
+                    <div class="overview-tick" style="left: @DayPercent(TimeSpan.FromHours(hour))%" aria-hidden="true">
+                        @if (hour % 6 == 0)
+                        {
+                            <span>@hour.ToString("D2")</span>
+                        }
+                    </div>
+                }
+                <div class="overview-range" data-testid="overview-range" aria-hidden="true">
+                    <div class="overview-grip overview-grip-left"></div>
+                    <div class="overview-grip overview-grip-right"></div>
+                </div>
+                @if (pinOffset is { } pinTickAt)
+                {
+                    <div class="overview-pin-tick"
+                         style="left: @DayPercent(pinTickAt)%"
+                         data-testid="overview-pin-tick"
+                         aria-hidden="true">
+                    </div>
                 }
             </div>
         </div>
@@ -162,10 +191,8 @@
                     aria-expanded="@_activityExpanded"
                     aria-controls="activity-list-body">
                 <span class="activity-list-title">🪟 Active Windows &amp; Titles</span>
-                @if (!_zoom.IsFullDay)
-                {
-                    <span class="activity-filter-badge">@_zoom.RangeText</span>
-                }
+                @* Written by timeline-brush.js; hidden at the full day *@
+                <span class="activity-filter-badge" data-zoom-text></span>
                 <span class="activity-list-count">@_visibleActivityEntries.Count @(_visibleActivityEntries.Count == 1 ? "entry" : "entries")</span>
                 <span class="activity-list-chevron" aria-hidden="true">@(_activityExpanded ? "▲" : "▼")</span>
             </button>
@@ -215,9 +242,6 @@
 </div>
 
 @code {
-    private const double DefaultTimelineWidthPx = 800;
-    private const string TimelineWidthJsMethod = "traceyBridge.getTimelineBarWidth";
-
     // Matches the presence recorder's heartbeat (#120).
     private static readonly TimeSpan LiveTickInterval = TimeSpan.FromSeconds(30);
 
@@ -243,12 +267,9 @@
     private List<ActivityEntry> _allActivityEntries = new();
     private List<ActivityEntry> _visibleActivityEntries = new();
 
-    // Zoom range drag state
-    private bool _isDraggingZoomRange;
-    private bool _didDragZoomRange;
-    private bool _suppressNextBarClick;
-    private double _dragStartClientX;
-    private ZoomRange _dragStartZoom = ZoomRange.FullDay;
+    // The overview brush (wwwroot/js/timeline-brush.js) is set up on the page root.
+    private ElementReference _page;
+    private DotNetObjectReference<Timeline>? _selfRef;
 
     // The pin before a double-click's first click, restored by the double-click.
     private ScreenshotItem? _pinBeforeClick;
@@ -270,6 +291,18 @@
         Events.OnPresenceChanged += HandlePresenceChanged;
         Events.OnError += HandleError;
         await LoadDay();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("traceyTimeline.init", _page, _selfRef);
+        }
+        // Every render, so the brush's preview never outlives a commit.
+        await JS.InvokeVoidAsync("traceyTimeline.setZoom", _page,
+            _zoom.Start.TotalMinutes, _zoom.Length.TotalMinutes, _zoom.RangeText);
     }
 
     private Task LoadDay() => LoadDay(showLoading: true);
@@ -343,6 +376,8 @@
 
     private async Task LiveTickAsync()
     {
+        // A render mid-drag would cost frames; the next tick catches up.
+        if (await IsBrushingAsync()) return;
         var now = DateTimeOffset.Now;
         _day = _day.GrowOpenSpan(now);
         // Past midnight the page stays on its date: that was the last grow.
@@ -350,6 +385,19 @@
             StopLiveTick();
         await RefreshHoverAsync();
         StateHasChanged();
+    }
+
+    private async Task<bool> IsBrushingAsync()
+    {
+        try
+        {
+            return await JS.InvokeAsync<bool>("traceyTimeline.isBrushing");
+        }
+        catch (JSException)
+        {
+            // Without the brush module there is no drag to wait for.
+            return false;
+        }
     }
 
     private void StopLiveTick()
@@ -450,12 +498,6 @@
 
     private async Task HandleBarMouseMove(MouseEventArgs e)
     {
-        if (_isDraggingZoomRange)
-        {
-            await HandleZoomRangeDragAsync(e);
-            return;
-        }
-
         _hoverOffset = await GetMouseOffsetAsync(e.ClientX);
         await RefreshHoverAsync();
     }
@@ -470,12 +512,6 @@
             _hoverImageId = shot.Screenshot.Id;
             _hoverImageUrl = await GetImgSrcAsync(shot.Screenshot.FilePath);
         }
-    }
-
-    private void HandleBarMouseLeave()
-    {
-        HandleBarMouseUp();
-        ClearHover();
     }
 
     private void ClearHover()
@@ -493,12 +529,6 @@
         if (e.Detail > 1) return;
         _pinBeforeClick = _selected;
         _pinImageBeforeClick = _selectedImageUrl;
-
-        if (_suppressNextBarClick)
-        {
-            _suppressNextBarClick = false;
-            return;
-        }
 
         var generation = _clickGeneration;
         var offset = await GetMouseOffsetAsync(e.ClientX);
@@ -549,6 +579,14 @@
     private static string CssPercent(double percent) =>
         percent.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 
+    /// Where <paramref name="offset"/> falls in the whole day, 0–100. Four
+    /// decimals, since the main bar stretches the day up to 96× at 15 min.
+    private static string DayPercent(TimeSpan offset) =>
+        (offset / ZoomRange.MaxLength * 100.0).ToString("F4", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string SpanClass(VisibleSpan span) =>
+        span.Presence == Presence.Present ? "timeline-span-present" : "timeline-span-away";
+
     private static string FormatTime(string utcIso)
     {
         if (DateTimeOffset.TryParse(utcIso, out var dto))
@@ -580,47 +618,31 @@
         StateHasChanged();
     }
 
-    private void HandleZoomRangeMouseDown(MouseEventArgs e)
+    private void HandleOverviewWheel(WheelEventArgs e)
     {
-        _isDraggingZoomRange = true;
-        _didDragZoomRange = false;
-        _dragStartClientX = e.ClientX;
-        _dragStartZoom = _zoom;
-    }
+        if (e.DeltaY == 0) return;
+        var zoomed = e.DeltaY > 0 ? _zoom.ZoomOut(_zoom.Centre) : _zoom.ZoomIn(_zoom.Centre);
+        if (zoomed == _zoom) return;
 
-    private async Task HandleZoomRangeDragAsync(MouseEventArgs e)
-    {
-        var width = await GetTimelineBarWidthAsync();
-        var deltaPx = e.ClientX - _dragStartClientX;
-        var safeWidth = width > 0 ? width : DefaultTimelineWidthPx;
-        var moved = _dragStartZoom.MoveTo(_dragStartZoom.Start + ZoomRange.MaxLength * (deltaPx / safeWidth));
-        if (moved == _zoom) return;
-
-        _zoom = moved;
-        _didDragZoomRange = true;
+        _zoom = zoomed;
         RefreshVisibleEntries();
+    }
+
+    /// The one call from timeline-brush.js per overview drag: a press at
+    /// <paramref name="fromPx"/>, released at <paramref name="toPx"/>, on an
+    /// overview <paramref name="widthPx"/> wide, starting from the range shown
+    /// at the press (in minutes). ZoomRange re-applies its limits and decides.
+    [JSInvokable]
+    public void CommitBrush(double startMinutes, double lengthMinutes, double widthPx, double fromPx, double toPx)
+    {
+        if (widthPx > 0)
+        {
+            var pressed = ZoomRange.Create(TimeSpan.FromMinutes(startMinutes), TimeSpan.FromMinutes(lengthMinutes));
+            _zoom = pressed.Brush(widthPx, fromPx, toPx);
+            RefreshVisibleEntries();
+        }
+        // Always render, so setZoom replaces the drag's preview.
         StateHasChanged();
-    }
-
-    private void HandleBarMouseUp()
-    {
-        if (_isDraggingZoomRange && _didDragZoomRange)
-            _suppressNextBarClick = true;
-
-        _isDraggingZoomRange = false;
-        _didDragZoomRange = false;
-    }
-
-    private async Task<double> GetTimelineBarWidthAsync()
-    {
-        try
-        {
-            return await JS.InvokeAsync<double>(TimelineWidthJsMethod);
-        }
-        catch (JSException)
-        {
-            return DefaultTimelineWidthPx;
-        }
     }
 
     private void ResetZoom()
@@ -697,11 +719,16 @@
         DateTimeOffset? End,
         ScreenshotItem Screenshot);
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         StopLiveTick();
         Events.OnScreenshotCaptured -= HandleScreenshotCaptured;
         Events.OnPresenceChanged -= HandlePresenceChanged;
         Events.OnError -= HandleError;
+        if (_selfRef is not null)
+        {
+            await JS.InvokeVoidAsync("traceyTimeline.dispose", _page);
+            _selfRef.Dispose();
+        }
     }
 }
