@@ -280,6 +280,11 @@ async fn cleanup_expired(app: &AppHandle) {
         let cutoff = Utc::now() - chrono::Duration::days(retention_days);
         let cutoff_str = cutoff.to_rfc3339();
 
+        // Presence spans expire with screenshots (ADR-0006 decision 7).
+        if let Err(e) = crate::services::presence::store::prune_expired(&conn, cutoff) {
+            log::warn!("retention cleanup: failed to prune presence spans: {e}");
+        }
+
         let mut stmt =
             match conn.prepare("SELECT id, file_path FROM screenshots WHERE captured_at < ?1") {
                 Ok(s) => s,

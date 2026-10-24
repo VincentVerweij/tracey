@@ -47,6 +47,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "011_suspension_end_trigger",
         include_str!("migrations/011_suspension_end_trigger.sql"),
     ),
+    (
+        "012_presence_spans",
+        include_str!("migrations/012_presence_spans.sql"),
+    ),
 ];
 
 const THEME_PREFERENCE_MIGRATION_VERSION: &str = "010_theme_preference";

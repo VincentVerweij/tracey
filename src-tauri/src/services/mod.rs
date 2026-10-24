@@ -5,6 +5,7 @@ pub mod classification_loop;
 pub mod idle_service;
 pub mod logger;
 pub mod ocr_service;
+pub mod presence;
 pub mod screenshot_service;
 pub mod suspension;
 pub mod sync_service;

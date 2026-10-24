@@ -3,6 +3,7 @@ pub mod classification;
 pub mod data;
 pub mod hierarchy;
 pub mod idle;
+pub mod presence;
 pub mod screenshot;
 pub mod sync;
 pub mod timer;
@@ -12,6 +13,7 @@ use crate::platform::PlatformHooks;
 use crate::services::active_learning_queue::ActiveLearningQueue;
 use crate::services::classification::heuristic::HeuristicRule;
 use crate::services::classification::tfidf::TfIdfModel;
+use crate::services::presence::recorder::PresenceRecording;
 use crate::services::suspension::Suspension;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -48,6 +50,8 @@ pub struct AppState {
     pub sync_notify: Arc<tokio::sync::Notify>,
     /// Which tracking loops are suspended, and why. In-memory only (ADR-0001).
     pub suspension: Arc<Suspension>,
+    /// The presence recorder's open span, wake and `presence-changed` (ADR-0006).
+    pub presence: Arc<PresenceRecording>,
     pub classification_state: Arc<std::sync::Mutex<ClassificationState>>,
     pub active_learning_queue: Arc<std::sync::Mutex<ActiveLearningQueue>>,
 }

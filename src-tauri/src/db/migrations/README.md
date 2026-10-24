@@ -21,4 +21,5 @@ Sequential SQL migrations applied at app startup by the migration runner in `src
 - `screenshots` — screenshot file metadata
 - `user_preferences` — single-row device configuration
 - `sync_queue` — pending writes to external database
+- `presence_spans` — `Present` / `Away` spans for the Timeline bar (local only, never synced)
 - `schema_migrations` — applied migration tracking

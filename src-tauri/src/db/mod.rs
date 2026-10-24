@@ -36,6 +36,14 @@ pub fn open() -> SqlResult<Connection> {
     Ok(conn)
 }
 
+/// An in-memory database with every migration applied, for tests.
+#[cfg(test)]
+pub fn open_in_memory() -> Connection {
+    let conn = Connection::open_in_memory().expect("in-memory DB");
+    migrations::run(&conn).expect("migrations");
+    conn
+}
+
 /// Resolve the best-available portable database path.
 /// `exe_override` is used in tests to inject a fake executable path.
 pub fn resolve_db_path_for(exe_override: Option<&std::path::Path>) -> PathBuf {
