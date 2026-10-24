@@ -58,24 +58,33 @@ public abstract record HoverPick
 }
 
 /// One viewed day of the Timeline: its presence spans and captures, and the
-/// rules the bar applies to them (#124). The day is taken as 24 h from its
-/// local midnight.
+/// rules the bar applies to them (#124). The bar shows the day's wall-clock
+/// times 00:00–24:00, so on a daylight-saving change the repeated hour is
+/// drawn once and the skipped hour is empty.
 public sealed class TimelineDay
 {
-    public static readonly TimeSpan Length = TimeSpan.FromHours(24);
+    private readonly DateTime _midnight;
+    private readonly TimeZoneInfo _zone;
 
     private TimelineDay(
-        DateTimeOffset dayStart,
+        DateTime midnight,
+        TimeZoneInfo zone,
         IReadOnlyList<PresenceInterval> spans,
         IReadOnlyList<Capture> captures)
     {
-        DayStart = dayStart;
+        _midnight = midnight;
+        _zone = zone;
+        DayStart = ToInstant(zone, midnight);
+        DayEnd = ToInstant(zone, midnight.AddDays(1));
         Spans = spans;
         Captures = captures;
     }
 
+    /// Local midnight starting the day.
     public DateTimeOffset DayStart { get; }
-    public DateTimeOffset DayEnd => DayStart + Length;
+
+    /// Local midnight ending the day: 23 h to 25 h after <see cref="DayStart"/>.
+    public DateTimeOffset DayEnd { get; }
 
     /// Ascending, unclipped.
     public IReadOnlyList<PresenceInterval> Spans { get; }
@@ -86,13 +95,33 @@ public sealed class TimelineDay
     /// Neither spans nor captures: the page shows its empty state.
     public bool IsEmpty => Spans.Count == 0 && Captures.Count == 0;
 
-    public TimeSpan OffsetOf(DateTimeOffset t) => t - DayStart;
+    /// The wall-clock time of <paramref name="t"/> as an offset from the
+    /// day's midnight; <see cref="DayEnd"/> is 24:00.
+    public TimeSpan OffsetOf(DateTimeOffset t) => TimeZoneInfo.ConvertTime(t, _zone).DateTime - _midnight;
 
-    public DateTimeOffset At(TimeSpan offset) => DayStart + offset;
+    /// The instant showing wall-clock time <paramref name="offset"/>: the first
+    /// pass through a repeated hour, the end of a skipped one.
+    public DateTimeOffset At(TimeSpan offset) => ToInstant(_zone, _midnight + offset);
+
+    private static DateTimeOffset ToInstant(TimeZoneInfo zone, DateTime wall)
+    {
+        if (zone.IsInvalidTime(wall))
+        {
+            // Skipped hours start and end on whole minutes.
+            wall = new DateTime(wall.Year, wall.Month, wall.Day, wall.Hour, wall.Minute, 0);
+            while (zone.IsInvalidTime(wall))
+                wall = wall.AddMinutes(1);
+        }
+        var offset = zone.IsAmbiguousTime(wall)
+            ? zone.GetAmbiguousTimeOffsets(wall).Max()
+            : zone.GetUtcOffset(wall);
+        return new DateTimeOffset(wall, offset);
+    }
 
     /// Spans and screenshots that fail to parse are dropped.
     public static TimelineDay Create(
-        DateTimeOffset dayStart,
+        DateOnly date,
+        TimeZoneInfo zone,
         IEnumerable<PresenceSpan> spans,
         IEnumerable<ScreenshotItem> screenshots)
     {
@@ -114,7 +143,7 @@ public sealed class TimelineDay
         }
         captures.Sort((a, b) => a.At.CompareTo(b.At));
 
-        return new TimelineDay(dayStart, intervals, captures);
+        return new TimelineDay(date.ToDateTime(TimeOnly.MinValue), zone, intervals, captures);
     }
 
     /// `Untracked` wherever no span covers <paramref name="t"/>. Spans are
@@ -150,7 +179,7 @@ public sealed class TimelineDay
     /// The pin after clicking the bar at <paramref name="t"/> (#108): the hover
     /// pick, or no pin when that is already pinned or <paramref name="t"/> is
     /// in a gap. Before the first capture the pin is left as it was.
-    public ScreenshotItem? Click(DateTimeOffset t, ScreenshotItem? pinned) => Pick(t) switch
+    public ScreenshotItem? PinAfterClick(DateTimeOffset t, ScreenshotItem? pinned) => Pick(t) switch
     {
         HoverPick.Shot shot when shot.Screenshot.Id == pinned?.Id => null,
         HoverPick.Shot shot => shot.Screenshot,
@@ -183,7 +212,7 @@ public sealed class TimelineDay
         var spans = Spans
             .Select(s => s.Open && s.End < grownEnd ? s with { End = grownEnd } : s)
             .ToList();
-        return new TimelineDay(DayStart, spans, Captures);
+        return new TimelineDay(_midnight, _zone, spans, Captures);
     }
 
     private static Presence ToPresence(PresenceSpan s) => (s.State, s.AwayCause) switch

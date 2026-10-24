@@ -5,7 +5,8 @@ namespace Tracey.App.TimelineModel;
 public sealed record ZoomRange
 {
     public static readonly TimeSpan MinLength = TimeSpan.FromMinutes(15);
-    public static readonly TimeSpan MaxLength = TimelineDay.Length;
+    /// The whole day, 00:00–24:00 wall-clock.
+    public static readonly TimeSpan MaxLength = TimeSpan.FromHours(24);
 
     private const double WheelFactor = 1.5;
 

@@ -5,10 +5,11 @@ namespace Tracey.Tests;
 
 /// <summary>
 /// The Timeline bar's rules for one viewed day (#124, decisions in #108, #113, #120).
-/// The viewed day starts at 2026-10-15 00:00 UTC, so offsets read as UTC clock times.
+/// The viewed day is 2026-10-15 in UTC, so offsets read as UTC clock times.
 /// </summary>
 public class TimelineDayTests
 {
+    private static readonly DateOnly Date = new(2026, 10, 15);
     private static readonly DateTimeOffset DayStart = new(2026, 10, 15, 0, 0, 0, TimeSpan.Zero);
 
     private static DateTimeOffset At(string hhmm) =>
@@ -26,7 +27,7 @@ public class TimelineDayTests
         new(id, $"C:/shots/{id}.png", Iso(hhmm), "title", "proc.exe", "interval");
 
     private static TimelineDay Day(PresenceSpan[]? spans = null, ScreenshotItem[]? shots = null) =>
-        TimelineDay.Create(DayStart, spans ?? [], shots ?? []);
+        TimelineDay.Create(Date, TimeZoneInfo.Utc, spans ?? [], shots ?? []);
 
     // ─── Presence at t ──────────────────────────────────────────────────────
 
@@ -155,42 +156,42 @@ public class TimelineDayTests
     // ─── Click outcome ──────────────────────────────────────────────────────
 
     [Fact]
-    public void Click_PinsTheHoverPick()
+    public void PinAfterClick_PinsTheHoverPick()
     {
         var day = Day([Present("08:00", "12:00")], [Shot("a", "08:10"), Shot("b", "08:20")]);
-        Assert.Equal("a", day.Click(At("08:15"), pinned: null)?.Id);
+        Assert.Equal("a", day.PinAfterClick(At("08:15"), pinned: null)?.Id);
     }
 
     [Fact]
-    public void Click_OnAnotherCapture_MovesThePin()
+    public void PinAfterClick_OnAnotherCapture_MovesThePin()
     {
         var a = Shot("a", "08:10");
         var day = Day([Present("08:00", "12:00")], [a, Shot("b", "08:20")]);
-        Assert.Equal("b", day.Click(At("08:20"), pinned: a)?.Id);
+        Assert.Equal("b", day.PinAfterClick(At("08:20"), pinned: a)?.Id);
     }
 
     [Fact]
-    public void Click_WherePickIsThePinnedCapture_Unpins()
+    public void PinAfterClick_WherePickIsThePinnedCapture_Unpins()
     {
         var a = Shot("a", "08:10");
         var day = Day([Present("08:00", "12:00")], [a, Shot("b", "08:20")]);
-        Assert.Null(day.Click(At("08:19"), pinned: a));
+        Assert.Null(day.PinAfterClick(At("08:19"), pinned: a));
     }
 
     [Fact]
-    public void Click_InAGap_ClearsThePin()
+    public void PinAfterClick_InAGap_ClearsThePin()
     {
         var a = Shot("a", "08:10");
         var day = Day([Present("08:00", "09:00"), Away("09:00", "10:00", "Locked")], [a]);
-        Assert.Null(day.Click(At("09:30"), pinned: a));
+        Assert.Null(day.PinAfterClick(At("09:30"), pinned: a));
     }
 
     [Fact]
-    public void Click_BeforeTheFirstCapture_KeepsThePin()
+    public void PinAfterClick_BeforeTheFirstCapture_KeepsThePin()
     {
         var b = Shot("b", "08:20");
         var day = Day([Present("08:00", "12:00")], [b]);
-        Assert.Equal("b", day.Click(At("08:05"), pinned: b)?.Id);
+        Assert.Equal("b", day.PinAfterClick(At("08:05"), pinned: b)?.Id);
     }
 
     // ─── Visible spans ──────────────────────────────────────────────────────
@@ -311,5 +312,70 @@ public class TimelineDayTests
     {
         Assert.Equal("10:31 · Away (locked) — no screenshots", PresenceText.GapCard(Presence.AwayLocked, "10:31"));
         Assert.Equal("10:31 · Not tracked", PresenceText.GapCard(Presence.Untracked, "10:31"));
+    }
+
+    // ─── Daylight saving: offsets are wall-clock times ─────────────────────
+
+    // CET/CEST: +01:00, +02:00 from the last Sunday of March 02:00 to the last
+    // Sunday of October 03:00. In 2026 those are 29 March and 25 October.
+    private static readonly TimeZoneInfo Cet = TimeZoneInfo.CreateCustomTimeZone(
+        "Test CET", TimeSpan.FromHours(1), "Test CET", "Test CET", "Test CEST",
+        [
+            TimeZoneInfo.AdjustmentRule.CreateAdjustmentRule(
+                DateTime.MinValue.Date, DateTime.MaxValue.Date, TimeSpan.FromHours(1),
+                TimeZoneInfo.TransitionTime.CreateFloatingDateRule(new DateTime(1, 1, 1, 2, 0, 0), 3, 5, DayOfWeek.Sunday),
+                TimeZoneInfo.TransitionTime.CreateFloatingDateRule(new DateTime(1, 1, 1, 3, 0, 0), 10, 5, DayOfWeek.Sunday)),
+        ]);
+
+    private static TimelineDay CetDay(int month, int day, PresenceSpan[]? spans = null) =>
+        TimelineDay.Create(new DateOnly(2026, month, day), Cet, spans ?? [], []);
+
+    [Fact]
+    public void FallBackDay_RunsFromLocalMidnightToLocalMidnight()
+    {
+        var day = CetDay(10, 25);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-25T00:00:00+02:00"), day.DayStart);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-26T00:00:00+01:00"), day.DayEnd);
+    }
+
+    [Fact]
+    public void FallBackDay_OffsetsAfterTheChangeAreWallClockTimes()
+    {
+        var day = CetDay(10, 25);
+        var noon = DateTimeOffset.Parse("2026-10-25T12:00:00+01:00");
+        Assert.Equal(TimeSpan.FromHours(12), day.OffsetOf(noon));
+        Assert.Equal(noon, day.At(TimeSpan.FromHours(12)));
+        Assert.Equal(TimeSpan.FromHours(24), day.OffsetOf(day.DayEnd));
+    }
+
+    [Fact]
+    public void FallBackDay_TheRepeatedHourMapsToItsFirstPass()
+    {
+        Assert.Equal(DateTimeOffset.Parse("2026-10-25T02:30:00+02:00"), CetDay(10, 25).At(TimeSpan.FromHours(2.5)));
+    }
+
+    [Fact]
+    public void FallBackDay_OpenSpanGrowthIsClippedToTheRealMidnight()
+    {
+        var open = new PresenceSpan("2026-10-25T23:00:00+01:00", "2026-10-25T23:59:40+01:00", "Present", null, true);
+        var day = CetDay(10, 25, [open]).GrowOpenSpan(DateTimeOffset.Parse("2026-10-26T00:00:25+01:00"));
+        Assert.Equal(DateTimeOffset.Parse("2026-10-26T00:00:00+01:00"), day.Spans[0].End);
+        Assert.Equal(
+            [new VisibleSpan(TimeSpan.FromHours(23), TimeSpan.FromHours(24), Presence.Present)],
+            day.VisibleSpans(ZoomRange.FullDay));
+    }
+
+    [Fact]
+    public void SpringForwardDay_OffsetsAfterTheChangeAreWallClockTimes()
+    {
+        var day = CetDay(3, 29);
+        Assert.Equal(DateTimeOffset.Parse("2026-03-30T00:00:00+02:00"), day.DayEnd);
+        Assert.Equal(TimeSpan.FromHours(3), day.OffsetOf(DateTimeOffset.Parse("2026-03-29T03:00:00+02:00")));
+    }
+
+    [Fact]
+    public void SpringForwardDay_TheSkippedHourMapsToTheEndOfTheGap()
+    {
+        Assert.Equal(DateTimeOffset.Parse("2026-03-29T03:00:00+02:00"), CetDay(3, 29).At(TimeSpan.FromHours(2.5)));
     }
 }

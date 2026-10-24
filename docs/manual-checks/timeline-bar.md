@@ -20,4 +20,5 @@ Build and start Tracey with `cargo tauri dev` from `src-tauri`, use the desktop 
 - [ ] **Double-click.** With a capture pinned and the bar zoomed in, double-click anywhere: the zoom returns to the full day and the pin is unchanged. Repeat with nothing pinned: nothing becomes pinned.
 - [ ] **Zoom.** The wheel zooms around the cursor, no further in than 15 min. The header shows `HH:MM–HH:MM` and **↺ full day**, which is hidden at full day. The activity-list badge shows the same range, and the list is filtered to it. Hour labels stay readable at every zoom level.
 - [ ] **Rows.** Clicking an activity row still pins its capture, and ✕ still clears the pin.
+- [ ] **Daylight saving.** On the day the clocks change, hour labels, the range text and the hover time match the preview's capture times after the change too.
 - [ ] **Empty day.** Pick a date with neither spans nor screenshots: "No screenshots for this day." is shown. A past day with screenshots but no spans shows an uncolored bar.
