@@ -1,6 +1,6 @@
-# Manual check: the Timeline main bar
+# Manual check: the Timeline main bar and overview
 
-The main bar draws presence spans and picks captures by time (#124, rules from #108, #113 and #120). The rules live in `Tracey.App/TimelineModel` and are unit-tested; this checklist covers what only the running app shows: a real lock, the live edge and the mouse. E2E can't run in CI (no Tauri there), so run it whenever `Timeline.razor` or the model changes.
+The main bar draws presence spans and picks captures by time (#124, rules from #108, #113 and #120). The overview bar below it pans and resizes the zoom range (#125, gestures from #107). The rules live in `Tracey.App/TimelineModel` and are unit-tested; this checklist covers what only the running app shows: a real lock, the live edge, the mouse and the drag. E2E can't run in CI (no Tauri there), so run it whenever `Timeline.razor` or the model changes.
 
 ## Setup
 
@@ -19,6 +19,14 @@ Build and start Tracey with `cargo tauri dev` from `src-tauri`, use the desktop 
 - [ ] **Clear in a gap.** Pin something, then click a red locked stretch, an uncolored one, or a green stretch before the day's first screenshot: the pin is cleared.
 - [ ] **Double-click.** With a capture pinned and the bar zoomed in, double-click anywhere: the zoom returns to the full day and the pin is unchanged. Repeat with nothing pinned: nothing becomes pinned.
 - [ ] **Zoom.** The wheel zooms around the cursor, no further in than 15 min. The header shows `HH:MM–HH:MM` and **↺ full day**, which is hidden at full day. The activity-list badge shows the same range, and the list is filtered to it. Hour labels stay readable at every zoom level.
+- [ ] **Overview.** Under the main bar, a 26 px mini-map of the whole day shows the same colors, ticks every 3 h labelled 00, 06, 12 and 18, and an accent rectangle with grips on both edges over the visible range. The rest of the day is dimmed.
+- [ ] **Pan.** Drag the rectangle's body: the main bar, its labels, the range text and the activity-list badge follow during the drag. The list updates on release. The cursor is a hand, closed while dragging.
+- [ ] **Resize.** Drag each edge: only that side moves, with an ↔ cursor. Dragging an edge past the other stops at 15 min.
+- [ ] **Click to centre.** Press on the overview outside the rectangle: the range centres there, and keeping the button down and moving pans it.
+- [ ] **Narrow.** Zoom to 15 min. The rectangle can still be panned by its body, and its edges are resized from the grab areas just outside it; a press there never centres.
+- [ ] **Overview wheel.** The wheel over the overview zooms ×1.5 around the rectangle's centre; over the main bar it still zooms around the cursor.
+- [ ] **Pin tick.** Pin a capture, then move the range away from it: a thin accent tick still marks it on the overview.
+- [ ] **Live edge mid-drag.** On today, hold a drag across a ~30 s tick: the drag doesn't stutter, and the edge catches up on a later tick.
 - [ ] **Rows.** Clicking an activity row still pins its capture, and ✕ still clears the pin.
 - [ ] **Daylight saving.** On the day the clocks change, hour labels, the range text and the hover time match the preview's capture times after the change too.
 - [ ] **Empty day.** Pick a date with neither spans nor screenshots: "No screenshots for this day." is shown. A past day with screenshots but no spans shows an uncolored bar.

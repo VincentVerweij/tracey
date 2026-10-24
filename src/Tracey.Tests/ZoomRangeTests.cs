@@ -55,12 +55,103 @@ public class ZoomRangeTests
         Assert.True(ZoomRange.Create(TimeSpan.Zero, H(24) - TimeSpan.FromSeconds(20)).IsFullDay);
     }
 
+    // ─── Pan ────────────────────────────────────────────────────────────────
+
     [Fact]
-    public void MoveTo_KeepsTheLengthAndStaysInTheDay()
+    public void Pan_MovesByTheDeltaKeepingTheLength()
     {
-        var r = ZoomRange.Create(H(8), H(2)).MoveTo(H(23));
-        Assert.Equal(H(22), r.Start);
+        var r = ZoomRange.Create(H(8), H(2)).Pan(M(-90));
+        Assert.Equal(M(6 * 60 + 30), r.Start);
         Assert.Equal(H(2), r.Length);
+    }
+
+    [Fact]
+    public void Pan_StopsAtTwentyFour()
+    {
+        var r = ZoomRange.Create(H(8), H(2)).Pan(H(15));
+        Assert.Equal(H(22), r.Start);
+        Assert.Equal(H(24), r.End);
+    }
+
+    [Fact]
+    public void Pan_StopsAtMidnight()
+    {
+        var r = ZoomRange.Create(H(1), H(2)).Pan(H(-3));
+        Assert.Equal(TimeSpan.Zero, r.Start);
+        Assert.Equal(H(2), r.Length);
+    }
+
+    // ─── Resize one edge ────────────────────────────────────────────────────
+
+    [Fact]
+    public void ResizeStart_MovesTheStartKeepingTheEnd()
+    {
+        var r = ZoomRange.Create(H(8), H(4)).ResizeStart(H(6));
+        Assert.Equal(H(6), r.Start);
+        Assert.Equal(H(12), r.End);
+    }
+
+    [Fact]
+    public void ResizeEnd_MovesTheEndKeepingTheStart()
+    {
+        var r = ZoomRange.Create(H(8), H(4)).ResizeEnd(H(9));
+        Assert.Equal(H(8), r.Start);
+        Assert.Equal(H(9), r.End);
+    }
+
+    [Fact]
+    public void ResizeStart_StopsAtMidnight()
+    {
+        var r = ZoomRange.Create(H(2), H(4)).ResizeStart(H(-1));
+        Assert.Equal(TimeSpan.Zero, r.Start);
+        Assert.Equal(H(6), r.End);
+    }
+
+    [Fact]
+    public void ResizeEnd_StopsAtTwentyFour()
+    {
+        var r = ZoomRange.Create(H(20), H(2)).ResizeEnd(H(25));
+        Assert.Equal(H(20), r.Start);
+        Assert.Equal(H(24), r.End);
+    }
+
+    [Fact]
+    public void ResizeStart_PastTheEnd_StopsFifteenMinutesBeforeIt()
+    {
+        var r = ZoomRange.Create(H(8), H(4)).ResizeStart(H(13));
+        Assert.Equal(M(11 * 60 + 45), r.Start);
+        Assert.Equal(H(12), r.End);
+    }
+
+    [Fact]
+    public void ResizeEnd_PastTheStart_StopsFifteenMinutesAfterIt()
+    {
+        var r = ZoomRange.Create(H(8), H(4)).ResizeEnd(H(7));
+        Assert.Equal(H(8), r.Start);
+        Assert.Equal(M(8 * 60 + 15), r.End);
+    }
+
+    [Fact]
+    public void ResizeEnd_AtTheEndOfTheDayFromMidnight_IsTheFullDay()
+    {
+        Assert.Equal(ZoomRange.FullDay, ZoomRange.Create(TimeSpan.Zero, H(6)).ResizeEnd(H(24)));
+    }
+
+    // ─── Centre on ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public void CentreOn_PutsTheTimeInTheMiddleKeepingTheLength()
+    {
+        var r = ZoomRange.Create(H(8), H(2)).CentreOn(H(15));
+        Assert.Equal(H(14), r.Start);
+        Assert.Equal(H(16), r.End);
+    }
+
+    [Fact]
+    public void CentreOn_NearMidnight_StaysInTheDay()
+    {
+        Assert.Equal(TimeSpan.Zero, ZoomRange.Create(H(8), H(2)).CentreOn(M(20)).Start);
+        Assert.Equal(H(24), ZoomRange.Create(H(8), H(2)).CentreOn(M(23 * 60 + 40)).End);
     }
 
     // ─── Wheel zoom ─────────────────────────────────────────────────────────
@@ -112,6 +203,139 @@ public class ZoomRangeTests
         Assert.True(r.IsFullDay);
     }
 
+    [Fact]
+    public void ZoomAroundTheCentre_KeepsTheCentre()
+    {
+        // 08:00–12:00, centre 10:00 → 6 h and 2 h 40 min around 10:00.
+        var r = ZoomRange.Create(H(8), H(4));
+        Assert.Equal(H(10), r.Centre);
+        Assert.Equal(H(7), r.ZoomOut(r.Centre).Start);
+        Assert.Equal(H(10), r.ZoomIn(r.Centre).Centre);
+        Assert.Equal(M(160), r.ZoomIn(r.Centre).Length);
+    }
+
+    // ─── Hit-testing the overview rectangle ─────────────────────────────────
+
+    // A 100 px rectangle from x = 200 to x = 300: each edge's 8 px grab area is centred on it.
+    [Theory]
+    [InlineData(150, BrushHit.Outside)]
+    [InlineData(195.9, BrushHit.Outside)]
+    [InlineData(196, BrushHit.LeftEdge)]
+    [InlineData(200, BrushHit.LeftEdge)]
+    [InlineData(203.9, BrushHit.LeftEdge)]
+    [InlineData(204, BrushHit.Body)]
+    [InlineData(250, BrushHit.Body)]
+    [InlineData(296, BrushHit.Body)]
+    [InlineData(296.1, BrushHit.RightEdge)]
+    [InlineData(300, BrushHit.RightEdge)]
+    [InlineData(304, BrushHit.RightEdge)]
+    [InlineData(304.1, BrushHit.Outside)]
+    public void HitTest_AWideRectangle_HasGrabAreasCentredOnItsEdges(double x, BrushHit expected)
+    {
+        Assert.Equal(expected, ZoomRange.HitTest(rectLeftPx: 200, rectWidthPx: 100, x));
+    }
+
+    // 15 min on an 800 px overview is about 8.3 px wide, under 24 px: the grab
+    // areas sit outside it and the whole rectangle is the body.
+    [Theory]
+    [InlineData(-8.1, BrushHit.Outside)]
+    [InlineData(-8, BrushHit.LeftEdge)]
+    [InlineData(-0.1, BrushHit.LeftEdge)]
+    [InlineData(0, BrushHit.Body)]
+    [InlineData(4, BrushHit.Body)]
+    [InlineData(8.3, BrushHit.Body)]
+    [InlineData(8.4, BrushHit.RightEdge)]
+    [InlineData(16.3, BrushHit.RightEdge)]
+    [InlineData(16.4, BrushHit.Outside)]
+    public void HitTest_ANarrowRectangle_HasGrabAreasOutsideIt(double dx, BrushHit expected)
+    {
+        var width = 800.0 * 15 / (24 * 60);
+        Assert.Equal(expected, ZoomRange.HitTest(rectLeftPx: 400, rectWidthPx: width, 400 + dx));
+    }
+
+    [Fact]
+    public void HitTest_At24Px_IsNoLongerNarrow()
+    {
+        Assert.Equal(BrushHit.LeftEdge, ZoomRange.HitTest(rectLeftPx: 100, rectWidthPx: 24, 102));
+        Assert.Equal(BrushHit.Body, ZoomRange.HitTest(rectLeftPx: 100, rectWidthPx: 23.9, 102));
+    }
+
+    // ─── Brush gestures on the overview ─────────────────────────────────────
+
+    // An 800 px overview: 1 px = 1.8 min, and 08:00–12:00 spans x ≈ 266.7–400.
+    private const double OverviewPx = 800;
+    private static double X(double hours) => hours / 24 * OverviewPx;
+    private static readonly ZoomRange Morning = ZoomRange.Create(H(8), H(4));
+
+    // Pixels don't divide minutes exactly.
+    private static void AssertNear(TimeSpan expected, TimeSpan actual) =>
+        Assert.Equal(expected.TotalMinutes, actual.TotalMinutes, tolerance: 0.01);
+
+    [Fact]
+    public void Brush_DraggingTheBody_Pans()
+    {
+        var r = Morning.Brush(OverviewPx, fromPx: 300, toPx: 350);
+        Assert.Equal(M(9 * 60 + 30), r.Start);
+        Assert.Equal(M(13 * 60 + 30), r.End);
+    }
+
+    [Fact]
+    public void Brush_DraggingTheBodyPastTheEndOfTheDay_StopsAtTwentyFour()
+    {
+        var r = Morning.Brush(OverviewPx, fromPx: 300, toPx: 900);
+        Assert.Equal(H(20), r.Start);
+        Assert.Equal(H(24), r.End);
+    }
+
+    [Fact]
+    public void Brush_DraggingTheLeftEdge_ResizesTheStart()
+    {
+        var r = Morning.Brush(OverviewPx, fromPx: X(8) + 2, toPx: X(7) + 2);
+        AssertNear(H(7), r.Start);
+        Assert.Equal(H(12), r.End);
+    }
+
+    [Fact]
+    public void Brush_DraggingTheRightEdgePastTheLeft_StopsAtFifteenMinutes()
+    {
+        var r = Morning.Brush(OverviewPx, fromPx: X(12), toPx: 100);
+        Assert.Equal(H(8), r.Start);
+        Assert.Equal(M(15), r.Length);
+    }
+
+    [Fact]
+    public void Brush_ClickingOutside_CentresOnThatTime()
+    {
+        var r = Morning.Brush(OverviewPx, fromPx: X(18), toPx: X(18));
+        AssertNear(H(16), r.Start);
+        AssertNear(H(20), r.End);
+    }
+
+    [Fact]
+    public void Brush_PressingOutsideAndDragging_CentresThenPans()
+    {
+        var r = Morning.Brush(OverviewPx, fromPx: X(18), toPx: X(19.5));
+        AssertNear(M(17 * 60 + 30), r.Start);
+        Assert.Equal(H(4), r.Length);
+    }
+
+    [Fact]
+    public void Brush_ANarrowRectangle_ResizesFromTheGrabAreaOutsideIt()
+    {
+        // 10:00–10:15 is ~8 px wide: a press 3 px left of it grabs the left edge, it doesn't centre.
+        var r = ZoomRange.Create(H(10), M(15)).Brush(OverviewPx, fromPx: X(10) - 3, toPx: X(9) - 3);
+        AssertNear(H(9), r.Start);
+        Assert.Equal(M(10 * 60 + 15), r.End);
+    }
+
+    [Fact]
+    public void Brush_ANarrowRectangle_PansByItsBody()
+    {
+        var r = ZoomRange.Create(H(10), M(15)).Brush(OverviewPx, fromPx: X(10) + 4, toPx: X(11) + 4);
+        AssertNear(H(11), r.Start);
+        Assert.Equal(M(15), r.Length);
+    }
+
     // ─── Range text ─────────────────────────────────────────────────────────
 
     [Fact]
@@ -158,11 +382,16 @@ public class ZoomRangeTests
         Assert.Equal(M(expectedStepMinutes), r.LabelStep);
     }
 
+    // The main bar draws the whole day, so a drag on the overview can pan
+    // its labels into view before .NET re-renders.
     [Fact]
-    public void LabelTimes_AreStepMultiplesInsideTheRange()
+    public void LabelTimes_AreStepMultiplesAcrossTheWholeDay()
     {
-        var r = ZoomRange.Create(M(8 * 60 + 10), M(80));
-        Assert.Equal([M(8 * 60 + 15), M(8 * 60 + 30), M(8 * 60 + 45), M(9 * 60), M(9 * 60 + 15)], r.LabelTimes());
+        var times = ZoomRange.Create(M(8 * 60 + 10), M(80)).LabelTimes().ToList();
+        Assert.Equal(96, times.Count);
+        Assert.Equal(TimeSpan.Zero, times[0]);
+        Assert.Equal(M(15), times[1]);
+        Assert.Equal(M(23 * 60 + 45), times[^1]);
     }
 
     [Fact]
