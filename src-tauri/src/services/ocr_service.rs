@@ -21,17 +21,17 @@ pub async fn extract_text(jpeg_bytes: &[u8]) -> Option<String> {
     let stream = InMemoryRandomAccessStream::new().ok()?;
     let writer = DataWriter::CreateDataWriter(&stream).ok()?;
     writer.WriteBytes(jpeg_bytes).ok()?;
-    writer.StoreAsync().ok()?.get().ok()?;
-    writer.FlushAsync().ok()?.get().ok()?;
+    writer.StoreAsync().ok()?.join().ok()?;
+    writer.FlushAsync().ok()?.join().ok()?;
     stream.Seek(0).ok()?;
 
     // Decode JPEG → SoftwareBitmap
-    let decoder = BitmapDecoder::CreateAsync(&stream).ok()?.get().ok()?;
-    let bitmap = decoder.GetSoftwareBitmapAsync().ok()?.get().ok()?;
+    let decoder = BitmapDecoder::CreateAsync(&stream).ok()?.join().ok()?;
+    let bitmap = decoder.GetSoftwareBitmapAsync().ok()?.join().ok()?;
 
     // Run OCR with the user's profile language
     let engine = OcrEngine::TryCreateFromUserProfileLanguages().ok()?;
-    let result = engine.RecognizeAsync(&bitmap).ok()?.get().ok()?;
+    let result = engine.RecognizeAsync(&bitmap).ok()?.join().ok()?;
     let text = result.Text().ok()?.to_string();
 
     if text.trim().is_empty() {

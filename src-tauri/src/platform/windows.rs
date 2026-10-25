@@ -39,7 +39,7 @@ impl PlatformHooks for WindowsPlatformHooks {
                 OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid).ok()?;
 
             let mut path_buf = [0u16; 1024];
-            let path_len = GetModuleFileNameExW(process, None, &mut path_buf);
+            let path_len = GetModuleFileNameExW(Some(process), None, &mut path_buf);
             let process_path = String::from_utf16_lossy(&path_buf[..path_len as usize]);
 
             let process_name = std::path::Path::new(&process_path)

@@ -211,7 +211,7 @@ pub async fn sync_trigger(
 }
 
 // ─────────────────────────────────────────────────────────────
-// OS keychain helpers (keyring crate v3)
+// OS keychain helpers (keyring crate v4, Windows Credential Manager)
 // ─────────────────────────────────────────────────────────────
 
 const KEYRING_SERVICE: &str = "tracey";

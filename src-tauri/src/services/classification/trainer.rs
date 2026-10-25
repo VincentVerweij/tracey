@@ -47,7 +47,7 @@ pub fn retrain(conn: &Connection) -> Option<TfIdfModel> {
 
     // Serialize and persist
     let model_json = serde_json::to_string(&model).ok()?;
-    let id = Ulid::new().to_string().to_lowercase();
+    let id = Ulid::generate().to_string().to_lowercase();
     let now = Utc::now().to_rfc3339();
     let device_id = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".to_string());
 
@@ -104,7 +104,7 @@ mod tests {
         conn.execute(
             "INSERT INTO labeled_samples (id,feature_text,process_name,window_title,client_id,project_id,task_id,source,device_id,created_at,modified_at)
              VALUES (?,?,?,?,NULL,?,NULL,'user_confirmed','dev',datetime('now'),datetime('now'))",
-            rusqlite::params![Ulid::new().to_string(), text, "app", "title", project],
+            rusqlite::params![Ulid::generate().to_string(), text, "app", "title", project],
         ).unwrap();
     }
 

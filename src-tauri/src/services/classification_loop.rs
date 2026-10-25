@@ -124,7 +124,7 @@ async fn classify_record(app: &AppHandle, rec: &UnclassifiedRecord) {
     }
 
     // 3. Store classification event + finalise in a single lock acquisition
-    let event_id = Ulid::new().to_string().to_lowercase();
+    let event_id = Ulid::generate().to_string().to_lowercase();
     let now = Utc::now().to_rfc3339();
     let source_str = match result.top.source {
         ClassificationSource::Heuristic => "heuristic",
@@ -315,7 +315,7 @@ fn auto_create_or_extend_time_entry(
     }
 
     // Create new auto time entry
-    let entry_id = Ulid::new().to_string().to_lowercase();
+    let entry_id = Ulid::generate().to_string().to_lowercase();
     let now_str = Utc::now().to_rfc3339();
     if let Err(e) = conn.execute(
         "INSERT INTO time_entries \

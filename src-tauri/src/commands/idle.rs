@@ -117,7 +117,7 @@ pub fn idle_resolve(
             let info = stop_running_timer_at(&conn, &request.idle_started_at, ctx.now.as_str())?;
 
             // Insert a break entry for the idle period
-            let break_id = Ulid::new().to_string();
+            let break_id = Ulid::generate().to_string();
             insert_entry(
                 &conn,
                 &NewEntry {
@@ -149,7 +149,7 @@ pub fn idle_resolve(
         "meeting" => {
             let info = stop_running_timer_at(&conn, &request.idle_started_at, ctx.now.as_str())?;
 
-            let meeting_id = Ulid::new().to_string();
+            let meeting_id = Ulid::generate().to_string();
             insert_entry(
                 &conn,
                 &NewEntry {
@@ -185,7 +185,7 @@ pub fn idle_resolve(
 
             let info = stop_running_timer_at(&conn, &request.idle_started_at, ctx.now.as_str())?;
 
-            let entry_id = Ulid::new().to_string();
+            let entry_id = Ulid::generate().to_string();
             insert_entry(
                 &conn,
                 &NewEntry {
@@ -286,7 +286,7 @@ fn insert_running_entry(
     started_at: &str,
     ctx: &WriteCtx,
 ) -> Result<String, String> {
-    let id = Ulid::new().to_string();
+    let id = Ulid::generate().to_string();
     conn.execute(
         "INSERT INTO time_entries \
             (id, description, project_id, task_id, started_at, ended_at, is_break, device_id, created_at, modified_at) \

@@ -277,7 +277,7 @@ fn apply_one(
                 presence,
             },
         ) => {
-            let id = ulid::Ulid::new().to_string();
+            let id = ulid::Ulid::generate().to_string();
             store::insert(conn, &id, started_at, ended_at, presence)?;
             let span = OpenSpan {
                 started_at,
