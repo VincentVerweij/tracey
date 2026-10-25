@@ -233,7 +233,7 @@ fn create_message_window() -> windows::core::Result<HWND> {
     };
     unsafe {
         if RegisterClassW(&class) == 0 {
-            let e = windows::core::Error::from_win32();
+            let e = windows::core::Error::from_thread();
             if e.code() != ERROR_CLASS_ALREADY_EXISTS.to_hresult() {
                 return Err(e);
             }
@@ -247,7 +247,7 @@ fn create_message_window() -> windows::core::Result<HWND> {
             0,
             0,
             0,
-            HWND_MESSAGE,
+            Some(HWND_MESSAGE),
             None,
             None,
             None,
@@ -287,7 +287,7 @@ fn query_session_flags() -> windows::core::Result<u32> {
         let mut buffer = PWSTR::null();
         let mut bytes = 0u32;
         WTSQuerySessionInformationW(
-            WTS_CURRENT_SERVER_HANDLE,
+            Some(WTS_CURRENT_SERVER_HANDLE),
             WTS_CURRENT_SESSION,
             WTSSessionInfoEx,
             &mut buffer,

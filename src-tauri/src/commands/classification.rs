@@ -105,7 +105,7 @@ pub fn labeled_sample_submit(
         &request.window_title,
         request.ocr_text.as_deref(),
     );
-    let id = Ulid::new().to_string().to_lowercase();
+    let id = Ulid::generate().to_string().to_lowercase();
     let now = Utc::now().to_rfc3339();
     let device_id = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".to_string());
 
@@ -292,8 +292,8 @@ pub fn classification_submit_label(
         &request.window_title,
         request.ocr_text.as_deref(),
     );
-    let sample_id = Ulid::new().to_string().to_lowercase();
-    let entry_id = Ulid::new().to_string().to_lowercase();
+    let sample_id = Ulid::generate().to_string().to_lowercase();
+    let entry_id = Ulid::generate().to_string().to_lowercase();
     let now = Utc::now().to_rfc3339();
     let device_id = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "local".to_string());
 

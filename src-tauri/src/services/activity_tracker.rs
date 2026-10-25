@@ -15,7 +15,7 @@ use crate::commands::AppState;
 use crate::services::suspension::{LoopSuspension, TickStart};
 
 fn new_id() -> String {
-    Ulid::new().to_string()
+    Ulid::generate().to_string()
 }
 
 /// A foreground window as `(process_name, title)`.

@@ -98,7 +98,7 @@ fn bench_time_entry_list_100(c: &mut Criterion) {
                 )
                 .unwrap();
             let rows: Vec<_> = stmt.query_map([], |_row| Ok(())).unwrap().collect();
-            criterion::black_box(rows)
+            std::hint::black_box(rows)
         })
     });
 }
@@ -139,7 +139,7 @@ fn bench_time_entry_list_1000(c: &mut Criterion) {
                 )
                 .unwrap();
             let rows: Vec<_> = stmt.query_map([], |_row| Ok(())).unwrap().collect();
-            criterion::black_box(rows)
+            std::hint::black_box(rows)
         })
     });
 }
@@ -198,7 +198,7 @@ fn bench_window_activity_unsynced_select(c: &mut Criterion) {
                 )
                 .unwrap();
             let rows: Vec<_> = stmt.query_map([], |_row| Ok(())).unwrap().collect();
-            criterion::black_box(rows)
+            std::hint::black_box(rows)
         })
     });
 }

@@ -24,7 +24,7 @@ fn resolve_storage_dir(_app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn make_screenshot_filename() -> String {
-    format!("{}.jpg", Ulid::new().to_string().to_lowercase())
+    format!("{}.jpg", Ulid::generate().to_string().to_lowercase())
 }
 
 // Sentinel returned by capture_screen_full_res_jpeg when the session is locked
@@ -79,19 +79,27 @@ fn capture_screen_full_res_jpeg() -> Result<Vec<u8>, String> {
         let mon_h = rc.bottom - rc.top;
 
         let desktop = GetDesktopWindow();
-        let hdc_screen = GetWindowDC(desktop);
-        let hdc_mem = CreateCompatibleDC(hdc_screen);
+        let hdc_screen = GetWindowDC(Some(desktop));
+        let hdc_mem = CreateCompatibleDC(Some(hdc_screen));
         let hbm = CreateCompatibleBitmap(hdc_screen, mon_w, mon_h);
         let hbm_old = SelectObject(hdc_mem, HGDIOBJ(hbm.0));
 
         let blit_result = BitBlt(
-            hdc_mem, 0, 0, mon_w, mon_h, hdc_screen, mon_x, mon_y, SRCCOPY,
+            hdc_mem,
+            0,
+            0,
+            mon_w,
+            mon_h,
+            Some(hdc_screen),
+            mon_x,
+            mon_y,
+            SRCCOPY,
         );
         if let Err(e) = blit_result {
             SelectObject(hdc_mem, hbm_old);
             let _ = DeleteObject(HGDIOBJ(hbm.0));
             let _ = DeleteDC(hdc_mem);
-            ReleaseDC(desktop, hdc_screen);
+            ReleaseDC(Some(desktop), hdc_screen);
             // 0x80070006 = ERROR_INVALID_HANDLE: the desktop DC is inaccessible
             // because the session is locked — treat as a silent skip condition.
             if e.code().0 as u32 == 0x80070006 {
@@ -133,7 +141,7 @@ fn capture_screen_full_res_jpeg() -> Result<Vec<u8>, String> {
         SelectObject(hdc_mem, hbm_old);
         let _ = DeleteObject(HGDIOBJ(hbm.0));
         let _ = DeleteDC(hdc_mem);
-        ReleaseDC(desktop, hdc_screen);
+        ReleaseDC(Some(desktop), hdc_screen);
 
         // BGRA → RGB
         let w = mon_w as u32;
@@ -209,7 +217,7 @@ async fn capture_and_save(
 
     let path_str = full_path.to_string_lossy().to_string();
     let now = Utc::now().to_rfc3339();
-    let id = Ulid::new().to_string().to_lowercase();
+    let id = Ulid::generate().to_string().to_lowercase();
     let (process_name, window_title) = window_info.unwrap_or_default();
 
     // 6. Insert DB row (ocr_text = NULL initially) — lock dropped before OCR await
@@ -507,7 +515,7 @@ pub fn start_screenshot_loop(app: AppHandle, suspension: LoopSuspension) {
             }
 
             // Cleanup on startup (tick 1) and then every hour (every 3600 ticks)
-            if cleanup_tick == 1 || cleanup_tick % 3600 == 0 {
+            if cleanup_tick == 1 || cleanup_tick.is_multiple_of(3600) {
                 cleanup_expired(&app).await;
             }
         }

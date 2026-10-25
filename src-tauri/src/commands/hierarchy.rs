@@ -6,7 +6,7 @@ use tauri::State;
 use ulid::Ulid;
 
 fn new_id() -> String {
-    Ulid::new().to_string()
+    Ulid::generate().to_string()
 }
 
 /// Validates a CSS hex colour string: must be exactly `#RRGGBB`.
