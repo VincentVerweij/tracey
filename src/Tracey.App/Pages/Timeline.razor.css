@@ -38,6 +38,19 @@
     box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
 }
 
+/* For screen readers only, e.g. the pin's status region. */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 /* ─── Error banner ────────────────────────────────────────── */
 /* Error banner now uses global .t-error-banner */
 /* Loading state now uses global .t-loading-text */
@@ -75,6 +88,27 @@
     background: linear-gradient(to bottom, #1e1e2e 0%, #16213e 100%);
     user-select: none;
     overflow: hidden;
+}
+
+/* Both bars are sliders (#126); the ring sits inside, as the card clips overflow. */
+.timeline-bar-inner:focus-visible {
+    outline: 2px solid var(--tracey-accent, #6366f1);
+    outline-offset: -2px;
+}
+
+/* Drawn above the zoom rectangle, which would cover an outline, and in the
+   text color, since that accent rectangle spans the whole overview at the full day. */
+.timeline-overview:focus-visible {
+    outline: none;
+}
+
+.timeline-overview:focus-visible::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border: 2px solid var(--tracey-text);
+    pointer-events: none;
+    z-index: 4;
 }
 
 /* ─── The day under the zoom range ───────────────────────── */

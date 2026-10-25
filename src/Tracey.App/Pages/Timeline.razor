@@ -8,6 +8,9 @@
 <PageTitle>Timeline — Tracey</PageTitle>
 
 <div class="timeline-page" @ref="_page">
+    @* The one announcement for the pin, whatever changed it (#126) *@
+    <div role="status" class="visually-hidden" data-testid="pin-status">@_pinStatus</div>
+
     @if (_errorMessage is not null)
     {
         <div role="alert" class="t-error-banner">
@@ -45,23 +48,48 @@
     {
         var daySpans = _day.VisibleSpans(ZoomRange.FullDay);
         var pinOffset = PinnedOffset();
+        var cursor = _cursor ?? BarCursor.OnFocus(_day, _zoom, _selected);
         <div class="timeline-day-bar"
+             role="group"
              aria-label="24-hour timeline for @_dateFilter.ToString("yyyy-MM-dd")">
-            <div class="timeline-zoom-indicator" aria-live="polite">
+            @* Keyboard range changes are announced by the overview slider's value, not here *@
+            <div class="timeline-zoom-indicator">
                 @* Its text is written by timeline-brush.js, so it follows a drag *@
                 <span class="zoom-range-text" data-testid="zoom-range-text" data-zoom-text></span>
                 @if (!_zoom.IsFullDay)
                 {
-                    <button class="zoom-reset-btn" @onclick="ResetZoom" title="Reset to full day view" aria-label="Reset zoom">↺ full day</button>
+                    <button class="zoom-reset-btn"
+                            @onclick="ResetZoom"
+                            @onfocus="() => _resetHasFocus = true"
+                            @onblur="HandleResetBlur"
+                            title="Reset to full day view"
+                            aria-label="Reset zoom">↺ full day</button>
                 }
             </div>
+            <span id="timeline-bar-keys" hidden>Arrow keys step through screenshots, Shift+arrows jump between presence changes, Enter pins, Escape clears the pin.</span>
+            <span id="timeline-overview-keys" hidden>Arrow keys pan 15 minutes, Shift+arrows or Page Up and Page Down pan an hour, Home and End go to the start and end of the day, plus and minus zoom, 0 shows the full day.</span>
+            @* A slider whose value is the cursor (#126). timeline-brush.js stops
+               the browser's default for the keys handled here. *@
             <div class="timeline-bar-inner"
+                 @ref="_mainBar"
+                 tabindex="0"
+                 role="slider"
+                 aria-label="Timeline cursor"
+                 aria-valuemin="0"
+                 aria-valuemax="1440"
+                 aria-valuenow="@cursor.Minute"
+                 aria-valuetext="@cursor.ValueText(_day)"
+                 aria-describedby="timeline-bar-keys"
+                 data-testid="timeline-bar"
                  @onmousemove="HandleBarMouseMove"
-                 @onmouseleave="ClearHover"
+                 @onmouseleave="HideCursor"
                  @onclick="HandleBarClick"
                  @onwheel="HandleBarWheel"
                  @onwheel:preventDefault="true"
-                 @ondblclick="HandleBarDoubleClick">
+                 @ondblclick="HandleBarDoubleClick"
+                 @onkeydown="HandleBarKey"
+                 @onfocus="HandleBarFocus"
+                 @onblur="HideCursor">
 
                 @* The whole day, shifted and stretched to the zoom range by CSS,
                    so it follows a drag on the overview without a render *@
@@ -95,7 +123,7 @@
                     }
                 </div>
 
-                @if (_hoverOffset is { } hoverOffset)
+                @if (HoverOffset is { } hoverOffset)
                 {
                     var hoverPct = CssPercent(_zoom.PercentOf(hoverOffset));
                     <div class="timeline-hover-line" style="left: @hoverPct%" aria-hidden="true"></div>
@@ -105,13 +133,22 @@
                 }
             </div>
 
-            @* Overview: the whole day in miniature. timeline-brush.js handles the
-               drag; the wheel zooms around the rectangle's centre. *@
+            @* Overview: the whole day in miniature, and a range slider over it.
+               timeline-brush.js handles the drag; the wheel zooms around the
+               rectangle's centre. Resizing one edge stays mouse-only. *@
             <div class="timeline-overview"
                  data-testid="timeline-overview"
-                 aria-label="Whole day overview. The rectangle is the visible range: drag it to pan, drag an edge to resize."
+                 tabindex="0"
+                 role="slider"
+                 aria-label="Visible range"
+                 aria-valuemin="0"
+                 aria-valuemax="1440"
+                 aria-valuenow="@((int)Math.Round(_zoom.Start.TotalMinutes))"
+                 aria-valuetext="@_zoom.RangeText"
+                 aria-describedby="timeline-overview-keys"
                  @onwheel="HandleOverviewWheel"
-                 @onwheel:preventDefault="true">
+                 @onwheel:preventDefault="true"
+                 @onkeydown="HandleOverviewKey">
                 @foreach (var span in daySpans)
                 {
                     <div class="timeline-span @SpanClass(span)"
@@ -170,7 +207,7 @@
                      alt="Screenshot from @FormatTime(hoverShot.Screenshot.CapturedAt)"
                      class="screenshot-img screenshot-img-hover" />
             }
-            else if (_hoverPick is HoverPick.Gap gap && _hoverOffset is { } gapOffset)
+            else if (_hoverPick is HoverPick.Gap gap && HoverOffset is { } gapOffset)
             {
                 <div class="preview-placeholder preview-gap" data-testid="preview-gap">
                     <span>@PresenceText.GapCard(gap.Presence, ZoomRange.Clock(gapOffset))</span>
@@ -254,8 +291,13 @@
     private string? _errorMessage;
     private DateOnly _dateFilter = DateOnly.FromDateTime(DateTime.Today);
 
-    // Hover state
-    private TimeSpan? _hoverOffset;
+    // The main bar's cursor is the hover line, shared by the mouse and the
+    // keys (#126). Hidden on mouse-leave and blur, it keeps its place, so keys
+    // continue from where the mouse left it.
+    private BarCursor? _cursor;
+    private bool _cursorShown;
+    private TimeSpan? HoverOffset => _cursorShown ? _cursor?.At : null;
+
     private HoverPick? _hoverPick;
     private string? _hoverImageId;
     private string _hoverImageUrl = string.Empty;
@@ -269,7 +311,14 @@
 
     // The overview brush (wwwroot/js/timeline-brush.js) is set up on the page root.
     private ElementReference _page;
+    private ElementReference _mainBar;
     private DotNetObjectReference<Timeline>? _selfRef;
+
+    // "Pinned screenshot 10:31" or "Pin cleared", read by the status region.
+    private string _pinStatus = string.Empty;
+
+    // ↺ full day hides at the full day; if it had focus, the main bar takes it.
+    private bool _resetHasFocus;
 
     // The pin before a double-click's first click, restored by the double-click.
     private ScreenshotItem? _pinBeforeClick;
@@ -303,6 +352,12 @@
         // Every render, so the brush's preview never outlives a commit.
         await JS.InvokeVoidAsync("traceyTimeline.setZoom", _page,
             _zoom.Start.TotalMinutes, _zoom.Length.TotalMinutes, _zoom.RangeText);
+
+        if (_resetHasFocus && _zoom.IsFullDay)
+        {
+            _resetHasFocus = false;
+            await _mainBar.FocusAsync();
+        }
     }
 
     private Task LoadDay() => LoadDay(showLoading: true);
@@ -314,6 +369,8 @@
             _isLoading = true;
             _selected = null;
             _selectedImageUrl = string.Empty;
+            // A new day isn't a pin change to announce.
+            _pinStatus = string.Empty;
             ClearHover();
             StateHasChanged();
         }
@@ -449,6 +506,7 @@
         if (s?.Id == _selected?.Id) return;
         _selected = s;
         _selectedImageUrl = string.Empty;
+        AnnouncePin();
         if (s is null) return;
         var url = await GetImgSrcAsync(s.FilePath);
         // The pin may have moved on while the URL was resolved.
@@ -459,7 +517,11 @@
     {
         _selected = null;
         _selectedImageUrl = string.Empty;
+        AnnouncePin();
     }
+
+    private void AnnouncePin() =>
+        _pinStatus = PinnedOffset() is { } at ? $"Pinned screenshot {ZoomRange.Clock(at)}" : "Pin cleared";
 
     private TimeSpan? PinnedOffset() =>
         _selected is not null && DateTimeOffset.TryParse(_selected.CapturedAt, out var at)
@@ -498,14 +560,15 @@
 
     private async Task HandleBarMouseMove(MouseEventArgs e)
     {
-        _hoverOffset = await GetMouseOffsetAsync(e.ClientX);
+        _cursor = new BarCursor(await GetMouseOffsetAsync(e.ClientX));
+        _cursorShown = true;
         await RefreshHoverAsync();
     }
 
     /// Re-picks at the hovered time, also after the day changes under a still cursor.
     private async Task RefreshHoverAsync()
     {
-        if (_hoverOffset is not { } offset) return;
+        if (HoverOffset is not { } offset) return;
         _hoverPick = _day.Pick(_day.At(offset));
         if (_hoverPick is HoverPick.Shot shot && shot.Screenshot.Id != _hoverImageId)
         {
@@ -514,12 +577,65 @@
         }
     }
 
-    private void ClearHover()
+    /// On mouse-leave and blur: the line, label and hover preview go; the
+    /// cursor keeps its place and the pin stays.
+    private void HideCursor()
     {
-        _hoverOffset = null;
+        _cursorShown = false;
         _hoverPick = null;
         _hoverImageId = null;
         _hoverImageUrl = string.Empty;
+    }
+
+    private void ClearHover()
+    {
+        HideCursor();
+        _cursor = null;
+    }
+
+    // ── Bar keyboard handling (#126) ─────────────────────────────────────
+
+    private async Task HandleBarFocus()
+    {
+        // A click focuses the bar under the mouse's cursor: keys continue from there.
+        if (!_cursorShown)
+            _cursor = BarCursor.OnFocus(_day, _zoom, _selected);
+        await ShowCursorAsync();
+    }
+
+    private async Task HandleBarKey(KeyboardEventArgs e)
+    {
+        if (e.CtrlKey || e.AltKey || e.MetaKey) return;
+        var cursor = _cursor ?? BarCursor.OnFocus(_day, _zoom, _selected);
+        switch (e.Key)
+        {
+            case "Enter" or " ":
+                await PinAsync(_day.PinAfterClick(_day.At(cursor.At), _selected));
+                break;
+            case "Escape":
+                await PinAsync(null);
+                break;
+            default:
+                if (cursor.AfterKey(_day, e.Key, e.ShiftKey) is not { } moved) return;
+                cursor = moved;
+                break;
+        }
+        _cursor = cursor;
+        await ShowCursorAsync();
+    }
+
+    /// Shows the cursor, panning the range just enough to keep it in view.
+    private async Task ShowCursorAsync()
+    {
+        if (_cursor is null) return;
+        _cursorShown = true;
+        var followed = _zoom.Follow(_cursor.At);
+        if (followed != _zoom)
+        {
+            _zoom = followed;
+            RefreshVisibleEntries();
+        }
+        await RefreshHoverAsync();
     }
 
     private async Task HandleBarClick(MouseEventArgs e)
@@ -540,8 +656,12 @@
     {
         // A double-click never pins, unpins or clears.
         _clickGeneration++;
-        _selected = _pinBeforeClick;
-        _selectedImageUrl = _pinImageBeforeClick;
+        if (_selected?.Id != _pinBeforeClick?.Id)
+        {
+            _selected = _pinBeforeClick;
+            _selectedImageUrl = _pinImageBeforeClick;
+            AnnouncePin();
+        }
         ResetZoom();
     }
 
@@ -628,6 +748,15 @@
         RefreshVisibleEntries();
     }
 
+    private void HandleOverviewKey(KeyboardEventArgs e)
+    {
+        if (e.CtrlKey || e.AltKey || e.MetaKey) return;
+        if (_zoom.AfterKey(e.Key, e.ShiftKey) is not { } zoomed || zoomed == _zoom) return;
+
+        _zoom = zoomed;
+        RefreshVisibleEntries();
+    }
+
     /// The one call from timeline-brush.js per overview drag: a press at
     /// <paramref name="fromPx"/>, released at <paramref name="toPx"/>, on an
     /// overview <paramref name="widthPx"/> wide, starting from the range shown
@@ -643,6 +772,13 @@
         }
         // Always render, so setZoom replaces the drag's preview.
         StateHasChanged();
+    }
+
+    // Removing the focused ↺ also blurs it; at the full day that blur is the
+    // hiding, so focus still goes to the main bar after the render.
+    private void HandleResetBlur()
+    {
+        if (!_zoom.IsFullDay) _resetHasFocus = false;
     }
 
     private void ResetZoom()

@@ -321,4 +321,81 @@ test.describe('Issue Regressions — March 17 2026', () => {
       }
     });
   });
+
+  test.describe('Issue 126 — Bar keyboard and screen-reader access', () => {
+    test('the main bar is a cursor slider: arrows move it, Enter pins, Escape clears', async ({ page }) => {
+      await goToTimeline(page);
+
+      const bar = page.getByRole('slider', { name: 'Timeline cursor' });
+      await expect(bar.or(page.locator('.empty-state-illustration')).first()).toBeVisible();
+      if (await bar.isVisible().catch(() => false)) {
+        await bar.focus();
+        await expect(bar).toHaveAttribute('aria-valuetext', /^\d{2}:\d{2} · /);
+
+        // A span-boundary jump adds where that presence ends; a capture step
+        // drops it again, even with no capture that way
+        if ((await page.locator('.timeline-bar-day .timeline-span').count()) > 0) {
+          await page.keyboard.press('Shift+ArrowRight');
+          await page.keyboard.press('Shift+ArrowLeft');
+          await expect(bar).toHaveAttribute('aria-valuetext', /^\d{2}:\d{2} · .*, until \d{2}:\d{2}/);
+          await page.keyboard.press('ArrowRight');
+          await expect(bar).not.toHaveAttribute('aria-valuetext', /until/);
+        }
+
+        // Enter follows the click rule; on a capture it pins
+        const status = page.locator('[data-testid="pin-status"]');
+        if ((await page.locator('[data-testid="activity-row"]').count()) > 0) {
+          await page.keyboard.press('Enter');
+          await expect(status).toHaveText(/^Pinned screenshot \d{2}:\d{2}$/);
+          await expect(page.getByRole('button', { name: 'Close preview' })).toBeVisible();
+
+          await page.keyboard.press('Escape');
+          await expect(status).toHaveText('Pin cleared');
+          await expect(page.getByRole('button', { name: 'Close preview' })).not.toBeVisible();
+        }
+      }
+    });
+
+    test('the overview is a range slider: keys pan and zoom, 0 restores the full day', async ({ page }) => {
+      await goToTimeline(page);
+
+      const overview = page.getByRole('slider', { name: 'Visible range' });
+      await expect(overview.or(page.locator('.empty-state-illustration')).first()).toBeVisible();
+      if (await overview.isVisible().catch(() => false)) {
+        await overview.focus();
+        await expect(overview).toHaveAttribute('aria-valuetext', '00:00–24:00');
+
+        await page.keyboard.press('+');
+        await expect(overview).toHaveAttribute('aria-valuetext', '04:00–20:00');
+        await page.keyboard.press('ArrowRight');
+        await expect(overview).toHaveAttribute('aria-valuetext', '04:15–20:15');
+        await expect(overview).toHaveAttribute('aria-valuenow', '255');
+        await page.keyboard.press('PageDown');
+        await expect(overview).toHaveAttribute('aria-valuetext', '03:15–19:15');
+        await page.keyboard.press('End');
+        await expect(overview).toHaveAttribute('aria-valuetext', '08:00–24:00');
+
+        await page.keyboard.press('0');
+        await expect(overview).toHaveAttribute('aria-valuetext', '00:00–24:00');
+        await expect(page.locator('[data-testid="zoom-range-text"]')).toHaveText('00:00–24:00');
+      }
+    });
+
+    test('↺ full day hands focus to the main bar as it hides', async ({ page }) => {
+      await goToTimeline(page);
+
+      const overview = page.getByRole('slider', { name: 'Visible range' });
+      await expect(overview.or(page.locator('.empty-state-illustration')).first()).toBeVisible();
+      if (await overview.isVisible().catch(() => false)) {
+        await overview.focus();
+        await page.keyboard.press('+');
+
+        const reset = page.getByRole('button', { name: 'Reset zoom' });
+        await reset.focus();
+        await page.keyboard.press('Enter');
+        await expect(reset).not.toBeVisible();
+        await expect(page.getByRole('slider', { name: 'Timeline cursor' })).toBeFocused();
+      }
+    });
+  });
 });

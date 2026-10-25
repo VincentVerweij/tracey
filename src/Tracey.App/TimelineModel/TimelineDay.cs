@@ -22,6 +22,16 @@ public static class PresenceText
         _ => "Not tracked",
     };
 
+    /// The state in the main-bar slider's value text, with the away cause:
+    /// "Present", "Away (locked)", "Away (idle)" or "Not tracked" (#126).
+    public static string Name(this Presence presence) => presence switch
+    {
+        Presence.Present => "Present",
+        Presence.AwayLocked => "Away (locked)",
+        Presence.AwayIdle => "Away (idle)",
+        _ => "Not tracked",
+    };
+
     /// The preview's state card for a gap, e.g. `10:31 · Away (locked) — no screenshots`.
     public static string GapCard(Presence presence, string clock) => presence switch
     {
@@ -157,6 +167,29 @@ public sealed class TimelineDay
         }
         return Presence.Untracked;
     }
+
+    /// Where the presence at <paramref name="t"/> ends: the end of the span
+    /// covering it, or in `Untracked` time the next span's start; at most 24:00.
+    public DateTimeOffset PresenceEnd(DateTimeOffset t)
+    {
+        foreach (var s in Spans)
+        {
+            if (s.Start <= t && t < s.End)
+                return s.End < DayEnd ? s.End : DayEnd;
+            if (s.Start > t)
+                return s.Start < DayEnd ? s.Start : DayEnd;
+        }
+        return DayEnd;
+    }
+
+    /// Every span start and end inside the day, ascending, as offsets from
+    /// the day's midnight.
+    public IReadOnlyList<TimeSpan> Boundaries() =>
+        [.. Spans
+            .SelectMany(s => new[] { OffsetOf(s.Start), OffsetOf(s.End) })
+            .Where(b => b >= TimeSpan.Zero && b <= ZoomRange.MaxLength)
+            .Distinct()
+            .Order()];
 
     /// The preview for hovering at <paramref name="t"/>: a gap where capture
     /// was stopped, else the latest capture at or before <paramref name="t"/>,

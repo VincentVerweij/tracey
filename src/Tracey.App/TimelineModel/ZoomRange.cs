@@ -105,6 +105,32 @@ public sealed record ZoomRange
         return Create(anchor - length * fraction, length);
     }
 
+    /// Panned just enough to show <paramref name="cursor"/>, keeping the
+    /// length: the main bar's cursor took a step out of view (#126).
+    public ZoomRange Follow(TimeSpan cursor) =>
+        cursor < Start ? Pan(cursor - Start)
+        : cursor > End ? Pan(cursor - End)
+        : this;
+
+    private static readonly TimeSpan KeyPan = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan BigKeyPan = TimeSpan.FromHours(1);
+
+    /// The range after <paramref name="key"/> (a DOM `KeyboardEvent.key`) on
+    /// the overview slider, or null when the overview doesn't use that key (#126).
+    public ZoomRange? AfterKey(string key, bool shift) => key switch
+    {
+        "ArrowRight" or "ArrowUp" => Pan(shift ? BigKeyPan : KeyPan),
+        "ArrowLeft" or "ArrowDown" => Pan(-(shift ? BigKeyPan : KeyPan)),
+        "PageUp" => Pan(BigKeyPan),
+        "PageDown" => Pan(-BigKeyPan),
+        "Home" => Create(TimeSpan.Zero, Length),
+        "End" => Create(MaxLength - Length, Length),
+        "+" or "=" => ZoomIn(Centre),
+        "-" => ZoomOut(Centre),
+        "0" => FullDay,
+        _ => null,
+    };
+
     /// What a press at <paramref name="x"/> grabs on the overview rectangle
     /// spanning <paramref name="rectLeftPx"/> to <paramref name="rectLeftPx"/> +
     /// <paramref name="rectWidthPx"/>. Each edge's grab area is 8 px, centred on
