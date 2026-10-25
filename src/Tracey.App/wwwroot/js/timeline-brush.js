@@ -10,7 +10,10 @@
 // Everything that follows the range lives in what Blazor never renders, so
 // the two never fight over the DOM: on the page root, the --zoom-start and
 // --zoom-length custom properties (fractions of the day) and the data-zoom-*
-// data-brush and aria-busy attributes; and the text of the empty [data-zoom-text] elements.
+// and data-brush attributes; and the text of the empty [data-zoom-text] elements.
+//
+// It also stops the browser's default (scrolling) for the keys the two bar
+// sliders handle in .NET (#126), which Blazor can't decide per key.
 //
 // The gesture rules mirror ZoomRange (TimelineModel/ZoomRange.cs) so the
 // preview doesn't overshoot what .NET commits. Times here are minutes.
@@ -40,6 +43,7 @@
             pointerup: e => onPointerEnd(page, e),
             pointercancel: e => onPointerEnd(page, e),
             lostpointercapture: e => onPointerEnd(page, e),
+            keydown: onKeyDown,
         };
         for (const [name, fn] of Object.entries(page.listeners)) root.addEventListener(name, fn);
         page.resize.observe(root);
@@ -84,8 +88,6 @@
         const hit = hitTest(range.start / DAY * box.width, range.length / DAY * box.width, from);
         page.drag = { pointerId: e.pointerId, left: box.left, width: box.width, from, to: from, range, hit };
         page.root.dataset.brush = hit === 'left' || hit === 'right' ? 'resize' : 'pan';
-        // The range text rewrites every frame; announce only the result.
-        page.root.setAttribute('aria-busy', 'true');
         // A press outside centres at once, before any move.
         schedulePreview(page);
     }
@@ -104,7 +106,6 @@
         cancelAnimationFrame(page.frame);
         page.frame = 0;
         delete page.root.dataset.brush;
-        page.root.removeAttribute('aria-busy');
         // The range the press was hit-tested against, so the commit matches the preview.
         const { start, length } = drag.range;
         page.dotNetRef.invokeMethodAsync('CommitBrush', start, length, drag.width, drag.from, drag.to)
@@ -121,6 +122,21 @@
             const drag = page.drag;
             if (drag) apply(page, brush(drag.range, drag.hit, drag.width, drag.from, drag.to));
         });
+    }
+
+    // ── Slider keys (#126) ───────────────────────────────────────────────
+
+    // Keep in step with BarCursor.AfterKey and HandleBarKey, and ZoomRange.AfterKey.
+    const BAR_KEYS = new Set(['ArrowLeft', 'ArrowRight', ' ']);
+    const OVERVIEW_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End']);
+
+    // .NET still gets the event; only the scroll is stopped.
+    function onKeyDown(e) {
+        if (e.ctrlKey || e.altKey || e.metaKey) return;
+        const keys = e.target.matches('.timeline-bar-inner') ? BAR_KEYS
+            : e.target.matches('.timeline-overview') ? OVERVIEW_KEYS
+            : null;
+        if (keys && keys.has(e.key)) e.preventDefault();
     }
 
     // ── Rendering ────────────────────────────────────────────────────────

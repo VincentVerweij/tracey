@@ -402,4 +402,123 @@ public class ZoomRangeTests
         Assert.Equal(TimeSpan.Zero, times[0]);
         Assert.Equal(H(22), times[^1]);
     }
+
+    // ─── Following the main bar's cursor (#126) ─────────────────────────────
+
+    [Fact]
+    public void Follow_ACursorInside_KeepsTheRange()
+    {
+        var r = ZoomRange.Create(H(8), H(2));
+        Assert.Same(r, r.Follow(H(9)));
+        Assert.Same(r, r.Follow(H(8)));
+        Assert.Same(r, r.Follow(H(10)));
+    }
+
+    [Fact]
+    public void Follow_ACursorPastTheEnd_PansJustEnough()
+    {
+        var r = ZoomRange.Create(H(8), H(2)).Follow(H(10.5));
+        Assert.Equal(H(8.5), r.Start);
+        Assert.Equal(H(10.5), r.End);
+    }
+
+    [Fact]
+    public void Follow_ACursorBeforeTheStart_PansJustEnough()
+    {
+        var r = ZoomRange.Create(H(8), H(2)).Follow(H(7.25));
+        Assert.Equal(H(7.25), r.Start);
+        Assert.Equal(H(2), r.Length);
+    }
+
+    [Fact]
+    public void Follow_AtTheDaysEdges_StaysInsideTheDay()
+    {
+        var early = ZoomRange.Create(H(1), H(2)).Follow(TimeSpan.Zero);
+        Assert.Equal(TimeSpan.Zero, early.Start);
+        Assert.Equal(H(2), early.End);
+
+        var late = ZoomRange.Create(H(20), H(2)).Follow(H(24));
+        Assert.Equal(H(22), late.Start);
+        Assert.Equal(H(24), late.End);
+    }
+
+    // ─── Overview keys (#126) ───────────────────────────────────────────────
+
+    private static ZoomRange Key(ZoomRange r, string key, bool shift = false) =>
+        r.AfterKey(key, shift) ?? throw new Xunit.Sdk.XunitException($"{key} not handled");
+
+    [Fact]
+    public void AfterKey_ArrowsPanFifteenMinutes()
+    {
+        var r = ZoomRange.Create(H(8), H(2));
+        Assert.Equal(M(8 * 60 + 15), Key(r, "ArrowRight").Start);
+        Assert.Equal(M(8 * 60 + 15), Key(r, "ArrowUp").Start);
+        Assert.Equal(M(7 * 60 + 45), Key(r, "ArrowLeft").Start);
+        Assert.Equal(M(7 * 60 + 45), Key(r, "ArrowDown").Start);
+        Assert.Equal(H(2), Key(r, "ArrowRight").Length);
+    }
+
+    [Fact]
+    public void AfterKey_ShiftArrowsAndPageKeysPanAnHour()
+    {
+        var r = ZoomRange.Create(H(8), H(2));
+        Assert.Equal(H(9), Key(r, "ArrowRight", shift: true).Start);
+        Assert.Equal(H(7), Key(r, "ArrowLeft", shift: true).Start);
+        Assert.Equal(H(9), Key(r, "ArrowUp", shift: true).Start);
+        Assert.Equal(H(7), Key(r, "ArrowDown", shift: true).Start);
+        Assert.Equal(H(9), Key(r, "PageUp").Start);
+        Assert.Equal(H(7), Key(r, "PageDown").Start);
+    }
+
+    [Fact]
+    public void AfterKey_PansStopAtTheDaysEdges()
+    {
+        Assert.Equal(TimeSpan.Zero, Key(ZoomRange.Create(M(10), H(2)), "ArrowLeft").Start);
+        Assert.Equal(H(24), Key(ZoomRange.Create(H(21.5), H(2)), "PageUp").End);
+    }
+
+    [Fact]
+    public void AfterKey_HomeAndEndMoveToTheDaysEdges()
+    {
+        var r = ZoomRange.Create(H(8), H(2));
+        Assert.Equal(ZoomRange.Create(TimeSpan.Zero, H(2)), Key(r, "Home"));
+        Assert.Equal(ZoomRange.Create(H(22), H(2)), Key(r, "End"));
+    }
+
+    [Fact]
+    public void AfterKey_PlusAndMinusZoomAroundTheCentre()
+    {
+        Assert.Equal("04:00–20:00", Key(ZoomRange.FullDay, "+").RangeText);
+        Assert.Equal("04:00–20:00", Key(ZoomRange.FullDay, "=").RangeText);
+
+        var r = ZoomRange.Create(H(10), H(2));
+        Assert.Equal("09:30–12:30", Key(r, "-").RangeText);
+        Assert.Equal("10:00–12:00", Key(Key(r, "-"), "+").RangeText);
+    }
+
+    [Fact]
+    public void AfterKey_ZoomStaysWithinItsLimits()
+    {
+        Assert.Equal(M(15), Key(ZoomRange.Create(H(10), M(15)), "+").Length);
+        Assert.Equal(ZoomRange.FullDay, Key(ZoomRange.Create(H(2), H(20)), "-"));
+    }
+
+    [Fact]
+    public void AfterKey_ZeroShowsTheFullDay()
+    {
+        Assert.Equal(ZoomRange.FullDay, Key(ZoomRange.Create(H(8), H(2)), "0"));
+    }
+
+    [Fact]
+    public void AfterKey_OtherKeys_AreNotTheOverviews()
+    {
+        Assert.Null(ZoomRange.FullDay.AfterKey("Enter", shift: false));
+        Assert.Null(ZoomRange.FullDay.AfterKey("a", shift: false));
+    }
+
+    [Fact]
+    public void RangeText_IsTheOverviewsValueText()
+    {
+        Assert.Equal("08:00–13:30", ZoomRange.Create(H(8), H(5.5)).RangeText);
+    }
 }

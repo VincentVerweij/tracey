@@ -28,5 +28,12 @@ Build and start Tracey with `cargo tauri dev` from `src-tauri`, use the desktop 
 - [ ] **Pin tick.** Pin a capture, then move the range away from it: a thin accent tick still marks it on the overview.
 - [ ] **Live edge mid-drag.** On today, hold a drag across a ~30 s tick: the drag doesn't stutter, and the edge catches up on a later tick.
 - [ ] **Rows.** Clicking an activity row still pins its capture, and ✕ still clears the pin.
+- [ ] **Focus order.** From the date filter, Tab goes: Clean up → ↺ full day (only when zoomed) → main bar → overview → preview ✕ (when pinned) → activity list. Both bars show an accent focus ring.
+- [ ] **Cursor keys.** Tab to the main bar: the dashed line appears on the pinned capture, else on the first capture in view. ←/→ step through captures, Shift+←/→ jump between span edges, and at the last one the cursor stays put. Stepping out of view pans the range just enough. Tab away: the line and label go and the pin stays.
+- [ ] **Shared cursor.** Hover the bar, click, and press →: the cursor continues from where the mouse was.
+- [ ] **Keyboard pin.** Enter or Space pins the capture under the cursor, again unpins it, and in a red locked or uncolored stretch clears the pin. Escape clears it.
+- [ ] **Overview keys.** On the overview: ←/→ and ↓/↑ pan 15 min, Shift+arrows and Page Up/Down pan 1 h, Home/End go to 00:00/24:00, + and − zoom around the centre, 0 shows the full day. The page doesn't scroll.
+- [ ] **↺ focus.** Zoom in, Tab to ↺ full day and press Enter: focus lands on the main bar.
+- [ ] **Screen reader.** With Narrator (or NVDA): the main bar reads as a slider with `10:31 · Present · <window title>`, `… · Away (locked), no screenshots` or `… · Not tracked`, and after Shift+arrow `…, until HH:MM`, plus its key hint. The overview reads `HH:MM–HH:MM` on each key. Pinning by key, click, activity row or ✕ says `Pinned screenshot HH:MM` / `Pin cleared`. Dragging, the wheel and follow-pans announce nothing else.
 - [ ] **Daylight saving.** On the day the clocks change, hour labels, the range text and the hover time match the preview's capture times after the change too.
 - [ ] **Empty day.** Pick a date with neither spans nor screenshots: "No screenshots for this day." is shown. A past day with screenshots but no spans shows an uncolored bar.
